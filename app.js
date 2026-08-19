@@ -1962,6 +1962,7 @@ function mSubEntidad(aid, tipo) {
 
 // COBRAR (cliente)
 function vResumenCliente(a, cl, s) {
+  if (!_D || !_D.cobs) { cargar().then(function(D){ _D=D; vResumenCliente(a, cl, s); }); return; }
   var wrap = el('div', {});
 
   // Header
