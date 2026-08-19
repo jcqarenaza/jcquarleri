@@ -1976,7 +1976,7 @@ function vResumenCliente(a, cl, s) {
 
   // Saldos
   var cobs = (_D.cobs||[]).filter(function(c){ return c.asignacion_id === a.id; });
-  var impl = Number(a.costo_implementacion||0);
+  var impl = Number(a.costo_implementacion||0) || (a._fases||[]).reduce(function(s,f){ return s+Number(f.monto||0); },0);
   var pagadoImpl = cobs.filter(function(c){ return c.tipo_cobro==='implementacion' && c.estado==='pagado'; }).reduce(function(s,c){ return s+Number(c.monto); },0);
   var saldoImpl = impl - pagadoImpl;
   var fee = Number(a.fee_mensual||0);
@@ -2016,29 +2016,33 @@ function vResumenCliente(a, cl, s) {
   // Historial de pagos
   var histCard = el('div', {class:'card', style:'padding:16px'});
   histCard.appendChild(el('div', {class:'st', style:'margin-bottom:12px'}, 'Historial de pagos'));
-  var pagados = cobs.filter(function(c){ return c.estado==='pagado'; }).sort(function(a,b){ return (b.fecha_pago||b.fecha_vencimiento||'').localeCompare(a.fecha_pago||a.fecha_vencimiento||''); });
-  if (!pagados.length) {
+  var todosCobrosSorted = cobs.slice().sort(function(x,y){ return (y.fecha_pago||y.fecha_vencimiento||'').localeCompare(x.fecha_pago||x.fecha_vencimiento||''); });
+  if (!todosCobrosSorted.length) {
     histCard.appendChild(el('div', {class:'emp'}, 'Sin pagos registrados'));
   } else {
     var tbl = el('table', {class:'tbl'});
-    tbl.appendChild(elH('thead', {}, '<tr><th>Fecha</th><th>Tipo</th><th>Descripción</th><th style="text-align:right">Monto</th></tr>'));
+    tbl.appendChild(elH('thead', {}, '<tr><th>Fecha</th><th>Tipo</th><th>Descripción</th><th style="text-align:right">Monto</th><th>Estado</th></tr>'));
     var tb = el('tbody', {});
-    pagados.forEach(function(c) {
-      var tr = el('tr', {});
-      tr.appendChild(el('td', {style:'color:#64748B;font-size:12px'}, fdate(c.fecha_pago||c.fecha_vencimiento)));
-      var tipoColor = c.tipo_cobro==='implementacion'?'#6366F1':c.tipo_cobro==='fee'?'#0B9EDA':'#3D8A32';
-      tr.appendChild(el('td', {}, [chipClass(c.tipo_cobro||'-', 'cb')]));
-      tr.appendChild(el('td', {style:'font-size:12px;color:#64748B'}, c.descripcion||'-'));
-      tr.appendChild(el('td', {style:'text-align:right;font-weight:500;color:#3D8A32'}, fmt(Number(c.monto))));
+    todosCobrosSorted.forEach(function(c) {
+      var tr = el('tr', {style: c.estado!=='pagado'?'opacity:.7':''});
+      tr.appendChild(el('td', {style:'color:#64748B;font-size:12px'}, fdate(c.fecha_pago||c.fecha_vencimiento)||'-'));
+      var tipoLabel = c.tipo_cobro==='implementacion'?'Entrega impl.':c.tipo_cobro==='fee'?'Fee':'Otro';
+      tr.appendChild(el('td', {}, [chipClass(tipoLabel, c.tipo_cobro==='implementacion'?'cp':c.tipo_cobro==='fee'?'cb':'cg')]));
+      var desc = c.descripcion || '';
+      if (c.tipo_cobro==='implementacion' && c._fase) desc = (c._fase.nombre||'Fase '+c._fase.numero) + (desc?' — '+desc:'');
+      tr.appendChild(el('td', {style:'font-size:12px;color:#64748B'}, desc||'-'));
+      tr.appendChild(el('td', {style:'text-align:right;font-weight:500;color:'+(c.estado==='pagado'?'#3D8A32':'#854F0B')}, fmt(Number(c.monto))));
+      tr.appendChild(el('td', {}, [chipClass(c.estado==='pagado'?'Pagado':'Pendiente', c.estado==='pagado'?'cv':'ca')]));
       tb.appendChild(tr);
     });
     tbl.appendChild(tb);
     histCard.appendChild(tbl);
-    // Total pagado
-    var tot = pagados.reduce(function(s,c){ return s+Number(c.monto); },0);
-    var totRow = el('div', {style:'display:flex;justify-content:space-between;padding:10px 0 0;margin-top:6px;border-top:.5px solid #E2E8F0;font-weight:600;font-size:14px'});
-    totRow.appendChild(el('span', {}, 'Total cobrado'));
-    totRow.appendChild(el('span', {style:'color:#3D8A32'}, fmt(tot)));
+    var totPag = cobs.filter(function(c){ return c.estado==='pagado'; }).reduce(function(s,c){ return s+Number(c.monto); },0);
+    var totPend = cobs.filter(function(c){ return c.estado!=='pagado'; }).reduce(function(s,c){ return s+Number(c.monto); },0);
+    var totRow = el('div', {style:'display:flex;justify-content:space-between;gap:16px;padding:10px 0 0;margin-top:6px;border-top:.5px solid #E2E8F0;font-size:13px'});
+    var tLeft = el('div',{}); tLeft.appendChild(el('span',{style:'color:#64748B'},'Cobrado: ')); tLeft.appendChild(el('span',{style:'font-weight:600;color:#3D8A32'},fmt(totPag)));
+    var tRight = el('div',{}); tRight.appendChild(el('span',{style:'color:#64748B'},'Pendiente: ')); tRight.appendChild(el('span',{style:'font-weight:600;color:#854F0B'},fmt(totPend)));
+    totRow.appendChild(tLeft); totRow.appendChild(tRight);
     histCard.appendChild(totRow);
   }
   wrap.appendChild(histCard);
