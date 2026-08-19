@@ -1431,6 +1431,10 @@ function vClientes() {
             var btnF = el('button', {class:'btn btnsm'}, 'Fases' + (a._fases.length ? ' (' + a._fases.length + ')' : ''));
             (function(aa, cn, sn){ btnF.onclick = function(){ mFases(aa, cn, sn, function(){ vClientes(); }); }; })(a, cl.nombre, s.nombre||'');
             right.appendChild(btnF);
+            // Resumen
+            var btnRes = el('button', {class:'btn btnsm'}, 'Resumen');
+            (function(aa, cli, sis){ btnRes.onclick = function(){ vResumenCliente(aa, cli, sis); }; })(a, cl, s);
+            right.appendChild(btnRes);
             // Editar asig
             var btnEA = el('button', {class:'btn btnsm'}, 'Editar');
             (function(aa){ btnEA.onclick = function(){ mEditAsig(aa); }; })(a);
@@ -1957,6 +1961,89 @@ function mSubEntidad(aid, tipo) {
 }
 
 // COBRAR (cliente)
+function vResumenCliente(a, cl, s) {
+  var wrap = el('div', {});
+
+  // Header
+  var sh = el('div', {class:'sh', style:'margin-bottom:16px'});
+  var btnBack = el('button', {class:'btn'}, '← Clientes');
+  btnBack.onclick = function(){ go('clientes'); };
+  sh.appendChild(btnBack);
+  var SIS_EMOJI = {'Cortelab':'📐','El Piamonte':'🚗','MobixERP':'📱','ConeOS':'🍦'};
+  sh.appendChild(el('span', {class:'st', style:'margin-left:12px'}, (SIS_EMOJI[s.nombre]||'💻')+' '+cl.nombre+' — '+s.nombre));
+  wrap.appendChild(sh);
+
+  // Saldos
+  var cobs = (_D.cobs||[]).filter(function(c){ return c.asignacion_id === a.id; });
+  var impl = Number(a.costo_implementacion||0);
+  var pagadoImpl = cobs.filter(function(c){ return c.tipo_cobro==='implementacion' && c.estado==='pagado'; }).reduce(function(s,c){ return s+Number(c.monto); },0);
+  var saldoImpl = impl - pagadoImpl;
+  var fee = Number(a.fee_mensual||0);
+  var feesPagados = cobs.filter(function(c){ return c.tipo_cobro==='fee' && c.estado==='pagado'; }).length;
+  var feesPendientes = cobs.filter(function(c){ return c.tipo_cobro==='fee' && c.estado!=='pagado'; });
+
+  // Card saldo
+  var saldoCard = el('div', {class:'card', style:'padding:16px;margin-bottom:14px'});
+  saldoCard.appendChild(el('div', {class:'st', style:'margin-bottom:12px'}, 'Estado de cuenta'));
+  var mets = el('div', {class:'mets'});
+  [{label:'Implementación', val:fmt(impl), col:'#64748B'},
+   {label:'Pagado', val:fmt(pagadoImpl), col:'#3D8A32'},
+   {label:'Saldo impl.', val:fmt(saldoImpl), col:saldoImpl>0?'#854F0B':'#3D8A32'},
+   {label:'Fee mensual', val:fmt(fee), col:'#0B9EDA'}
+  ].forEach(function(m){
+    var mc = el('div', {class:'met'});
+    mc.appendChild(el('div', {class:'mst', style:'background:'+m.col}));
+    mc.appendChild(el('div', {class:'mlb'}, m.label));
+    mc.appendChild(el('div', {class:'mv', style:'font-size:18px;color:'+m.col}, m.val));
+    mets.appendChild(mc);
+  });
+  saldoCard.appendChild(mets);
+
+  // Fees pendientes
+  if (feesPendientes.length) {
+    var fpWrap = el('div', {style:'margin-top:12px;background:#FEF3C7;border-radius:8px;padding:10px 14px'});
+    fpWrap.appendChild(el('div', {style:'font-size:12px;color:#854F0B;font-weight:500'}, '⚠ '+feesPendientes.length+' fee'+(feesPendientes.length!==1?'s':'')+' pendiente'+(feesPendientes.length!==1?'s':'')));
+    feesPendientes.forEach(function(f){
+      var fr = el('div', {style:'font-size:12px;color:#64748B;margin-top:4px'});
+      fr.textContent = (f.descripcion||'Fee') + ' — ' + fmt(Number(f.monto)) + ' · vence ' + fdate(f.fecha_vencimiento);
+      fpWrap.appendChild(fr);
+    });
+    saldoCard.appendChild(fpWrap);
+  }
+  wrap.appendChild(saldoCard);
+
+  // Historial de pagos
+  var histCard = el('div', {class:'card', style:'padding:16px'});
+  histCard.appendChild(el('div', {class:'st', style:'margin-bottom:12px'}, 'Historial de pagos'));
+  var pagados = cobs.filter(function(c){ return c.estado==='pagado'; }).sort(function(a,b){ return (b.fecha_pago||b.fecha_vencimiento||'').localeCompare(a.fecha_pago||a.fecha_vencimiento||''); });
+  if (!pagados.length) {
+    histCard.appendChild(el('div', {class:'emp'}, 'Sin pagos registrados'));
+  } else {
+    var tbl = el('table', {class:'tbl'});
+    tbl.appendChild(elH('thead', {}, '<tr><th>Fecha</th><th>Tipo</th><th>Descripción</th><th style="text-align:right">Monto</th></tr>'));
+    var tb = el('tbody', {});
+    pagados.forEach(function(c) {
+      var tr = el('tr', {});
+      tr.appendChild(el('td', {style:'color:#64748B;font-size:12px'}, fdate(c.fecha_pago||c.fecha_vencimiento)));
+      var tipoColor = c.tipo_cobro==='implementacion'?'#6366F1':c.tipo_cobro==='fee'?'#0B9EDA':'#3D8A32';
+      tr.appendChild(el('td', {}, [chipClass(c.tipo_cobro||'-', 'cb')]));
+      tr.appendChild(el('td', {style:'font-size:12px;color:#64748B'}, c.descripcion||'-'));
+      tr.appendChild(el('td', {style:'text-align:right;font-weight:500;color:#3D8A32'}, fmt(Number(c.monto))));
+      tb.appendChild(tr);
+    });
+    tbl.appendChild(tb);
+    histCard.appendChild(tbl);
+    // Total pagado
+    var tot = pagados.reduce(function(s,c){ return s+Number(c.monto); },0);
+    var totRow = el('div', {style:'display:flex;justify-content:space-between;padding:10px 0 0;margin-top:6px;border-top:.5px solid #E2E8F0;font-weight:600;font-size:14px'});
+    totRow.appendChild(el('span', {}, 'Total cobrado'));
+    totRow.appendChild(el('span', {style:'color:#3D8A32'}, fmt(tot)));
+    histCard.appendChild(totRow);
+  }
+  wrap.appendChild(histCard);
+  setApp(wrap);
+}
+
 function mCobrar(a, cl, si, fee, totI, saldoI) {
   var aid = a.id;
   var fasesConSaldo = (a._fases||[]).map(function(f) {
