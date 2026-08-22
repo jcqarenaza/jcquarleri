@@ -739,8 +739,8 @@ function vSistemas() {
               var totAct = empresas.filter(function(e){ return e.activo; }).length;
               var ultActC = empresas.reduce(function(u,e){ var v=e.ultima_orden||e.last_order||''; return (!u||v>u)?v:u; },null);
               renderKPIs([
-                {label:'Pedidos hoy', val:String(totPH), col:'#0B9EDA', big:true},
-                {label:'Facturado hoy', val:totFH>0?fmt(totFH):'$0', col:'#3D8A32', big:true},
+                {label:'Pedidos mes', val:String(totPH), col:'#0B9EDA', big:true},
+                {label:'Facturado mes', val:totFH>0?fmt(totFH):'$0', col:'#3D8A32', big:true},
                 {label:'Empresas activas', val:String(totAct)+'/'+String(empresas.length), col:'#F59E0B'},
                 {label:'Ultima actividad', val:ultActC?fdate(ultActC):'-', col:'#6366F1'}
               ], metRow);
@@ -775,7 +775,7 @@ function vSistemas() {
                   feeLoad.appendChild(totRow);
                 });
                 var tblC=el('table',{class:'tbl'});
-                tblC.appendChild(elH('thead',{},'<tr><th>Empresa</th><th style="text-align:center">Pedidos hoy</th><th style="text-align:right">Facturado hoy</th><th style="text-align:center">Estado</th><th></th></tr>'));
+                tblC.appendChild(elH('thead',{},'<tr><th>Empresa</th><th style="text-align:center">Pedidos mes</th><th style="text-align:right">Facturado mes</th><th style="text-align:center">Estado</th><th></th></tr>'));
                 var tbC=el('tbody',{});
                 empresas.forEach(function(emp){
                   var tr=el('tr',{});
@@ -4884,7 +4884,7 @@ function vConeos() {
     }
 
     var tbl = el('table', { class: 'tbl' });
-    tbl.appendChild(elH('thead', {}, '<tr><th>Empresa</th><th>Plan</th><th>Estado</th><th>Pedidos hoy</th><th>Facturado hoy</th><th></th></tr>'));
+    tbl.appendChild(elH('thead', {}, '<tr><th>Empresa</th><th>Plan</th><th>Estado</th><th>Pedidos mes</th><th>Facturado mes</th><th></th></tr>'));
     var tb = el('tbody', {});
 
     empresas.forEach(function(emp) {
@@ -4946,8 +4946,8 @@ function vConeosEmpresa(emp) {
 
     // KPIs
     var mets = el('div', { class: 'mets' });
-    [{label:'Pedidos hoy', val:String(d.pedidos_hoy||0), col:'#0B9EDA'},
-     {label:'Facturado hoy', val:fmt(d.total_hoy||0), col:'#3D8A32'},
+    [{label:'Pedidos mes', val:String(d.pedidos_hoy||0), col:'#0B9EDA'},
+     {label:'Facturado mes', val:fmt(d.total_hoy||0), col:'#3D8A32'},
      {label:'Total pedidos', val:String(d.total_pedidos||0), col:'#6366F1'},
      {label:'Dispositivos', val:String(dispActivos)+(dispAlert?' ⚠':''), col:dispAlert?'#854F0B':'#64748B'},
      {label:'Fee mensual', val:fmt(feeActual), col:'#F59E0B'}
