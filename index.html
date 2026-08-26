@@ -6,6 +6,7 @@
 <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="QP C&IA">
   <meta name="theme-color" content="#1A7FE8">
@@ -14,11 +15,12 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-:root{--b:#0B9EDA;--bd:#0C6FA3;--bl:#E6F6FD;--g:#5BBD4E;--gd:#3D8A32;--gl:#EDF7EA;--tx:#1a2e4a;--gr:#64748B;--br:#E2E8F0;--bg:#F0F5FA}
+:root{--b:#0B9EDA;--bd:#0C6FA3;--bl:#E6F6FD;--g:#5BBD4E;--gd:#3D8A32;--gl:#EDF7EA;--tx:#1a2e4a;--gr:#64748B;--br:#E2E8F0;--bg:#F0F5FA;--surface:#fff;--border:#E2E8F0;--tx2:#64748B;--ac:#0B9EDA}
 body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--tx);min-height:100vh;display:flex;flex-direction:column}
-.top{background:#fff;border-bottom:1px solid var(--br);padding:0 24px;display:flex;align-items:center;height:58px;position:sticky;top:0;z-index:100;box-shadow:0 1px 4px rgba(0,0,0,.05)}
-.logo{height:38px}
-.nav{display:flex;gap:2px;margin-left:auto}
+.top{background:#fff;border-bottom:1px solid var(--br);padding:0 12px;display:flex;align-items:center;min-height:58px;position:sticky;top:0;z-index:100;box-shadow:0 1px 4px rgba(0,0,0,.05);gap:8px}
+.logo{height:34px;flex-shrink:0}
+.nav{display:flex;gap:2px;margin-left:auto;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex-shrink:1}
+.nav::-webkit-scrollbar{display:none}
 .nb{background:none;border:none;cursor:pointer;padding:7px 13px;border-radius:8px;font-size:13px;color:var(--gr);font-family:'DM Sans',sans-serif;transition:all .15s;position:relative}
 .nb:hover{background:var(--bl);color:var(--bd)}
 .nb.on{background:var(--bl);color:var(--b);font-weight:500}
