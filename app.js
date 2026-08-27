@@ -112,16 +112,20 @@ function cargar() {
   return Promise.all([
     dbGet('panel_sistemas'), dbGet('panel_clientes'),
     dbGet('panel_asignaciones'), dbGet('panel_cobros'), dbGet('panel_sub_entidades'),
-    dbGet('panel_implementacion_fases'), dbGet('panel_alertas')
+    dbGet('panel_implementacion_fases'), dbGet('panel_alertas'),
+    dbGet('panel_fases?order=orden.asc')
   ]).then(function(r) {
     console.log('cargar OK:', r[0].length, 'sis,', r[1].length, 'cls,', r[2].length, 'asigs');
-    var sis=r[0], cls=r[1], asigs=r[2], cobs=r[3], subs=r[4], fases=r[5], alertasDb=r[6];
+    var sis=r[0], cls=r[1], asigs=r[2], cobs=r[3], subs=r[4], fases=r[5], alertasDb=r[6], fasesEstructura=r[7];
+    // Enriquecer fases de asignación con la fase estructural
     asigs.forEach(function(a) {
       a._sis  = sis.find(function(s){ return s.id===a.sistema_id; })||{nombre:'?'};
       a._cli  = cls.find(function(c){ return c.id===a.cliente_id; })||{nombre:'?'};
       a._subs = subs.filter(function(se){ return se.asignacion_id===a.id; });
       a._cobs = cobs.filter(function(co){ return co.asignacion_id===a.id; });
       a._fases = fases.filter(function(f){ return f.asignacion_id===a.id; }).sort(function(x,y){ return x.numero-y.numero; });
+      // Fases estructurales del sistema (sin precio)
+      a._fasesEstructura = fasesEstructura.filter(function(f){ return f.sistema_id===a.sistema_id; });
     });
     cobs.forEach(function(c) {
       var a = asigs.find(function(x){ return x.id===c.asignacion_id; })||{};
@@ -129,7 +133,7 @@ function cargar() {
       c._asig = a;
       c._fase = (a._fases||[]).find(function(f){ return f.id===c.fase_id; })||null;
     });
-    return {sis:sis, cls:cls, asigs:asigs, cobs:cobs, alertasDb:alertasDb};
+    return {sis:sis, cls:cls, asigs:asigs, cobs:cobs, alertasDb:alertasDb, fasesEstructura:fasesEstructura};
   });
 }
 
@@ -869,11 +873,11 @@ function vSistemas() {
         }
 
         // Footer con botones
-        var footer = el('div', {style:'display:flex;gap:8px;padding:8px 14px 10px'});
+        var footer = el('div', {style:'display:flex;gap:8px;padding:8px 14px 10px;flex-wrap:wrap'});
         var btnClientes = el('button', {class:'btn btnsm'}, 'Clientes →');
         (function(ss){ btnClientes.onclick = function(e){ e.stopPropagation(); abrirDrawerClientes(ss); }; })(s);
         footer.appendChild(btnClientes);
-        // ConeOS: agregar Gestionar empresas en el mismo footer
+        // ConeOS: Gestionar empresas
         if ((s.nombre||'').toLowerCase().indexOf('coneos') >= 0) {
           var btnGE = el('button', {class:'btn btnsm'}, 'Gestionar empresas');
           btnGE.onclick = function(){ vConeos(); };
@@ -889,12 +893,17 @@ function vSistemas() {
             var btnM = el('button', {class:'btn btnsm'}, 'Gestionar negocios');
             (function(ss){ btnM.onclick = function(){ mSistemaNegocios(ss); }; })(s);
             footer.appendChild(btnM);
+          } else if (nombreL.indexOf('piamonte') >= 0) {
+            var btnPiam = el('button', {class:'btn btnsm', style:'background:#E8855A;border-color:#E8855A;color:#fff'}, 'Gestionar fases');
+            btnPiam.onclick = function(){ mFasesElPiamonte(); };
+            footer.appendChild(btnPiam);
           }
         }
-        if (nombreL.indexOf('piamonte') >= 0) {
-          var btnPiam = el('button', {class:'btn btnsm', style:'background:#E8855A;border-color:#E8855A;color:#fff'}, 'Gestionar fases');
-          btnPiam.onclick = function(){ mFasesElPiamonte(); };
-          footer.appendChild(btnPiam);
+        // Botón fases estructurales para todos los sistemas que las tengan
+        if ((_D && _D.fasesEstructura || []).some(function(f){ return f.sistema_id === s.id; })) {
+          var btnFE = el('button', {class:'btn btnsm', style:'background:#6366F1;border-color:#6366F1;color:#fff'}, '⚙ Fases del sistema');
+          (function(ss){ btnFE.onclick = function(){ mGestionFasesEstructura(ss); }; })(s);
+          footer.appendChild(btnFE);
         }
         card.appendChild(footer);
         wrap.appendChild(card);
@@ -1915,19 +1924,48 @@ function mFases(a, cn, sn, cb) {
 
       body.appendChild(el('div', {style:'border-top:.5px solid #E2E8F0;margin:14px 0 10px'}));
       var addBox = el('div', {style:'background:#F8FAFC;border-radius:8px;padding:14px'});
-      addBox.appendChild(el('div', {style:'font-size:12px;font-weight:500;color:#64748B;margin-bottom:8px'}, 'Agregar fase'));
-      mkRow2(addBox,
-        mkFg('Nombre', mkInput('nf-nom','text','','Ej: Fase 2 — Gestion avanzada')),
-        mkFg('Monto ($)', mkInput('nf-monto','number','0'))
-      );
-      var btnAdd = el('button', {class:'btn btnp', style:'margin-top:6px'}, '+ Agregar');
-      btnAdd.onclick = function() {
-        var nom = gv('nf-nom').trim(); if (!nom) { alert('Nombre obligatorio'); return; }
-        var siguienteNum = fases.length ? Math.max.apply(null, fases.map(function(f){ return f.numero; })) + 1 : 1;
-        dbIns('panel_implementacion_fases', {asignacion_id:a.id, numero:siguienteNum, nombre:nom, monto:Number(gv('nf-monto')||0)})
-          .then(refrescar);
-      };
-      addBox.appendChild(btnAdd);
+      // Si el sistema tiene fases estructurales, mostrar selector
+      var fasesEstructura = (a._fasesEstructura||[]).filter(function(fe){
+        return !fases.some(function(f){ return f.fase_id === fe.id; });
+      });
+      if (fasesEstructura.length) {
+        addBox.appendChild(el('div', {style:'font-size:12px;font-weight:500;color:#64748B;margin-bottom:8px'}, 'Asignar precio a fase del sistema'));
+        var sel = el('select', {id:'nf-fase', style:'width:100%;padding:8px 10px;border:.5px solid #E2E8F0;border-radius:8px;font-size:13px;margin-bottom:8px'});
+        sel.appendChild(el('option', {value:''}, '— Elegir fase —'));
+        fasesEstructura.forEach(function(fe) {
+          sel.appendChild(el('option', {value:fe.id}, fe.orden+'. '+fe.nombre+(fe.descripcion?' — '+fe.descripcion:'')));
+        });
+        addBox.appendChild(sel);
+        addFg(addBox, 'Precio acordado ($)', mkInput('nf-monto','number','0'));
+        var btnAdd = el('button', {class:'btn btnp', style:'margin-top:6px'}, '+ Asignar precio');
+        btnAdd.onclick = function() {
+          var faseId = gv('nf-fase'); if (!faseId) { alert('Elegí una fase'); return; }
+          var fe = fasesEstructura.find(function(f){ return f.id===faseId; });
+          var siguienteNum = fases.length ? Math.max.apply(null, fases.map(function(f){ return f.numero; })) + 1 : 1;
+          dbIns('panel_implementacion_fases', {
+            asignacion_id:a.id, numero:siguienteNum,
+            nombre:fe.nombre, monto:Number(gv('nf-monto')||0), fase_id:faseId
+          }).then(refrescar);
+        };
+        addBox.appendChild(btnAdd);
+      } else if (!fases.length || sn === 'ConeOS') {
+        // Sin fases estructurales o ConeOS: agregar libre
+        addBox.appendChild(el('div', {style:'font-size:12px;font-weight:500;color:#64748B;margin-bottom:8px'}, 'Agregar fase'));
+        mkRow2(addBox,
+          mkFg('Nombre', mkInput('nf-nom','text','','Ej: Fase 2 — Gestion avanzada')),
+          mkFg('Monto ($)', mkInput('nf-monto','number','0'))
+        );
+        var btnAdd2 = el('button', {class:'btn btnp', style:'margin-top:6px'}, '+ Agregar');
+        btnAdd2.onclick = function() {
+          var nom = gv('nf-nom').trim(); if (!nom) { alert('Nombre obligatorio'); return; }
+          var siguienteNum = fases.length ? Math.max.apply(null, fases.map(function(f){ return f.numero; })) + 1 : 1;
+          dbIns('panel_implementacion_fases', {asignacion_id:a.id, numero:siguienteNum, nombre:nom, monto:Number(gv('nf-monto')||0)})
+            .then(refrescar);
+        };
+        addBox.appendChild(btnAdd2);
+      } else {
+        addBox.appendChild(el('div', {style:'font-size:12px;color:#3D8A32'}, '✓ Todas las fases del sistema ya tienen precio asignado.'));
+      }
       body.appendChild(addBox);
     }, function(foot) {
       var cerrar = el('button', {class:'btn btnp'}, 'Cerrar');
@@ -4821,6 +4859,68 @@ function registrarPagoGastoPersonal(g, cb) {
 // ── EL PIAMONTE — CONTROL DE FASES ───────────────────────────────────────────
 var PIAMONTE_URL = 'https://hjzhatercccblhgaukgx.supabase.co';
 var PIAMONTE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhqemhhdGVyY2NjYmxoZ2F1a2d4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3NDQwMjMsImV4cCI6MjA5NjMyMDAyM30.XYoxEnhkvxIB0pAPAT6H3-mn70uxLzwNYqJQIjoKc3o';
+
+function mGestionFasesEstructura(s) {
+  function refrescar() {
+    sbFetch('panel_fases?sistema_id=eq.'+s.id+'&order=orden.asc').then(function(fases){ render(fases||[]); });
+  }
+  function render(fases) {
+    openM(makeModal('⚙ Fases — '+s.nombre, function(body) {
+      var info = el('div', {style:'background:#EEF2FF;border:.5px solid #6366F1;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#4338CA'});
+      info.appendChild(document.createTextNode('Estas son las fases estructurales del sistema. Los precios por cliente se asignan desde Clientes → Fases.'));
+      body.appendChild(info);
+
+      if (!fases.length) {
+        body.appendChild(el('div', {class:'emp', style:'margin-bottom:12px'}, 'Sin fases definidas todavía.'));
+      } else {
+        fases.forEach(function(f) {
+          var row = el('div', {style:'display:flex;align-items:center;gap:8px;padding:8px 12px;border:.5px solid #E2E8F0;border-radius:8px;margin-bottom:6px'});
+          var ord = el('span', {style:'font-size:11px;font-weight:700;color:#6366F1;width:20px;flex-shrink:0'}, f.orden+'.');
+          row.appendChild(ord);
+          var txt = el('div', {style:'flex:1'});
+          txt.appendChild(el('div', {style:'font-weight:500;font-size:13px'}, f.nombre));
+          if (f.descripcion) txt.appendChild(el('div', {style:'font-size:11px;color:#64748B'}, f.descripcion));
+          row.appendChild(txt);
+          var btnEdit = el('button', {class:'btn btnsm'}, 'Editar');
+          (function(ff){ btnEdit.onclick = function() {
+            var nom = prompt('Nombre de la fase:', ff.nombre); if (!nom) return;
+            var desc = prompt('Descripción (opcional):', ff.descripcion||'');
+            sbFetch('panel_fases?id=eq.'+ff.id, {method:'PATCH', headers:{'Content-Type':'application/json','Prefer':'return=minimal'}, body:JSON.stringify({nombre:nom, descripcion:desc||null})})
+            .then(refrescar);
+          }; })(f);
+          row.appendChild(btnEdit);
+          var btnDel = el('button', {class:'btn btnsm', style:'color:#E53E3E;border-color:#FECACA'}, '×');
+          (function(ff){ btnDel.onclick = function() {
+            if (!confirm('¿Eliminar fase "'+ff.nombre+'"? Se perderá el vínculo con los cobros asociados.')) return;
+            sbFetch('panel_fases?id=eq.'+ff.id, {method:'DELETE', headers:{'Prefer':'return=minimal'}}).then(refrescar);
+          }; })(f);
+          row.appendChild(btnDel);
+          body.appendChild(row);
+        });
+      }
+
+      // Agregar nueva fase
+      body.appendChild(el('div', {style:'font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin:14px 0 8px'}, 'Agregar fase'));
+      mkRow2(body, mkFg('Nombre', mkInput('gfe-nom','text','','Ej: Gestión Avanzada')), mkFg('Orden', mkInput('gfe-ord','number', fases.length+1)));
+      addFg(body, 'Descripción (opcional)', mkInput('gfe-desc','text',''));
+
+    }, function(foot) {
+      foot.appendChild(cancelBtn());
+      var ok = el('button', {class:'btn btnp'}, '+ Agregar fase');
+      ok.onclick = function() {
+        var nom = gv('gfe-nom').trim(); if (!nom) { alert('Nombre obligatorio'); return; }
+        var ord = Number(gv('gfe-ord')||1);
+        var desc = gv('gfe-desc')||null;
+        ok.textContent = 'Guardando...'; ok.disabled = true;
+        dbIns('panel_fases', {sistema_id:s.id, nombre:nom, orden:ord, descripcion:desc})
+        .then(function(){ refrescar(); ok.textContent='+ Agregar fase'; ok.disabled=false; })
+        .catch(function(e){ alert('Error: '+e.message); ok.textContent='+ Agregar fase'; ok.disabled=false; });
+      };
+      foot.appendChild(ok);
+    }));
+  }
+  refrescar();
+}
 
 function mFasesElPiamonte() {
   fetch(PIAMONTE_URL + '/rest/v1/config_sistema?select=fase_habilitada&id=eq.1', {
