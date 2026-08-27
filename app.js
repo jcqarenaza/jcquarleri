@@ -616,7 +616,19 @@ function vSistemas() {
         topRow.appendChild(rightControls);
         hdr.appendChild(topRow);
         if (s.url_produccion) hdr.appendChild(el('div', {style:'font-size:12px;color:#94a3b8;margin-bottom:2px'}, s.url_produccion));
-        hdr.appendChild(el('div', {style:'font-size:12px;color:#64748B'}, 'Impl. '+fmt(s.costo_implementacion)+' | Fee '+fmt(s.fee_mensual)+'/mes'));
+        // KPIs comerciales del sistema (suma de todas las asignaciones)
+        var kpiLine = el('div', {style:'font-size:12px;color:#64748B;display:flex;gap:12px;flex-wrap:wrap;margin-top:2px'});
+        var asigsSis = (_D && _D.asigs ? _D.asigs : []).filter(function(a){ return a.sistema_id === s.id; });
+        var totImplSis = asigsSis.reduce(function(sum,a){ return sum + totalFases(a); }, 0);
+        var pagImplSis = asigsSis.reduce(function(sum,a){ return sum + pagadoImplementacion(a); }, 0);
+        var saldoImplSis = totImplSis - pagImplSis;
+        var feeSis = asigsSis.reduce(function(sum,a){ return sum + Number(a.fee_mensual||0); }, 0);
+        kpiLine.appendChild(el('span', {}, 'Impl. '+fmt(totImplSis)));
+        var saldoChip = el('span', {style:'color:'+(saldoImplSis>0?'#A32D2D':'#3B6D11')+';font-weight:500'}, saldoImplSis>0?' (saldo '+fmt(saldoImplSis)+')':' ✓ saldada');
+        kpiLine.appendChild(saldoChip);
+        kpiLine.appendChild(el('span', {style:'color:#64748B'}, '│'));
+        kpiLine.appendChild(el('span', {}, 'Fee total: '+fmt(feeSis)+'/mes'));
+        hdr.appendChild(kpiLine);
         card.appendChild(hdr);
 
         // Métricas
@@ -1415,19 +1427,13 @@ function vClientes() {
             info2.appendChild(el('b', {}, fmt(a.fee_mensual)+'/mes'));
             info2.appendChild(document.createTextNode(' Dia ' + (a.dia_cobro||1)));
             right.appendChild(info2);
-            // Toggle asig
-            var tog = el('label', {class:'tog'});
-            var inp = el('input', {type:'checkbox'}); if (a.activo) inp.checked = true;
-            (function(aid){ inp.onchange = function(){ dbUpd('panel_asignaciones', aid, {activo:this.checked}); }; })(a.id);
-            tog.appendChild(inp); tog.appendChild(el('span', {class:'sl'}));
-            right.appendChild(tog);
-            // Sub entidad
+            // Sub entidad (solo ConeOS → vincular empresa)
             if (s.tipo !== 'mono_empresa') {
               var btnSub = el('button', {class:'btn btnsm'}, '+Entidad');
               (function(aa, ss){ btnSub.onclick = function(){ ss.nombre==='ConeOS' ? mVincularEmpresaConeos(aa) : mSubEntidad(aa.id, ss.tipo); }; })(a, s);
               right.appendChild(btnSub);
             }
-            // Fases de implementacion
+            // Fases
             var btnF = el('button', {class:'btn btnsm'}, 'Fases' + (a._fases.length ? ' (' + a._fases.length + ')' : ''));
             (function(aa, cn, sn){ btnF.onclick = function(){ mFases(aa, cn, sn, function(){ vClientes(); }); }; })(a, cl.nombre, s.nombre||'');
             right.appendChild(btnF);
@@ -1435,7 +1441,7 @@ function vClientes() {
             var btnRes = el('button', {class:'btn btnsm'}, 'Resumen');
             (function(aa, cli, sis){ btnRes.onclick = function(){ vResumenCliente(aa, cli, sis); }; })(a, cl, s);
             right.appendChild(btnRes);
-            // Editar asig
+            // Editar asig (fee, dia cobro, notas)
             var btnEA = el('button', {class:'btn btnsm'}, 'Editar');
             (function(aa){ btnEA.onclick = function(){ mEditAsig(aa); }; })(a);
             right.appendChild(btnEA);
