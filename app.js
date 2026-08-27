@@ -4941,7 +4941,8 @@ function vConeosEmpresa(emp) {
   coneosCall('metricas_empresa', { empresa_id: emp.id }).then(function(d) {
     metLoad.innerHTML = '';
     var dispActivos = d.dispositivos_activos||0;
-    var feeActual = d.fee_mensual||75000;
+    emp._dispActivos = dispActivos;
+    var feeActual = calcFeeConeos(dispActivos, emp.slug);
     var dispAlert = dispActivos > 3;
 
     // KPIs
@@ -5087,51 +5088,113 @@ function mRegistrarFeeConeOS(emp, fee, metricas) {
   }));
 }
 
+function calcFeeConeos(dispActivos, slug) {
+  if (slug === 'cecchetto-lucia') return 75000;
+  if (dispActivos <= 3) return 75000;
+  return 75000 + (dispActivos - 3) * 25000;
+}
+
+function calcImplConeos(modulos) {
+  var base = 500000;
+  var extra = 0;
+  if (modulos.delivery)    extra += 150000;
+  if (modulos.facturacion) extra += 100000;
+  if (modulos.mercadopago) extra += 100000;
+  return base + extra;
+}
+
 function mModulosConeOS(emp) {
   coneosCall('get_modulos', { empresa_id: emp.id }).then(function(modulos) {
     var MODULOS = [
-      { key: 'kiosk',       label: 'Kiosk',       desc: 'Pantalla táctil para clientes — pedidos en mostrador', color: '#0B9EDA', fase: 1 },
-      { key: 'caja',        label: 'Caja',         desc: 'Gestión de pagos, cobros y arqueo de caja', color: '#3D8A32', fase: 1 },
-      { key: 'preparacion', label: 'Preparación',  desc: 'Pantalla de preparación para el equipo interno', color: '#7C3AED', fase: 1 },
-      { key: 'display',     label: 'Display',      desc: 'Pantalla pública con menú y precios', color: '#F59E0B', fase: 1 },
-      { key: 'delivery',    label: 'Delivery',     desc: 'Pedidos a domicilio — Fase 2 — costo adicional', color: '#E53E3E', fase: 2 },
+      { key: 'kiosk',       label: 'Kiosk',        desc: 'Pantalla táctil para clientes — pedidos en mostrador', color: '#0B9EDA', base: true },
+      { key: 'caja',        label: 'Caja',          desc: 'Gestión de pagos, cobros y arqueo de caja',           color: '#3D8A32', base: true },
+      { key: 'preparacion', label: 'Preparación',   desc: 'Pantalla de preparación para el equipo interno',      color: '#7C3AED', base: true },
+      { key: 'display',     label: 'Display',        desc: 'Pantalla pública con menú y precios',                color: '#F59E0B', base: true },
+      { key: 'delivery',    label: 'Delivery',       desc: 'Pedidos a domicilio — impl. +$150.000',              color: '#E53E3E', base: false, impl: 150000 },
+      { key: 'facturacion', label: 'Facturación',    desc: 'Emisión de facturas electrónicas — impl. +$100.000', color: '#0891B2', base: false, impl: 100000 },
+      { key: 'mercadopago', label: 'MercadoPago',    desc: 'Cobros con MercadoPago integrado — impl. +$100.000', color: '#009EE3', base: false, impl: 100000 },
     ];
 
     openM(makeModal('🍦 '+emp.nombre+' — Módulos', function(body) {
-      var info = el('div', {style:'background:#EEF2FF;border:.5px solid #6366F1;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:#4338CA'});
-      info.appendChild(el('b', {}, 'Control de módulos activos para esta empresa.'));
-      info.appendChild(document.createTextNode(' Los cambios se aplican inmediatamente.'));
+
+      // Info banner
+      var info = el('div', {style:'background:#EEF2FF;border:.5px solid #6366F1;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#4338CA'});
+      info.appendChild(el('b', {}, 'Control de módulos activos.'));
+      info.appendChild(document.createTextNode(' Los cambios se aplican al guardar.'));
       body.appendChild(info);
 
-      MODULOS.forEach(function(m) {
-        var activo = modulos[m.key] !== false;
-        var esDelivery = m.key === 'delivery';
+      // Resumen de precios (dinámico)
+      var resBox = el('div', {style:'background:#F8FAFC;border:.5px solid #E2E8F0;border-radius:10px;padding:12px 16px;margin-bottom:14px'});
+      var resTitle = el('div', {style:'font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px'}, 'Precio calculado');
+      resBox.appendChild(resTitle);
+      var resImpl = el('div', {style:'display:flex;justify-content:space-between;font-size:13px;padding:3px 0'});
+      resImpl.appendChild(el('span', {style:'color:#64748B'}, 'Implementación'));
+      var resImplVal = el('span', {style:'font-weight:600;color:#1a2e4a'});
+      resImpl.appendChild(resImplVal);
+      resBox.appendChild(resImpl);
+      var resFee = el('div', {style:'display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-top:.5px solid #F1F5F9;margin-top:4px'});
+      resFee.appendChild(el('span', {style:'color:#64748B'}, 'Fee mensual'));
+      var resFeeVal = el('span', {style:'font-weight:600;color:#F59E0B'});
+      resFee.appendChild(resFeeVal);
+      resBox.appendChild(resFee);
+      body.appendChild(resBox);
 
-        var card = el('div', {style:'border:.5px solid '+(esDelivery?'#FCA5A5':'#E2E8F0')+';border-radius:10px;padding:12px 16px;margin-bottom:10px;background:'+(esDelivery?'#FFF5F5':'#FAFAFA')});
-        var top = el('div', {style:'display:flex;align-items:center;gap:10px'});
+      function actualizarResumen() {
+        var mod = {};
+        MODULOS.forEach(function(m) {
+          var inp = document.getElementById('mod-'+m.key);
+          mod[m.key] = inp ? inp.checked : false;
+        });
+        resImplVal.textContent = fmt(calcImplConeos(mod));
+        // fee: usamos dispActivos del contexto si está disponible, sino 1
+        var disp = emp._dispActivos || 1;
+        resFeeVal.textContent = fmt(calcFeeConeos(disp, emp.slug)) + '/mes';
+      }
 
-        var dot = el('div', {style:'width:12px;height:12px;border-radius:50%;flex-shrink:0;background:'+m.color});
-        top.appendChild(dot);
+      // Módulos base (siempre activos, no toggleables)
+      var baseWrap = el('div', {style:'margin-bottom:6px'});
+      baseWrap.appendChild(el('div', {style:'font-size:11px;font-weight:500;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px'}, 'Módulos base — incluidos ($500.000)'));
+      MODULOS.filter(function(m){ return m.base; }).forEach(function(m) {
+        var row = el('div', {style:'display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:.5px solid #F1F5F9'});
+        var dot = el('div', {style:'width:8px;height:8px;border-radius:50%;background:'+m.color+';flex-shrink:0'});
+        row.appendChild(dot);
+        row.appendChild(el('span', {style:'font-size:13px;color:#1a2e4a;flex:1'}, m.label));
+        row.appendChild(el('span', {style:'font-size:11px;color:#5BBD4E;font-weight:600'}, '✓ Incluido'));
+        var inp = el('input', {type:'checkbox', id:'mod-'+m.key, style:'display:none'});
+        inp.checked = true;
+        row.appendChild(inp);
+        baseWrap.appendChild(row);
+      });
+      body.appendChild(baseWrap);
 
+      // Módulos extra (toggleables)
+      var extraWrap = el('div', {style:'margin-top:10px'});
+      extraWrap.appendChild(el('div', {style:'font-size:11px;font-weight:500;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px'}, 'Módulos adicionales'));
+      MODULOS.filter(function(m){ return !m.base; }).forEach(function(m) {
+        var activo = !!modulos[m.key];
+        var card = el('div', {style:'border:.5px solid '+(activo?m.color:'#E2E8F0')+';border-radius:10px;padding:11px 14px;margin-bottom:8px;background:'+(activo?'#FAFBFF':'#FAFAFA');transition:'border .15s'});
+        var row = el('div', {style:'display:flex;align-items:center;gap:10px'});
+        var dot = el('div', {style:'width:10px;height:10px;border-radius:50%;flex-shrink:0;background:'+m.color});
+        row.appendChild(dot);
         var titWrap = el('div', {style:'flex:1'});
-        titWrap.appendChild(el('div', {style:'font-weight:600;font-size:13px;color:#1a2e4a'}, m.label+(esDelivery?' 🔴':'') ));
+        titWrap.appendChild(el('div', {style:'font-weight:600;font-size:13px;color:#1a2e4a'}, m.label));
         titWrap.appendChild(el('div', {style:'font-size:11px;color:#64748B;margin-top:2px'}, m.desc));
-        top.appendChild(titWrap);
-
+        row.appendChild(titWrap);
         var tog = el('label', {class:'tog'});
         var inp = el('input', {type:'checkbox', id:'mod-'+m.key});
         if (activo) inp.checked = true;
+        inp.addEventListener('change', function() {
+          card.style.border = '.5px solid '+(inp.checked ? m.color : '#E2E8F0');
+          actualizarResumen();
+        });
         tog.appendChild(inp); tog.appendChild(el('span', {class:'sl'}));
-        top.appendChild(tog);
-
-        card.appendChild(top);
-
-        if (esDelivery) {
-          card.appendChild(el('div', {style:'margin-top:8px;font-size:11px;color:#E53E3E;font-weight:500;padding-left:22px'}, '⚠ Fase 2 — requiere configuración adicional y tiene costo extra'));
-        }
-
-        body.appendChild(card);
+        row.appendChild(tog);
+        card.appendChild(row);
+        extraWrap.appendChild(card);
       });
+      body.appendChild(extraWrap);
+
+      actualizarResumen();
 
     }, function(foot) {
       foot.appendChild(cancelBtn());
@@ -5146,7 +5209,6 @@ function mModulosConeOS(emp) {
         coneosCall('actualizar_modulos', { empresa_id: emp.id, modulos: nuevosModulos }).then(function(r) {
           if (r.error) { alert('Error: '+r.error); ok.textContent = 'Guardar módulos'; ok.disabled = false; return; }
           closeM();
-          alert('Módulos actualizados correctamente');
         }).catch(function(){ ok.textContent = 'Guardar módulos'; ok.disabled = false; });
       };
       foot.appendChild(ok);
