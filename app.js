@@ -537,6 +537,13 @@ function abrirDrawerClientes(s) {
       });
       card.appendChild(mets);
 
+      // Botón vincular empresa ConeOS (si es ConeOS)
+      if (s.nombre === 'ConeOS') {
+        var btnVinc = el('button', {class:'btn btnsm', style:'margin-top:6px;width:100%;color:'+(a.coneos_empresa_id?'#3D8A32':'#854F0B')}, a.coneos_empresa_id ? '🍦 Empresa vinculada — cambiar' : '⚠ Vincular empresa ConeOS');
+        (function(aa){ btnVinc.onclick = function(){ drawer.remove(); overlay.remove(); mVincularEmpresaConeos(aa); }; })(a);
+        card.appendChild(btnVinc);
+      }
+
       // Botón ir a cliente
       var btnIr = el('button', {class:'btn btnsm', style:'margin-top:10px;width:100%'}, 'Ver cliente completo →');
       (function(clienteId){ btnIr.onclick = function(){
@@ -1400,7 +1407,7 @@ function vClientes() {
         var subInfo = [cl.empresa, cl.email, cl.telefono].filter(function(x){ return x && String(x).trim(); }).join(' - ');
         info.appendChild(el('div', {style:'font-size:12px;color:#94a3b8'}, subInfo));
         ch.appendChild(info);
-        var btnA = el('button', {class:'btn btnsm'}, '+ Asignar');
+        var btnA = el('button', {class:'btn btnsm'}, '+ Sistema');
         (function(cid, cn){ btnA.onclick = function(){ mAsignar(cid, cn); }; })(cl.id, nomCl);
         ch.appendChild(btnA);
         var btnE = el('button', {class:'btn btnsm', style:'margin-left:4px'}, 'Editar');
@@ -1436,12 +1443,6 @@ function vClientes() {
             info2.appendChild(el('b', {}, fmt(a.fee_mensual)+'/mes'));
             info2.appendChild(document.createTextNode(' Dia ' + (a.dia_cobro||1)));
             right.appendChild(info2);
-            // Sub entidad (solo ConeOS → vincular empresa)
-            if (s.tipo !== 'mono_empresa') {
-              var btnSub = el('button', {class:'btn btnsm'}, '+Entidad');
-              (function(aa, ss){ btnSub.onclick = function(){ ss.nombre==='ConeOS' ? mVincularEmpresaConeos(aa) : mSubEntidad(aa.id, ss.tipo); }; })(a, s);
-              right.appendChild(btnSub);
-            }
             // Fases
             var btnF = el('button', {class:'btn btnsm'}, 'Fases' + (a._fases.length ? ' (' + a._fases.length + ')' : ''));
             (function(aa, cn, sn){ btnF.onclick = function(){ mFases(aa, cn, sn, function(){ vClientes(); }); }; })(a, cl.nombre, s.nombre||'');
