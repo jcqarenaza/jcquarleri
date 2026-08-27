@@ -113,7 +113,7 @@ function cargar() {
     dbGet('panel_sistemas'), dbGet('panel_clientes'),
     dbGet('panel_asignaciones'), dbGet('panel_cobros'), dbGet('panel_sub_entidades'),
     dbGet('panel_implementacion_fases'), dbGet('panel_alertas'),
-    dbGet('panel_fases?order=orden.asc')
+    dbGet('panel_fases?select=*&order=orden.asc')
   ]).then(function(r) {
     console.log('cargar OK:', r[0].length, 'sis,', r[1].length, 'cls,', r[2].length, 'asigs');
     var sis=r[0], cls=r[1], asigs=r[2], cobs=r[3], subs=r[4], fases=r[5], alertasDb=r[6], fasesEstructura=r[7];
@@ -1948,21 +1948,26 @@ function mFases(a, cn, sn, cb) {
           }).then(refrescar);
         };
         addBox.appendChild(btnAdd);
-      } else if (!fases.length || sn === 'ConeOS') {
-        // Sin fases estructurales o ConeOS: agregar libre
-        addBox.appendChild(el('div', {style:'font-size:12px;font-weight:500;color:#64748B;margin-bottom:8px'}, 'Agregar fase'));
-        mkRow2(addBox,
-          mkFg('Nombre', mkInput('nf-nom','text','','Ej: Fase 2 — Gestion avanzada')),
-          mkFg('Monto ($)', mkInput('nf-monto','number','0'))
-        );
-        var btnAdd2 = el('button', {class:'btn btnp', style:'margin-top:6px'}, '+ Agregar');
-        btnAdd2.onclick = function() {
-          var nom = gv('nf-nom').trim(); if (!nom) { alert('Nombre obligatorio'); return; }
-          var siguienteNum = fases.length ? Math.max.apply(null, fases.map(function(f){ return f.numero; })) + 1 : 1;
-          dbIns('panel_implementacion_fases', {asignacion_id:a.id, numero:siguienteNum, nombre:nom, monto:Number(gv('nf-monto')||0)})
-            .then(refrescar);
-        };
-        addBox.appendChild(btnAdd2);
+      } else if (sn === 'ConeOS') {
+        // ConeOS: precio único confirmado por módulos
+        if (fases.length) {
+          addBox.appendChild(el('div', {style:'font-size:12px;color:#3D8A32'}, '✓ Precio de implementación ya confirmado. Editá la fase para ajustarlo.'));
+        } else {
+          addBox.appendChild(el('div', {style:'font-size:12px;font-weight:500;color:#64748B;margin-bottom:8px'}, 'Confirmar precio de implementación'));
+          var hint = el('div', {style:'font-size:11px;color:#94a3b8;margin-bottom:10px'}, 'El precio sugerido se calcula por los módulos activos. Podés ajustarlo si acordaste otro valor con el cliente.');
+          addBox.appendChild(hint);
+          addFg(addBox, 'Precio acordado ($)', mkInput('nf-monto','number','0'));
+          var btnAddC = el('button', {class:'btn btnp', style:'margin-top:6px'}, '✓ Confirmar precio');
+          btnAddC.onclick = function() {
+            var monto = Number(gv('nf-monto')||0);
+            if (!monto) { alert('Ingresá el precio'); return; }
+            dbIns('panel_implementacion_fases', {
+              asignacion_id:a.id, numero:1,
+              nombre:'Implementación ConeOS', monto:monto
+            }).then(refrescar);
+          };
+          addBox.appendChild(btnAddC);
+        }
       } else {
         addBox.appendChild(el('div', {style:'font-size:12px;color:#3D8A32'}, '✓ Todas las fases del sistema ya tienen precio asignado.'));
       }
