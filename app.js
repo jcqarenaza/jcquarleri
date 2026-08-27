@@ -5043,10 +5043,10 @@ function vConeosEmpresa(emp) {
 }
 
 function mRegistrarFeeConeOS(emp, fee, metricas) {
-  // Buscar asignacion de ConeOS en panel_cobros
   openM(makeModal('Registrar fee — '+emp.nombre, function(body) {
     var info = el('div', {style:'background:#F8FAFC;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#64748B'});
-    info.appendChild(el('div', {}, '🍦 Empresa: '+el('b',{},emp.nombre).outerHTML));
+    var linEmp = el('div', {}); linEmp.appendChild(document.createTextNode('🍦 Empresa: ')); linEmp.appendChild(el('b', {}, emp.nombre));
+    info.appendChild(linEmp);
     info.appendChild(el('div', {}, '📱 Dispositivos: '+(metricas.dispositivos_activos||0)));
     info.appendChild(el('div', {}, '💰 Fee calculado: '+fmt(fee)));
     body.appendChild(info);
@@ -5058,30 +5058,21 @@ function mRegistrarFeeConeOS(emp, fee, metricas) {
     var ok = el('button', {class:'btn btnp'}, 'Registrar cobro');
     ok.onclick = function() {
       var monto = Number(gv('crf-monto')||0);
-      var nota = gv('crf-nota')||'';
+      var nota  = gv('crf-nota')||'';
       var fecha = gv('crf-fecha')||new Date().toISOString().slice(0,10);
       var periodo = gv('crf-periodo')||'';
       if (!monto) { alert('Ingresá el monto'); return; }
       ok.textContent = 'Guardando...'; ok.disabled = true;
-      // Registrar en panel_cobros como cobro de tipo fee
-      // Primero buscar asignacion de ConeOS
-      sbFetch('panel_asignaciones?select=id&sistema_id=in.('+
-        'select id from panel_sistemas where nombre=ilike.*ConeOS*'+')'
-      ).catch(function(){ return []; }).then(function() {
-        // Registrar directamente como ingreso manual en finanzas negocio
-        dbIns('panel_ingresos', {
-          descripcion: 'Fee ConeOS — '+emp.nombre+' ('+periodo+')'+(nota?' | '+nota:''),
-          monto: monto,
-          fecha: fecha,
-          tipo: 'cobro',
-          categoria: 'Negocio'
-        }).then(function() {
-          closeM();
-          alert('Fee registrado correctamente');
-        }).catch(function(e) {
-          ok.textContent = 'Registrar cobro'; ok.disabled = false;
-          alert('Error: '+e.message);
-        });
+      dbIns('panel_ingresos', {
+        descripcion: 'Fee ConeOS — '+emp.nombre+' ('+periodo+')'+(nota?' | '+nota:''),
+        monto: monto,
+        fecha: fecha,
+        tipo: 'cobradoNegocio'
+      }).then(function() {
+        closeM();
+      }).catch(function(e) {
+        ok.textContent = 'Registrar cobro'; ok.disabled = false;
+        alert('Error: '+e.message);
       });
     };
     foot.appendChild(ok);
