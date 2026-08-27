@@ -5172,7 +5172,7 @@ function mModulosConeOS(emp) {
       extraWrap.appendChild(el('div', {style:'font-size:11px;font-weight:500;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px'}, 'Módulos adicionales'));
       MODULOS.filter(function(m){ return !m.base; }).forEach(function(m) {
         var activo = !!modulos[m.key];
-        var card = el('div', {style:'border:.5px solid '+(activo?m.color:'#E2E8F0')+';border-radius:10px;padding:11px 14px;margin-bottom:8px;background:'+(activo?'#FAFBFF':'#FAFAFA');transition:'border .15s'});
+        var card = el('div', {style:'border:.5px solid '+(activo?m.color:'#E2E8F0')+';border-radius:10px;padding:11px 14px;margin-bottom:8px;background:'+(activo?'#FAFBFF':'#FAFAFA')+';transition:border .15s'});
         var row = el('div', {style:'display:flex;align-items:center;gap:10px'});
         var dot = el('div', {style:'width:10px;height:10px;border-radius:50%;flex-shrink:0;background:'+m.color});
         row.appendChild(dot);
