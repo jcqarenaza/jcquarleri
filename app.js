@@ -5044,6 +5044,7 @@ function vConeosEmpresa(emp) {
 
 function mEditarFeeConeOS(emp, feeCalc, metricas) {
   var feeActual = emp.fee_mensual || feeCalc;
+  var periodoActual = new Date().toISOString().slice(0,7).replace('-','/');
   openM(makeModal('Fee mensual — '+emp.nombre, function(body) {
     var info = el('div', {style:'background:#F8FAFC;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#64748B'});
     var linEmp = el('div', {}); linEmp.appendChild(document.createTextNode('🍦 Empresa: ')); linEmp.appendChild(el('b', {}, emp.nombre));
@@ -5051,8 +5052,9 @@ function mEditarFeeConeOS(emp, feeCalc, metricas) {
     info.appendChild(el('div', {}, '📱 Dispositivos: '+(metricas.dispositivos_activos||0)));
     info.appendChild(el('div', {}, '💰 Fee sugerido por dispositivos: '+fmt(feeCalc)));
     body.appendChild(info);
-    addFg(body, 'Fee mensual acordado ($)', mkInput('ef-fee','number', feeActual));
-    var hint = el('div', {style:'font-size:11px;color:#94a3b8;margin-top:4px'}, 'Este valor queda guardado en la empresa y se usa como referencia para cobros.');
+    mkRow2(body, mkFg('Fee mensual acordado ($)', mkInput('ef-fee','number', feeActual)), mkFg('Período', mkInput('ef-periodo','text', periodoActual)));
+    addFg(body, 'Fecha de vencimiento', mkInput('ef-venc','date', new Date().toISOString().slice(0,10)));
+    var hint = el('div', {style:'font-size:11px;color:#94a3b8;margin-top:6px'}, 'El fee queda guardado en la empresa. El período y vencimiento son solo referencia.');
     body.appendChild(hint);
   }, function(foot) {
     foot.appendChild(cancelBtn());
