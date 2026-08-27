@@ -5217,44 +5217,121 @@ function mModulosConeOS(emp) {
 }
 
 function mEditarEmpresaConeos(emp, cb) {
-  openM(makeModal('Editar: ' + emp.nombre, function(body) {
-    addFg(body, 'Nombre', mkInput('ee-nombre', 'text', emp.nombre||''));
-    addFg(body, 'Slug', mkInput('ee-slug', 'text', emp.slug||''));
-    mkRow2(body,
-      mkFg('Implementación ($)', mkInput('ee-impl', 'number', emp.costo_implementacion||350000)),
-      mkFg('Fee mensual ($)', mkInput('ee-fee', 'number', emp.fee_mensual||75000))
-    );
-    mkRow2(body,
-      mkFg('Color primario', mkInput('ee-color1', 'color', emp.primary_color||'#6366F1')),
-      mkFg('Color secundario', mkInput('ee-color2', 'color', emp.secondary_color||'#4F46E5'))
-    );
-    var togWrap = el('div', {style:'display:flex;align-items:center;gap:8px;margin-top:8px'});
-    var togLbl = el('label', {class:'tog'});
-    var togInp = el('input', {type:'checkbox', id:'ee-activo'}); if(emp.activo) togInp.checked=true;
-    togLbl.appendChild(togInp); togLbl.appendChild(el('span',{class:'sl'}));
-    togWrap.appendChild(togLbl);
-    togWrap.appendChild(el('span',{style:'font-size:13px;color:#64748B'},'Activo'));
-    body.appendChild(togWrap);
-  }, function(foot) {
-    foot.appendChild(cancelBtn());
-    var ok = el('button', { class: 'btn btnp' }, 'Guardar');
-    ok.onclick = function() {
-      var body = {
-        nombre: gv('ee-nombre'),
-        slug: gv('ee-slug'),
-        activo: document.getElementById('ee-activo').checked,
-        costo_implementacion: Number(gv('ee-impl')||0),
-        fee_mensual: Number(gv('ee-fee')||75000)
+  // Cargar módulos para calcular precio de referencia
+  coneosCall('get_modulos', { empresa_id: emp.id }).then(function(modulos) {
+    var implCalc = calcImplConeos(modulos);
+    var feeCalc  = calcFeeConeos(emp._dispActivos || 1, emp.slug);
+
+    openM(makeModal('Editar: ' + emp.nombre, function(body) {
+      addFg(body, 'Nombre', mkInput('ee-nombre', 'text', emp.nombre||''));
+      addFg(body, 'Slug',   mkInput('ee-slug',   'text', emp.slug||''));
+
+      // Referencia calculada por módulos
+      var refBox = el('div', {style:'background:#F0F9FF;border:.5px solid #BAE6FD;border-radius:8px;padding:10px 14px;margin-bottom:14px'});
+      refBox.appendChild(el('div', {style:'font-size:11px;font-weight:600;color:#0369A1;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px'}, '💡 Precio calculado por módulos'));
+      var refRow1 = el('div', {style:'display:flex;justify-content:space-between;font-size:12px;padding:2px 0'});
+      refRow1.appendChild(el('span', {style:'color:#64748B'}, 'Implementación sugerida'));
+      refRow1.appendChild(el('span', {style:'font-weight:600;color:#1a2e4a'}, fmt(implCalc)));
+      refBox.appendChild(refRow1);
+      var refRow2 = el('div', {style:'display:flex;justify-content:space-between;font-size:12px;padding:2px 0'});
+      refRow2.appendChild(el('span', {style:'color:#64748B'}, 'Fee sugerido'));
+      refRow2.appendChild(el('span', {style:'font-weight:600;color:#F59E0B'}, fmt(feeCalc)+'/mes'));
+      refBox.appendChild(refRow2);
+      var refHint = el('div', {style:'font-size:11px;color:#0369A1;margin-top:6px;border-top:.5px solid #BAE6FD;padding-top:6px'});
+      refHint.appendChild(document.createTextNode('Podés ajustar manualmente si acordaste otro precio con el cliente.'));
+      refBox.appendChild(refHint);
+      body.appendChild(refBox);
+
+      // Campos editables con valor precargado (calculado o el que ya tenía)
+      var implVal = emp.costo_implementacion || implCalc;
+      var feeVal  = emp.fee_mensual || feeCalc;
+      mkRow2(body,
+        mkFg('Implementación ($)', mkInput('ee-impl', 'number', implVal)),
+        mkFg('Fee mensual ($)',    mkInput('ee-fee',  'number', feeVal))
+      );
+
+      // Botón para resetear al calculado
+      var resetBtn = el('button', {class:'btn btnsm', style:'margin-bottom:14px;font-size:11px;color:#0369A1;border-color:#BAE6FD'}, '↺ Usar precio calculado');
+      resetBtn.onclick = function() {
+        document.getElementById('ee-impl').value = implCalc;
+        document.getElementById('ee-fee').value  = feeCalc;
       };
-      ok.textContent = 'Guardando...'; ok.disabled = true;
-      coneosCall('editar_empresa', { empresa_id: emp.id, datos: body }).then(function(r) {
-        if (r.error) { alert('Error: ' + r.error); ok.textContent = 'Guardar'; ok.disabled = false; return; }
-        closeM();
-        cb(Object.assign({}, emp, body));
-      });
-    };
-    foot.appendChild(ok);
-  }));
+      body.appendChild(resetBtn);
+
+      mkRow2(body,
+        mkFg('Color primario',    mkInput('ee-color1', 'color', emp.primary_color||'#6366F1')),
+        mkFg('Color secundario',  mkInput('ee-color2', 'color', emp.secondary_color||'#4F46E5'))
+      );
+
+      var togWrap = el('div', {style:'display:flex;align-items:center;gap:8px;margin-top:8px'});
+      var togLbl = el('label', {class:'tog'});
+      var togInp = el('input', {type:'checkbox', id:'ee-activo'}); if(emp.activo) togInp.checked=true;
+      togLbl.appendChild(togInp); togLbl.appendChild(el('span',{class:'sl'}));
+      togWrap.appendChild(togLbl);
+      togWrap.appendChild(el('span',{style:'font-size:13px;color:#64748B'},'Activo'));
+      body.appendChild(togWrap);
+
+    }, function(foot) {
+      foot.appendChild(cancelBtn());
+      var ok = el('button', { class: 'btn btnp' }, 'Guardar');
+      ok.onclick = function() {
+        var datos = {
+          nombre: gv('ee-nombre'),
+          slug:   gv('ee-slug'),
+          activo: document.getElementById('ee-activo').checked,
+          costo_implementacion: Number(gv('ee-impl')||0),
+          fee_mensual: Number(gv('ee-fee')||75000)
+        };
+        ok.textContent = 'Guardando...'; ok.disabled = true;
+        coneosCall('editar_empresa', { empresa_id: emp.id, datos: datos }).then(function(r) {
+          if (r.error) { alert('Error: ' + r.error); ok.textContent = 'Guardar'; ok.disabled = false; return; }
+          closeM();
+          cb(Object.assign({}, emp, datos));
+        });
+      };
+      foot.appendChild(ok);
+    }));
+  }).catch(function() {
+    // Si falla la carga de módulos, abre el modal igual sin referencia
+    openM(makeModal('Editar: ' + emp.nombre, function(body) {
+      addFg(body, 'Nombre', mkInput('ee-nombre', 'text', emp.nombre||''));
+      addFg(body, 'Slug',   mkInput('ee-slug',   'text', emp.slug||''));
+      mkRow2(body,
+        mkFg('Implementación ($)', mkInput('ee-impl', 'number', emp.costo_implementacion||500000)),
+        mkFg('Fee mensual ($)',    mkInput('ee-fee',  'number', emp.fee_mensual||75000))
+      );
+      mkRow2(body,
+        mkFg('Color primario',   mkInput('ee-color1', 'color', emp.primary_color||'#6366F1')),
+        mkFg('Color secundario', mkInput('ee-color2', 'color', emp.secondary_color||'#4F46E5'))
+      );
+      var togWrap = el('div', {style:'display:flex;align-items:center;gap:8px;margin-top:8px'});
+      var togLbl = el('label', {class:'tog'});
+      var togInp = el('input', {type:'checkbox', id:'ee-activo'}); if(emp.activo) togInp.checked=true;
+      togLbl.appendChild(togInp); togLbl.appendChild(el('span',{class:'sl'}));
+      togWrap.appendChild(togLbl);
+      togWrap.appendChild(el('span',{style:'font-size:13px;color:#64748B'},'Activo'));
+      body.appendChild(togWrap);
+    }, function(foot) {
+      foot.appendChild(cancelBtn());
+      var ok = el('button', { class: 'btn btnp' }, 'Guardar');
+      ok.onclick = function() {
+        var datos = {
+          nombre: gv('ee-nombre'),
+          slug:   gv('ee-slug'),
+          activo: document.getElementById('ee-activo').checked,
+          costo_implementacion: Number(gv('ee-impl')||0),
+          fee_mensual: Number(gv('ee-fee')||75000)
+        };
+        ok.textContent = 'Guardando...'; ok.disabled = true;
+        coneosCall('editar_empresa', { empresa_id: emp.id, datos: datos }).then(function(r) {
+          if (r.error) { alert('Error: ' + r.error); ok.textContent = 'Guardar'; ok.disabled = false; return; }
+          closeM();
+          cb(Object.assign({}, emp, datos));
+        });
+      };
+      foot.appendChild(ok);
+    }));
+  });
 }
 
 function mNuevaEmpresaConeos(cb) {
