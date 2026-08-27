@@ -1450,10 +1450,6 @@ function vClientes() {
             var btnRes = el('button', {class:'btn btnsm'}, 'Resumen');
             (function(aa, cli, sis){ btnRes.onclick = function(){ vResumenCliente(aa, cli, sis); }; })(a, cl, s);
             right.appendChild(btnRes);
-            // Editar asig (fee, dia cobro, notas)
-            var btnEA = el('button', {class:'btn btnsm'}, 'Editar');
-            (function(aa){ btnEA.onclick = function(){ mEditAsig(aa); }; })(a);
-            right.appendChild(btnEA);
             // Cobrar
             var btnC = el('button', {class:'btn btns btnsm'}, '$ Cobrar');
             (function(aa, cn, sn, f, ti, sal){ btnC.onclick = function(){ mCobrar(aa, cn, sn, f, ti, sal); }; })(a, cl.nombre, s.nombre||'', Number(a.fee_mensual||0), totI, saldoI);
@@ -1863,7 +1859,27 @@ function mFases(a, cn, sn, cb) {
     var totGeneral = fases.reduce(function(s,f){ return s+Number(f.monto||0); }, 0);
     var pagGeneral = pagosImpl.reduce(function(s,c){ return s+Number(c.monto); }, 0);
 
-    openM(makeModal('Fases de implementacion — ' + cn + ' / ' + sn, function(body) {
+    openM(makeModal('Fases — ' + cn + ' / ' + sn, function(body) {
+      // Sección comercial: fee, día, notas
+      var comercialBox = el('div', {style:'background:#F8FAFC;border:.5px solid #E2E8F0;border-radius:10px;padding:12px 14px;margin-bottom:14px'});
+      comercialBox.appendChild(el('div', {style:'font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px'}, 'Condiciones comerciales'));
+      mkRow2(comercialBox, mkFg('Fee mensual ($)', mkInput('mf-fee','number',a.fee_mensual||0)), mkFg('Día de cobro', mkInput('mf-dia','number',a.dia_cobro||1)));
+      addFg(comercialBox, 'Notas', mkInput('mf-notas','text',a.notas||''));
+      var btnGuardarCom = el('button', {class:'btn btnsm', style:'margin-top:8px'}, 'Guardar condiciones');
+      btnGuardarCom.onclick = function() {
+        btnGuardarCom.textContent = 'Guardando...'; btnGuardarCom.disabled = true;
+        dbUpd('panel_asignaciones', a.id, {fee_mensual:Number(gv('mf-fee')||0), dia_cobro:Number(gv('mf-dia')||1), notas:gv('mf-notas')||null})
+        .then(function(){
+          a.fee_mensual = Number(gv('mf-fee')||0);
+          a.dia_cobro = Number(gv('mf-dia')||1);
+          a.notas = gv('mf-notas')||null;
+          btnGuardarCom.textContent = '✓ Guardado'; btnGuardarCom.disabled = false;
+          setTimeout(function(){ btnGuardarCom.textContent = 'Guardar condiciones'; }, 2000);
+        });
+      };
+      comercialBox.appendChild(btnGuardarCom);
+      body.appendChild(comercialBox);
+
       // Banner precio sugerido ConeOS
       if (sn === 'ConeOS' && a.coneos_empresa_id) {
         var refBanner = el('div', {style:'background:#F0F9FF;border:.5px solid #BAE6FD;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#0369A1'});
