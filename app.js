@@ -4965,13 +4965,13 @@ function vConeosEmpresa(emp) {
     if (dispAlert) {
       var alBox = el('div', {style:'background:#FEF3C7;border:.5px solid #F59E0B;border-radius:8px;padding:10px 14px;margin-top:12px;display:flex;justify-content:space-between;align-items:center'});
       alBox.appendChild(el('span', {style:'font-size:13px;color:#854F0B'}, '⚠ '+dispActivos+' dispositivos activos — el fee base cubre hasta 3'));
-      var btnCobrar = el('button', {class:'btn btnsm', style:'background:#F59E0B;border-color:#F59E0B;color:#fff'}, 'Registrar fee');
-      btnCobrar.onclick = function() { mRegistrarFeeConeOS(emp, feeActual, d); };
+      var btnCobrar = el('button', {class:'btn btnsm', style:'background:#F59E0B;border-color:#F59E0B;color:#fff'}, 'Editar fee');
+      btnCobrar.onclick = function() { mEditarFeeConeOS(emp, feeActual, d); };
       alBox.appendChild(btnCobrar);
       metLoad.appendChild(alBox);
     } else {
-      var btnCobrarN = el('button', {class:'btn btnsm', style:'margin-top:10px'}, 'Registrar fee mensual');
-      btnCobrarN.onclick = function() { mRegistrarFeeConeOS(emp, feeActual, d); };
+      var btnCobrarN = el('button', {class:'btn btnsm', style:'margin-top:10px'}, 'Editar fee mensual');
+      btnCobrarN.onclick = function() { mEditarFeeConeOS(emp, feeActual, d); };
       metLoad.appendChild(btnCobrarN);
     }
 
@@ -5042,36 +5042,33 @@ function vConeosEmpresa(emp) {
   setApp(wrap);
 }
 
-function mRegistrarFeeConeOS(emp, fee, metricas) {
-  openM(makeModal('Registrar fee — '+emp.nombre, function(body) {
+function mEditarFeeConeOS(emp, feeCalc, metricas) {
+  var feeActual = emp.fee_mensual || feeCalc;
+  openM(makeModal('Fee mensual — '+emp.nombre, function(body) {
     var info = el('div', {style:'background:#F8FAFC;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#64748B'});
     var linEmp = el('div', {}); linEmp.appendChild(document.createTextNode('🍦 Empresa: ')); linEmp.appendChild(el('b', {}, emp.nombre));
     info.appendChild(linEmp);
     info.appendChild(el('div', {}, '📱 Dispositivos: '+(metricas.dispositivos_activos||0)));
-    info.appendChild(el('div', {}, '💰 Fee calculado: '+fmt(fee)));
+    info.appendChild(el('div', {}, '💰 Fee sugerido por dispositivos: '+fmt(feeCalc)));
     body.appendChild(info);
-    mkRow2(body, mkFg('Monto ($)', mkInput('crf-monto','number',fee)), mkFg('Período', mkInput('crf-periodo','text', new Date().toISOString().slice(0,7).replace('-','/'))));
-    addFg(body, 'Comentario / N° transferencia', mkInput('crf-nota','text','','Ej: Transferencia 00123456'));
-    addFg(body, 'Fecha de pago', mkInput('crf-fecha','date', new Date().toISOString().slice(0,10)));
+    addFg(body, 'Fee mensual acordado ($)', mkInput('ef-fee','number', feeActual));
+    var hint = el('div', {style:'font-size:11px;color:#94a3b8;margin-top:4px'}, 'Este valor queda guardado en la empresa y se usa como referencia para cobros.');
+    body.appendChild(hint);
   }, function(foot) {
     foot.appendChild(cancelBtn());
-    var ok = el('button', {class:'btn btnp'}, 'Registrar cobro');
+    var ok = el('button', {class:'btn btnp'}, 'Guardar fee');
     ok.onclick = function() {
-      var monto = Number(gv('crf-monto')||0);
-      var nota  = gv('crf-nota')||'';
-      var fecha = gv('crf-fecha')||new Date().toISOString().slice(0,10);
-      var periodo = gv('crf-periodo')||'';
-      if (!monto) { alert('Ingresá el monto'); return; }
+      var nuevoFee = Number(gv('ef-fee')||0);
+      if (!nuevoFee) { alert('Ingresá el fee'); return; }
       ok.textContent = 'Guardando...'; ok.disabled = true;
-      dbIns('panel_ingresos', {
-        descripcion: 'Fee ConeOS — '+emp.nombre+' ('+periodo+')'+(nota?' | '+nota:''),
-        monto: monto,
-        fecha: fecha,
-        tipo: 'cobradoNegocio'
-      }).then(function() {
+      coneosCall('editar_empresa', { empresa_id: emp.id, datos: {
+        nombre: emp.nombre, slug: emp.slug, activo: emp.activo, plan: emp.plan, fee_mensual: nuevoFee
+      }}).then(function(r) {
+        if (r.error) { alert('Error: '+r.error); ok.textContent = 'Guardar fee'; ok.disabled = false; return; }
+        emp.fee_mensual = nuevoFee;
         closeM();
       }).catch(function(e) {
-        ok.textContent = 'Registrar cobro'; ok.disabled = false;
+        ok.textContent = 'Guardar fee'; ok.disabled = false;
         alert('Error: '+e.message);
       });
     };
