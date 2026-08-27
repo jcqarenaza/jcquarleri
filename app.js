@@ -1407,9 +1407,6 @@ function vClientes() {
         var subInfo = [cl.empresa, cl.email, cl.telefono].filter(function(x){ return x && String(x).trim(); }).join(' - ');
         info.appendChild(el('div', {style:'font-size:12px;color:#94a3b8'}, subInfo));
         ch.appendChild(info);
-        var btnA = el('button', {class:'btn btnsm'}, '+ Sistema');
-        (function(cid, cn){ btnA.onclick = function(){ mAsignar(cid, cn); }; })(cl.id, nomCl);
-        ch.appendChild(btnA);
         var btnE = el('button', {class:'btn btnsm', style:'margin-left:4px'}, 'Editar');
         (function(c){ btnE.onclick = function(){ mEditCliente(c); }; })(cl);
         ch.appendChild(btnE);
@@ -1750,21 +1747,58 @@ function mEditSistema(s) {
 
 // NUEVO CLIENTE
 function mNuevoCliente() {
-  openM(makeModal('Nuevo cliente', function(body) {
-    addFg(body, 'Nombre', mkInput('fcn','text','','Nombre completo'));
-    addFg(body, 'Empresa', mkInput('fce','text',''));
-    mkRow2(body, mkFg('Email', mkInput('fcm','email','')), mkFg('Telefono', mkInput('fct','text','')));
-    addFg(body, 'Notas', el('textarea', {class:'fi', id:'fcno'}));
-  }, function(foot) {
-    foot.appendChild(cancelBtn());
-    var ok = el('button', {class:'btn btnp'}, 'Guardar');
-    ok.onclick = function() {
-      var n = gv('fcn').trim(); if (!n) { alert('Nombre obligatorio'); return; }
-      dbIns('panel_clientes', {nombre:n, empresa:gv('fce')||null, email:gv('fcm')||null, telefono:gv('fct')||null, notas:gv('fcno')||null, activo:true})
-      .then(function(){ closeM(); vClientes(); });
-    };
-    foot.appendChild(ok);
-  }));
+  dbGet('panel_sistemas').then(function(sis) {
+    openM(makeModal('Nuevo cliente', function(body) {
+      // Paso 1: datos del cliente
+      body.appendChild(el('div', {style:'font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px'}, 'Datos del cliente'));
+      addFg(body, 'Nombre', mkInput('fcn','text','','Nombre completo'));
+      addFg(body, 'Empresa', mkInput('fce','text',''));
+      mkRow2(body, mkFg('Email', mkInput('fcm','email','')), mkFg('Teléfono', mkInput('fct','text','')));
+
+      // Paso 2: asignar sistema
+      body.appendChild(el('div', {style:'border-top:.5px solid #E2E8F0;margin:14px 0 10px'}));
+      body.appendChild(el('div', {style:'font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px'}, 'Sistema a asignar'));
+      if (sis.length) {
+        var selWrap = el('div', {style:'display:flex;align-items:center;gap:8px;margin-bottom:10px'});
+        var chkSis = el('input', {type:'checkbox', id:'fc-asignar', style:'width:16px;height:16px;cursor:pointer'});
+        chkSis.checked = true;
+        var chkLabel = el('label', {for:'fc-asignar', style:'font-size:13px;color:#1a2e4a;cursor:pointer'}, 'Asignar sistema ahora');
+        selWrap.appendChild(chkSis); selWrap.appendChild(chkLabel);
+        body.appendChild(selWrap);
+        var sisBox = el('div', {id:'fc-sisbox'});
+        var sel = mkSelect('fc-sis', sis.map(function(s){ return [s.id, s.nombre+' — '+(P_LAB[s.plataforma]||s.plataforma)]; }), sis[0].id);
+        addFg(sisBox, 'Sistema', sel);
+        mkRow2(sisBox, mkFg('Día de cobro fee', mkInput('fc-dia','number','1')), mkFg('Fecha inicio', mkInput('fc-fec','date',new Date().toISOString().slice(0,10))));
+        body.appendChild(sisBox);
+        chkSis.onchange = function(){ sisBox.style.display = this.checked ? '' : 'none'; };
+        var hint = el('div', {style:'font-size:11px;color:#94a3b8;margin-top:4px'}, 'Los precios se configuran desde Fases una vez creado.');
+        body.appendChild(hint);
+      } else {
+        body.appendChild(el('div', {style:'font-size:12px;color:#94a3b8'}, 'No hay sistemas creados todavía — podrás asignar uno después.'));
+      }
+    }, function(foot) {
+      foot.appendChild(cancelBtn());
+      var ok = el('button', {class:'btn btnp'}, 'Crear cliente');
+      ok.onclick = function() {
+        var n = gv('fcn').trim(); if (!n) { alert('Nombre obligatorio'); return; }
+        ok.textContent = 'Guardando...'; ok.disabled = true;
+        dbIns('panel_clientes', {nombre:n, empresa:gv('fce')||null, email:gv('fcm')||null, telefono:gv('fct')||null, activo:true})
+        .then(function(r) {
+          var cid = (r[0]||{}).id;
+          var chk = ge('fc-asignar');
+          if (cid && chk && chk.checked && gv('fc-sis')) {
+            return dbIns('panel_asignaciones', {
+              cliente_id:cid, sistema_id:gv('fc-sis'), activo:true,
+              fee_mensual:0, dia_cobro:Number(gv('fc-dia')||1),
+              fecha_inicio:gv('fc-fec')||null
+            });
+          }
+        }).then(function(){ closeM(); vClientes(); })
+        .catch(function(e){ alert('Error: '+e.message); ok.textContent='Crear cliente'; ok.disabled=false; });
+      };
+      foot.appendChild(ok);
+    }));
+  });
 }
 
 function mEditCliente(cl) {
@@ -1790,62 +1824,28 @@ function mAsignar(cid, cn) {
   dbGet('panel_sistemas').then(function(sis) {
     if (!sis.length) { alert('Primero crea un sistema.'); return; }
     openM(makeModal('Asignar sistema a ' + cn, function(body) {
+      var info = el('div', {style:'background:#F0F9FF;border:.5px solid #BAE6FD;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#0369A1'});
+      info.appendChild(document.createTextNode('Los precios de implementación y fee se configuran desde Fases una vez asignado.'));
+      body.appendChild(info);
       var sel = mkSelect('assis', sis.map(function(s){ return [s.id, s.nombre+' - '+(P_LAB[s.plataforma]||s.plataforma)]; }), sis[0].id);
-      sel.onchange = function() { var s = sis.find(function(x){ return x.id===this.value; }, this); if(s){ ge('asimpl').value=s.costo_implementacion||0; ge('asfee').value=s.fee_mensual||0; calcA(); } };
       addFg(body, 'Sistema', sel);
-      mkRow2(body, mkFg('Costo total ($)', mkInput('asimpl','number',sis[0].costo_implementacion||0)), mkFg('Fee mensual ($)', mkInput('asfee','number',sis[0].fee_mensual||0)));
-      var abox = el('div', {style:'background:#E6F6FD;border-radius:8px;padding:14px;margin-bottom:12px'});
-      abox.appendChild(el('div', {style:'font-size:12px;font-weight:500;color:#0C6FA3;margin-bottom:8px'}, 'Anticipo inicial'));
-      var r = el('div', {class:'r2'});
-      var pctI = mkInput('aspct','number','25'); pctI.min='0'; pctI.max='100'; pctI.oninput = calcA;
-      var antI = mkInput('asant','number','0'); antI.oninput = syncA;
-      r.appendChild(mkFg('Porcentaje (%)', pctI)); r.appendChild(mkFg('Monto anticipo ($)', antI));
-      abox.appendChild(r);
-      abox.appendChild(el('div', {id:'assaldo', style:'font-size:11px;color:#64748B;margin-top:6px'}, 'Saldo restante: $0'));
-      body.appendChild(abox);
       mkRow2(body, mkFg('Dia de cobro fee', mkInput('asdia','number','1')), mkFg('Fecha inicio', mkInput('asfec','date',new Date().toISOString().slice(0,10))));
       addFg(body, 'Notas', mkInput('asnot','text','','Condiciones especiales...'));
-      setTimeout(calcA, 50);
     }, function(foot) {
       foot.appendChild(cancelBtn());
       var ok = el('button', {class:'btn btnp'}, 'Asignar');
       ok.onclick = function() {
-        var impl = Number(gv('asimpl')||0), fee = Number(gv('asfee')||0);
-        var dia = Number(gv('asdia')||1), ant = Number(gv('asant')||0), fec = gv('asfec');
-        dbIns('panel_asignaciones', {cliente_id:cid, sistema_id:gv('assis'), activo:true,
-          precio_acordado:impl, costo_implementacion_acordado:impl, fee_mensual:fee,
-          dia_cobro:dia, fecha_inicio:fec, notas:gv('asnot')||null,
-          implementacion_en_cuotas:false, implementacion_cant_cuotas:1,
-          implementacion_cuota_monto:ant, implementacion_cuotas_pagadas:0})
-        .then(function(r) {
-          var aid = (r[0]||{}).id;
-          var p = Promise.resolve(null);
-          if (aid && impl > 0) {
-            p = dbIns('panel_implementacion_fases', {asignacion_id:aid, numero:1, nombre:'Fase 1', monto:impl})
-              .then(function(fr){ return (fr[0]||{}).id || null; });
-          }
-          return p.then(function(faseId) {
-            if (aid && ant > 0) {
-              return dbIns('panel_cobros', {asignacion_id:aid, tipo_cobro:'implementacion', fase_id:faseId,
-                descripcion:'Anticipo implementacion (' + (impl>0?Math.round(ant/impl*100):0) + '%)',
-                monto:ant, metodo:'transferencia', fecha_vencimiento:fec, estado:'pendiente'});
-            }
-          });
-        }).then(function(){ closeM(); vClientes(); });
+        ok.textContent = 'Asignando...'; ok.disabled = true;
+        dbIns('panel_asignaciones', {
+          cliente_id:cid, sistema_id:gv('assis'), activo:true,
+          fee_mensual:0, dia_cobro:Number(gv('asdia')||1),
+          fecha_inicio:gv('asfec'), notas:gv('asnot')||null
+        }).then(function(){ closeM(); vClientes(); })
+        .catch(function(e){ alert('Error: '+e.message); ok.textContent='Asignar'; ok.disabled=false; });
       };
       foot.appendChild(ok);
     }));
   });
-}
-function calcA() {
-  var t=Number(gv('asimpl')||0), p=Number(gv('aspct')||25), a=Math.round(t*p/100);
-  var ai=ge('asant'); if(ai) ai.value=a;
-  var s=ge('assaldo'); if(s) s.textContent='Saldo restante: '+fmt(t-a);
-}
-function syncA() {
-  var t=Number(gv('asimpl')||0), a=Number(gv('asant')||0);
-  var pi=ge('aspct'); if(pi&&t>0) pi.value=Math.round(a/t*100);
-  var s=ge('assaldo'); if(s) s.textContent='Saldo restante: '+fmt(t-a);
 }
 
 // FASES DE IMPLEMENTACION (generico, cualquier asignacion)
