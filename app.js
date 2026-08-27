@@ -113,7 +113,7 @@ function cargar() {
     dbGet('panel_sistemas'), dbGet('panel_clientes'),
     dbGet('panel_asignaciones'), dbGet('panel_cobros'), dbGet('panel_sub_entidades'),
     dbGet('panel_implementacion_fases'), dbGet('panel_alertas'),
-    dbGet('panel_fases?select=*&order=orden.asc')
+    sbFetch('panel_fases?select=*&order=orden.asc')
   ]).then(function(r) {
     console.log('cargar OK:', r[0].length, 'sis,', r[1].length, 'cls,', r[2].length, 'asigs');
     var sis=r[0], cls=r[1], asigs=r[2], cobs=r[3], subs=r[4], fases=r[5], alertasDb=r[6], fasesEstructura=r[7];
