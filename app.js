@@ -1424,7 +1424,7 @@ function vClientes() {
             // Sub entidad
             if (s.tipo !== 'mono_empresa') {
               var btnSub = el('button', {class:'btn btnsm'}, '+Entidad');
-              (function(aid, t){ btnSub.onclick = function(){ mSubEntidad(aid, t); }; })(a.id, s.tipo);
+              (function(aa, ss){ btnSub.onclick = function(){ ss.nombre==='ConeOS' ? mVincularEmpresaConeos(aa) : mSubEntidad(aa.id, ss.tipo); }; })(a, s);
               right.appendChild(btnSub);
             }
             // Fases de implementacion
@@ -1849,6 +1849,28 @@ function mFases(a, cn, sn, cb) {
     var pagGeneral = pagosImpl.reduce(function(s,c){ return s+Number(c.monto); }, 0);
 
     openM(makeModal('Fases de implementacion — ' + cn + ' / ' + sn, function(body) {
+      // Banner precio sugerido ConeOS
+      if (sn === 'ConeOS' && a.coneos_empresa_id) {
+        var refBanner = el('div', {style:'background:#F0F9FF;border:.5px solid #BAE6FD;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#0369A1'});
+        refBanner.appendChild(el('div', {style:'font-weight:600;margin-bottom:4px'}, '💡 Precio sugerido por módulos activos'));
+        var refLoad = el('div', {style:'color:#94a3b8'}, 'Cargando...');
+        refBanner.appendChild(refLoad);
+        body.appendChild(refBanner);
+        coneosCall('get_modulos', {empresa_id: a.coneos_empresa_id}).then(function(modulos) {
+          refLoad.innerHTML = '';
+          var impl = calcImplConeos(modulos||{});
+          var lineas = [
+            'Base (kiosk+caja+prep+display): '+fmt(500000),
+            modulos.delivery    ? '+ Delivery: '+fmt(150000) : null,
+            modulos.facturacion ? '+ Facturación: '+fmt(100000) : null,
+            modulos.mercadopago ? '+ MercadoPago: '+fmt(100000) : null,
+          ].filter(Boolean);
+          lineas.forEach(function(l){ refLoad.appendChild(el('div', {}, l)); });
+          var tot = el('div', {style:'font-weight:700;margin-top:4px;border-top:.5px solid #BAE6FD;padding-top:4px'}, 'Total sugerido: '+fmt(impl));
+          refLoad.appendChild(tot);
+        }).catch(function(){ refLoad.textContent = 'No se pudieron cargar los módulos'; });
+      }
+
       if (totGeneral > 0) {
         var resumen = el('div', {style:'display:flex;justify-content:space-between;background:#E6F6FD;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px'});
         resumen.appendChild(el('span', {}, 'Total: ' + fmt(totGeneral) + '  ·  Pagado: ' + fmt(pagGeneral)));
@@ -1942,6 +1964,48 @@ function mEditAsig(a) {
 }
 
 // SUB ENTIDAD
+function mVincularEmpresaConeos(a) {
+  coneosCall('listar_empresas').then(function(empresas) {
+    if (!Array.isArray(empresas)) { alert('Error al cargar empresas ConeOS'); return; }
+    openM(makeModal('Vincular empresa ConeOS', function(body) {
+      var info = el('div', {style:'background:#FEF9C3;border:.5px solid #FDE68A;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#854F0B'});
+      info.appendChild(document.createTextNode('Seleccioná la empresa de ConeOS que corresponde a este cliente. Esto permite ver los módulos activos y el precio sugerido en Fases.'));
+      body.appendChild(info);
+      if (a.coneos_empresa_id) {
+        var actual = empresas.find(function(e){ return e.id === a.coneos_empresa_id; });
+        var actBox = el('div', {style:'background:#F0FDF4;border:.5px solid #BBF7D0;border-radius:8px;padding:8px 14px;margin-bottom:10px;font-size:12px;color:#166534'});
+        actBox.appendChild(document.createTextNode('✓ Vinculada: ' + (actual ? actual.nombre : a.coneos_empresa_id)));
+        body.appendChild(actBox);
+      }
+      var sel = el('select', {id:'cev-sel', style:'width:100%;padding:8px 10px;border:.5px solid #E2E8F0;border-radius:8px;font-size:13px'});
+      sel.appendChild(el('option', {value:''}, '— Elegir empresa —'));
+      empresas.forEach(function(e) {
+        var opt = el('option', {value: e.id}, e.nombre + (e.activo ? '' : ' (inactiva)'));
+        if (e.id === a.coneos_empresa_id) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      addFg(body, 'Empresa ConeOS', sel);
+    }, function(foot) {
+      foot.appendChild(cancelBtn());
+      var ok = el('button', {class:'btn btnp'}, 'Vincular');
+      ok.onclick = function() {
+        var empId = gv('cev-sel');
+        if (!empId) { alert('Elegí una empresa'); return; }
+        ok.textContent = 'Guardando...'; ok.disabled = true;
+        dbUpd('panel_asignaciones', a.id, {coneos_empresa_id: empId}).then(function() {
+          a.coneos_empresa_id = empId;
+          closeM();
+          vClientes();
+        }).catch(function(e) {
+          ok.textContent = 'Vincular'; ok.disabled = false;
+          alert('Error: ' + e.message);
+        });
+      };
+      foot.appendChild(ok);
+    }));
+  }).catch(function(e){ alert('Error: ' + e.message); });
+}
+
 function mSubEntidad(aid, tipo) {
   var et = tipo==='multi_usuario' ? 'usuario' : 'empresa';
   openM(makeModal('Alta de ' + et, function(body) {
