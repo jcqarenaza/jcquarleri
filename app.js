@@ -4645,6 +4645,8 @@ function vFinanzas() {
     
     // ---- JUNTADA ----
     (function(juntadaParticipantes, juntadaPagos, juntadaGastos) {
+      var collapsed = {};
+
       function renderJuntada() {
         var old = document.getElementById('juntada-section');
         if (old) old.remove();
@@ -4658,20 +4660,35 @@ function vFinanzas() {
         sec.appendChild(sh);
 
         var totalAportado = juntadaPagos.reduce(function(s,p){ return s+Number(p.importe); },0);
-        var totalGastado  = juntadaGastos.reduce(function(s,g){ return s+Number(g.importe); },0);
+        var gastosComunes = juntadaGastos.filter(function(g){ return g.tipo !== 'interes_mp'; });
+        var interesesMP = juntadaGastos.filter(function(g){ return g.tipo === 'interes_mp'; });
+        var totalGastado = gastosComunes.reduce(function(s,g){ return s+Number(g.importe); },0);
+        var totalIntereses = interesesMP.reduce(function(s,g){ return s+Number(g.importe); },0);
+        var senia = gastosComunes.find(function(g){ return g.descripcion && g.descripcion.toLowerCase().indexOf('se') >= 0 && g.descripcion.toLowerCase().indexOf('a') >= 0; });
+        var totalSenia = senia ? Number(senia.importe) : 0;
 
-        var resCard = el('div',{class:'card',style:'display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:14px;margin-bottom:10px'});
+        var resCard = el('div',{class:'card',style:'display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:14px;margin-bottom:10px'});
         [{label:'Total aportado',val:fmt(totalAportado),color:'#3D8A32'},
-         {label:'Total gastado', val:fmt(totalGastado), color:'#A32D2D'},
-         {label:'Disponible',    val:fmt(totalAportado-totalGastado), color:'#0B9EDA'},
+         {label:'Total gastado', val:fmt(totalGastado+totalIntereses), color:'#A32D2D'},
+         {label:'Intereses MP',  val:fmt(totalIntereses), color:'#854F0B'},
+         {label:'Disponible',    val:fmt(totalAportado-totalGastado-totalIntereses), color:'#0B9EDA'},
         ].forEach(function(m){
           var col=el('div',{style:'text-align:center'});
           col.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-bottom:4px'},m.label));
-          col.appendChild(el('div',{style:'font-size:20px;font-weight:700;color:'+m.color},m.val));
+          col.appendChild(el('div',{style:'font-size:18px;font-weight:700;color:'+m.color},m.val));
           resCard.appendChild(col);
         });
         sec.appendChild(resCard);
 
+        // Intereses MP — editable inline
+        var intBox = el('div',{style:'background:#FEF3C7;border:.5px solid #FDE68A;border-radius:8px;padding:10px 16px;margin-bottom:10px;display:flex;align-items:center;gap:12px'});
+        intBox.appendChild(el('span',{style:'font-size:13px;color:#854F0B;flex:1'},'Intereses MercadoPago: '+fmt(totalIntereses)));
+        var btnIntEdit = el('button',{class:'btn btnsm',style:'border-color:#FDE68A;color:#854F0B'},'Editar');
+        btnIntEdit.onclick = mEditarInteresesMP;
+        intBox.appendChild(btnIntEdit);
+        sec.appendChild(intBox);
+
+        // Tabla aportes por persona
         sec.appendChild(el('div',{class:'sh'},[el('span',{class:'st'},'Aportes por persona')]));
         var tblCard = el('div',{class:'card'});
         var tbl = el('table',{class:'tbl'});
@@ -4681,45 +4698,52 @@ function vFinanzas() {
         juntadaParticipantes.filter(function(p){return p.activo;}).forEach(function(part){
           var pagosP = juntadaPagos.filter(function(p){return p.participante_id===part.id;}).sort(function(a,b){return new Date(a.fecha)-new Date(b.fecha);});
           var subtotal = pagosP.reduce(function(s,p){return s+Number(p.importe);},0);
+          var isCollapsed = collapsed[part.id];
 
-          if (!pagosP.length) {
-            var tr=el('tr',{style:'background:#FAFAFA'});
-            tr.appendChild(el('td',{style:'font-weight:600;color:#1a2e4a'},part.nombre));
-            tr.appendChild(el('td',{style:'color:#94a3b8;font-size:12px'},'-'));
-            tr.appendChild(el('td',{style:'text-align:right;color:#94a3b8'},'-'));
-            tr.appendChild(el('td',{style:'text-align:right;color:#94a3b8'},'-'));
-            var tdBtn=el('td',{style:'text-align:right'});
-            var btnA=el('button',{class:'btn btnsm'},'+ Entrega');
-            (function(pp){btnA.onclick=function(){mNuevaEntrega(pp);};})(part);
-            tdBtn.appendChild(btnA); tr.appendChild(tdBtn);
-            tb.appendChild(tr);
-          } else {
-            pagosP.forEach(function(p,i){
-              var tr=el('tr');
-              var tdNom=el('td',{style:'font-weight:'+(i===0?'600':'400')+';color:'+(i===0?'#1a2e4a':'transparent')});
-              tdNom.textContent = i===0 ? part.nombre : '\u00B7';
-              tr.appendChild(tdNom);
-              tr.appendChild(el('td',{style:'font-size:12px;color:#64748B'},fdate(p.fecha)));
-              tr.appendChild(el('td',{style:'text-align:right'},fmt(p.importe)));
-              var isLast=i===pagosP.length-1;
-              tr.appendChild(el('td',{style:'text-align:right;font-weight:'+(isLast?'700':'400')+';color:'+(isLast?'#3D8A32':'transparent')},isLast?fmt(subtotal):'.'));
-              var tdAcc=el('td',{style:'text-align:right;white-space:nowrap'});
-              // Botón + Entrega siempre en la primera fila
-              if (i===0) {
-                var btnA2=el('button',{class:'btn btnsm'},'+ Entrega');
-                (function(pp){btnA2.onclick=function(){mNuevaEntrega(pp);};})(part);
-                tdAcc.appendChild(btnA2);
-              }
-              var btnX=el('button',{class:'btn btnsm',style:'color:#E53E3E;border-color:#FECACA;margin-left:4px'},'x');
-              (function(pp){btnX.onclick=function(){if(confirm('Eliminar entrega de '+fmt(pp.importe)+'?')){sbFetch('panel_juntada_pagos?id=eq.'+pp.id,{method:'DELETE',headers:{'Prefer':'return=minimal'}}).then(function(){juntadaPagos=juntadaPagos.filter(function(x){return x.id!==pp.id;});renderJuntada();});}};})(p);
-              tdAcc.appendChild(btnX);
-              tr.appendChild(tdAcc);
-              tb.appendChild(tr);
-            });
+          // Fila header del participante (siempre visible)
+          var trH = el('tr',{style:'background:#F8FAFC'});
+          var tdToggle = el('td',{style:'font-weight:600;color:#1a2e4a;cursor:pointer;user-select:none'});
+          var arrow = el('span',{style:'margin-right:6px;font-size:10px;color:#94a3b8'},isCollapsed?'\u25B6':'\u25BC');
+          tdToggle.appendChild(arrow);
+          tdToggle.appendChild(document.createTextNode(part.nombre));
+          (function(pid){ tdToggle.onclick = function(){ collapsed[pid]=!collapsed[pid]; renderJuntada(); }; })(part.id);
+          trH.appendChild(tdToggle);
+          trH.appendChild(el('td',{},''));
+          trH.appendChild(el('td',{style:'text-align:right;font-size:12px;color:#64748B'},pagosP.length ? pagosP.length+' entrega'+(pagosP.length!==1?'s':'') : '-'));
+          trH.appendChild(el('td',{style:'text-align:right;font-weight:700;color:'+(subtotal>0?'#3D8A32':'#94a3b8')},subtotal>0?fmt(subtotal):'-'));
+          var tdHAcc = el('td',{style:'text-align:right'});
+          var btnAH = el('button',{class:'btn btnsm'},'+ Entrega');
+          (function(pp){btnAH.onclick=function(e){e.stopPropagation();mNuevaEntrega(pp);};})(part);
+          tdHAcc.appendChild(btnAH);
+          trH.appendChild(tdHAcc);
+          tb.appendChild(trH);
+
+          // Filas de entregas (colapsables)
+          if (!isCollapsed) {
+            if (!pagosP.length) {
+              var trVacio = el('tr');
+              trVacio.appendChild(el('td',{colspan:'5',style:'text-align:center;font-size:12px;color:#94a3b8;padding:6px'},'Sin entregas'));
+              tb.appendChild(trVacio);
+            } else {
+              pagosP.forEach(function(p){
+                var tr=el('tr');
+                tr.appendChild(el('td',{style:'padding-left:24px;color:#64748B;font-size:13px'},''));
+                tr.appendChild(el('td',{style:'font-size:12px;color:#64748B'},fdate(p.fecha)));
+                tr.appendChild(el('td',{style:'text-align:right'},fmt(p.importe)));
+                tr.appendChild(el('td',{},''));
+                var tdAcc=el('td',{style:'text-align:right'});
+                var btnX=el('button',{class:'btn btnsm',style:'color:#E53E3E;border-color:#FECACA'},'x');
+                (function(pp){btnX.onclick=function(){if(confirm('Eliminar entrega de '+fmt(pp.importe)+'?')){sbFetch('panel_juntada_pagos?id=eq.'+pp.id,{method:'DELETE',headers:{'Prefer':'return=minimal'}}).then(function(){juntadaPagos=juntadaPagos.filter(function(x){return x.id!==pp.id;});renderJuntada();});}};})(p);
+                tdAcc.appendChild(btnX);
+                tr.appendChild(tdAcc);
+                tb.appendChild(tr);
+              });
+            }
           }
+
           var sep=el('tr');
-          var sepTd=el('td',{colspan:'5',style:'padding:0;border-top:.5px solid #F1F5F9'});
-          sep.appendChild(sepTd); tb.appendChild(sep);
+          sep.appendChild(elH('td',{colspan:'5',style:'padding:0;border-top:.5px solid #F1F5F9'},''));
+          tb.appendChild(sep);
         });
 
         var trTot=el('tr',{style:'background:#F0FDF4'});
@@ -4731,6 +4755,7 @@ function vFinanzas() {
         tb.appendChild(trTot);
         tbl.appendChild(tb); tblCard.appendChild(tbl); sec.appendChild(tblCard);
 
+        // Gastos comunes
         var gsh=el('div',{class:'sh',style:'display:flex;justify-content:space-between;align-items:center;margin-top:8px'});
         gsh.appendChild(el('span',{class:'st'},'Gastos comunes'));
         var btnG=el('button',{class:'btn btnsm'},'+ Gasto');
@@ -4739,13 +4764,13 @@ function vFinanzas() {
         sec.appendChild(gsh);
 
         var gtblCard=el('div',{class:'card'});
-        if (!juntadaGastos.length) {
+        if (!gastosComunes.length) {
           gtblCard.appendChild(el('div',{class:'emp'},'Sin gastos registrados'));
         } else {
           var gtbl=el('table',{class:'tbl'});
           gtbl.appendChild(elH('thead',{},'<tr><th>Descripci\xF3n</th><th>Fecha</th><th style="text-align:right">Importe</th><th></th></tr>'));
           var gtb=el('tbody');
-          juntadaGastos.forEach(function(g){
+          gastosComunes.forEach(function(g){
             var tr=el('tr');
             tr.appendChild(el('td',{},g.descripcion));
             tr.appendChild(el('td',{style:'font-size:12px;color:#64748B'},fdate(g.fecha)));
@@ -4814,8 +4839,40 @@ function vFinanzas() {
             var desc=gv('jg-desc').trim(); if(!desc){alert('Descripci\xF3n obligatoria');return;}
             var imp=Number(gv('jg-imp')||0); if(!imp){alert('Ingres\xE1 el importe');return;}
             ok.disabled=true;
-            dbIns('panel_juntada_gastos',{descripcion:desc,importe:imp,fecha:gv('jg-fec')})
+            dbIns('panel_juntada_gastos',{descripcion:desc,importe:imp,fecha:gv('jg-fec'),tipo:'gasto'})
             .then(function(r){ juntadaGastos.push(r[0]); closeM(); renderJuntada(); })
+            .catch(function(e){ alert('Error: '+e.message); ok.disabled=false; });
+          };
+          foot.appendChild(ok);
+        }));
+      }
+
+      function mEditarInteresesMP() {
+        var actual = juntadaGastos.filter(function(g){return g.tipo==='interes_mp';});
+        var totalActual = actual.reduce(function(s,g){return s+Number(g.importe);},0);
+        openM(makeModal('Intereses MercadoPago', function(body) {
+          var info = el('div',{style:'background:#FEF3C7;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#854F0B'});
+          info.appendChild(document.createTextNode('Total actual: '+fmt(totalActual)+'. Al guardar reemplaza el valor anterior.'));
+          body.appendChild(info);
+          addFg(body,'Intereses MP ($)',mkInput('ji-imp','number',totalActual||''));
+          addFg(body,'Fecha',mkInput('ji-fec','date',new Date().toISOString().slice(0,10)));
+        }, function(foot) {
+          foot.appendChild(cancelBtn());
+          var ok=el('button',{class:'btn btnp'},'Guardar');
+          ok.onclick=function(){
+            var imp=Number(gv('ji-imp')||0);
+            ok.disabled=true;
+            // Eliminar anteriores y crear nuevo
+            var delPromises = actual.map(function(g){
+              return sbFetch('panel_juntada_gastos?id=eq.'+g.id,{method:'DELETE',headers:{'Prefer':'return=minimal'}});
+            });
+            Promise.all(delPromises).then(function(){
+              juntadaGastos = juntadaGastos.filter(function(g){return g.tipo!=='interes_mp';});
+              if (imp > 0) {
+                return dbIns('panel_juntada_gastos',{descripcion:'Intereses MercadoPago',importe:imp,fecha:gv('ji-fec'),tipo:'interes_mp'})
+                .then(function(r){ juntadaGastos.push(r[0]); });
+              }
+            }).then(function(){ closeM(); renderJuntada(); })
             .catch(function(e){ alert('Error: '+e.message); ok.disabled=false; });
           };
           foot.appendChild(ok);
@@ -4824,6 +4881,7 @@ function vFinanzas() {
 
       renderJuntada();
     })(juntadaParticipantes, juntadaPagos, juntadaGastos);
+
 
     setApp(wrap);
   }).catch(function(e){ setApp(el('div',{class:'emp',style:'color:red'},'Error: '+e.message)); });
