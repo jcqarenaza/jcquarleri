@@ -4686,14 +4686,18 @@ function vFinanzas() {
         tbl.appendChild(elH('thead',{},'<tr><th>Participante</th><th style="text-align:center">Aportes</th><th style="text-align:right">Total aportado</th><th></th></tr>'));
         var tb = el('tbody');
         juntadaParticipantes.filter(function(p){ return p.activo; }).forEach(function(part) {
-          var pagosP = juntadaPagos.filter(function(p){ return p.participante_id===part.id && p.tipo==='aporte'; });
+          var pagosP = juntadaPagos.filter(function(p){ return p.participante_id===part.id; });
           var totalP = pagosP.reduce(function(s,p){ return s+Number(p.importe); }, 0);
+          var TIPO_COLOR = {aporte:'#3D8A32',senia:'#854F0B',pago:'#0B9EDA'};
+          var TIPO_BG = {aporte:'#EDF7EA',senia:'#FEF3C7',pago:'#E6F6FD'};
           var tr = el('tr');
           tr.appendChild(el('td', {style:'font-weight:500'}, part.nombre));
           // Aportes como chips
           var tdAp = el('td', {style:'text-align:center'});
           pagosP.forEach(function(p) {
-            var chip2 = el('span', {style:'display:inline-block;background:#EDF7EA;color:#3D8A32;border-radius:6px;padding:2px 8px;font-size:11px;margin:2px;cursor:pointer'}, fmt(p.importe)+' '+fdate(p.fecha));
+            var bg2 = TIPO_BG[p.tipo]||'#EDF7EA', col2 = TIPO_COLOR[p.tipo]||'#3D8A32';
+            var lbl2 = (p.tipo==='senia'?'$ ':p.tipo==='pago'?'💸 ':'')+fmt(p.importe)+' '+fdate(p.fecha)+(p.descripcion?' — '+p.descripcion:'');
+            var chip2 = el('span', {style:'display:inline-block;background:'+bg2+';color:'+col2+';border-radius:6px;padding:2px 8px;font-size:11px;margin:2px;cursor:pointer'}, lbl2);
             chip2.title = p.descripcion||'';
             (function(pp){ chip2.onclick = function(){ if(confirm('Eliminar aporte '+fmt(pp.importe)+'?')){ sbFetch('panel_juntada_pagos?id=eq.'+pp.id,{method:'DELETE',headers:{'Prefer':'return=minimal'}}).then(function(){ juntadaPagos=juntadaPagos.filter(function(x){return x.id!==pp.id;}); renderJuntada(); }); } }; })(p);
             tdAp.appendChild(chip2);
@@ -4764,7 +4768,24 @@ function vFinanzas() {
       }
 
       function mNuevoAporte(part) {
-        openM(makeModal('Aporte — '+part.nombre, function(body) {
+        var TIPOS = [['aporte','Aporte'],['senia','Seña'],['pago','Pago externo']];
+        openM(makeModal('Registrar — '+part.nombre, function(body) {
+          var selWrap = el('div', {style:'margin-bottom:12px'});
+          selWrap.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px'},'Tipo'));
+          var typeRow = el('div',{style:'display:flex;gap:6px'});
+          TIPOS.forEach(function(t) {
+            var btn = el('button',{id:'jt-'+t[0],class:'btn btnsm',style:'flex:1'},t[1]);
+            btn.onclick = function() {
+              TIPOS.forEach(function(tt){ var b=document.getElementById('jt-'+tt[0]); if(b){ b.style.background=''; b.style.color=''; b.style.borderColor=''; } });
+              btn.style.background='#0B9EDA'; btn.style.color='#fff'; btn.style.borderColor='#0B9EDA';
+              ge('ja-tipo').value = t[0];
+            };
+            typeRow.appendChild(btn);
+          });
+          selWrap.appendChild(typeRow);
+          selWrap.appendChild(el('input',{type:'hidden',id:'ja-tipo',value:'aporte'}));
+          body.appendChild(selWrap);
+          setTimeout(function(){ var b=document.getElementById('jt-aporte'); if(b){ b.style.background='#0B9EDA';b.style.color='#fff';b.style.borderColor='#0B9EDA'; } },50);
           mkRow2(body, mkFg('Importe ($)', mkInput('ja-imp','number','30000')), mkFg('Fecha', mkInput('ja-fec','date',new Date().toISOString().slice(0,10))));
           addFg(body, 'Descripción (opcional)', mkInput('ja-desc','text',''));
         }, function(foot) {
@@ -4772,11 +4793,12 @@ function vFinanzas() {
           var ok = el('button',{class:'btn btnp'},'Guardar');
           ok.onclick = function() {
             var imp = Number(gv('ja-imp')||0); if(!imp){alert('Ingresá el importe');return;}
+            var tipo = gv('ja-tipo')||'aporte';
             ok.disabled=true;
-            dbIns('panel_juntada_pagos',{participante_id:part.id,importe:imp,fecha:gv('ja-fec'),descripcion:gv('ja-desc')||null,tipo:'aporte'}).then(function(r){
+            dbIns('panel_juntada_pagos',{participante_id:part.id,importe:imp,fecha:gv('ja-fec'),descripcion:gv('ja-desc')||null,tipo:tipo}).then(function(r){
               juntadaPagos.push(r[0]);
               closeM(); renderJuntada();
-            });
+            }).catch(function(e){ alert('Error: '+e.message); ok.disabled=false; });
           };
           foot.appendChild(ok);
         }));
