@@ -4690,7 +4690,21 @@ function vFinanzas() {
         sec.appendChild(intBox);
 
         // Tabla aportes por persona
-        sec.appendChild(el('div',{class:'sh'},[el('span',{class:'st'},'Aportes por persona')]));
+        var aportesCollapsed = false;
+        var shAportes = el('div',{class:'sh',style:'display:flex;justify-content:space-between;align-items:center;cursor:pointer'});
+        var shAportesLeft = el('span',{style:'display:flex;align-items:center;gap:8px'});
+        var shAportesArrow = el('span',{style:'font-size:10px;color:#94a3b8'},'\u25BC');
+        shAportesLeft.appendChild(shAportesArrow);
+        shAportesLeft.appendChild(el('span',{class:'st'},'Aportes por persona'));
+        shAportes.appendChild(shAportesLeft);
+        var shAportesTotal = el('span',{style:'font-size:13px;font-weight:700;color:#3D8A32'},fmt(totalAportado));
+        shAportes.appendChild(shAportesTotal);
+        shAportes.onclick = function(){
+          aportesCollapsed = !aportesCollapsed;
+          shAportesArrow.textContent = aportesCollapsed ? '\u25B6' : '\u25BC';
+          tblCard.style.display = aportesCollapsed ? 'none' : '';
+        };
+        sec.appendChild(shAportes);
         var tblCard = el('div',{class:'card'});
         var tbl = el('table',{class:'tbl'});
         tbl.appendChild(elH('thead',{},'<tr><th>Qui\xE9n</th><th>Fecha</th><th style="text-align:right">Importe</th><th style="text-align:right">Subtotal</th><th></th></tr>'));
