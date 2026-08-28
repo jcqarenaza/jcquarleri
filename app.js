@@ -318,14 +318,32 @@ function gerarRecibo(d, numRec) {
 // ── DASHBOARD ──────────────────────────────────────────────────
 function vDash() {
   cargar().then(function(D) {
+    var hoy = new Date();
+    var mesActual = hoy.getMonth() + 1;
+    var anioActual = hoy.getFullYear();
     var als = calcAlertas(D.asigs, D.alertasDb);
     var pen = D.cobs.filter(function(c){ return c.estado==='pendiente'; });
     var totP = pen.reduce(function(s,c){ return s+Number(c.monto); }, 0);
-    var totC = D.cobs.filter(function(c){ return c.estado==='pagado'; }).reduce(function(s,c){ return s+Number(c.monto); }, 0);
-    var nCli = D.cls.length;
+    var cobradoMes = D.cobs.filter(function(c){
+      if (c.estado !== 'pagado' || !c.fecha_pago) return false;
+      var f = new Date(c.fecha_pago);
+      return f.getMonth()+1 === mesActual && f.getFullYear() === anioActual;
+    }).reduce(function(s,c){ return s+Number(c.monto); }, 0);
+    var clsConAsig = D.cls.filter(function(cl){ return D.asigs.some(function(a){ return a.cliente_id===cl.id; }); });
+    var clsSinSis = D.cls.filter(function(cl){ return !D.asigs.some(function(a){ return a.cliente_id===cl.id; }); });
+    var clsConDeuda = D.asigs.filter(function(a){ return totalFases(a) - pagadoImplementacion(a) > 0; }).map(function(a){ return a.cliente_id; });
+    var clsDeuda = D.cls.filter(function(cl){ return clsConDeuda.indexOf(cl.id) >= 0; });
+    var clsAlDia = clsConAsig.filter(function(cl){ return clsConDeuda.indexOf(cl.id) < 0; });
+    var proxVenc = pen.filter(function(c){
+      if (!c.fecha_vencimiento) return false;
+      var diff = (new Date(c.fecha_vencimiento) - hoy) / (1000*60*60*24);
+      return diff >= 0 && diff <= 30;
+    }).sort(function(a,b){ return new Date(a.fecha_vencimiento)-new Date(b.fecha_vencimiento); }).slice(0,5);
+    var ultCobs = D.cobs.filter(function(c){ return c.estado==='pagado' && c.fecha_pago; })
+      .sort(function(a,b){ return new Date(b.fecha_pago)-new Date(a.fecha_pago); }).slice(0,5);
     var wrap = el('div', {});
 
-    // Alerta banner
+    // Banner alertas
     if (als.length) {
       var banner = el('div', {class:'abanner'});
       banner.innerHTML = '&#128276;';
@@ -337,14 +355,17 @@ function vDash() {
       wrap.appendChild(banner);
     }
 
-    // Metricas
+    // Fila 1: KPIs del mes
+    wrap.appendChild(el('div', {class:'sh'}, [el('span', {class:'st'}, 'Este mes')]));
     var mets = el('div', {class:'mets'});
-    [{color:'#0B9EDA', label:'Sistemas activos', val:D.sis.filter(function(s){return s.activo;}).length+'/'+D.sis.length},
-     {color:'#5BBD4E', label:'Clientes', val:nCli},
-     {color:'#EF9F27', label:'Por cobrar', val:fmt(totP), sub:pen.length+' pendiente'+(pen.length!==1?'s':'')},
-     {color:'#7F77DD', label:'Total cobrado', val:fmt(totC)}
+    [
+      {color:'#EF9F27', label:'Por cobrar', val:fmt(totP), sub:pen.length+' pendiente'+(pen.length!==1?'s':'')},
+      {color:'#7F77DD', label:'Cobrado este mes', val:fmt(cobradoMes)},
+      {color:'#E53E3E', label:'Alertas', val:als.length, click:function(){ go('alertas'); }},
+      {color:'#0B9EDA', label:'Sistemas activos', val:D.sis.filter(function(s){return s.activo;}).length+'/'+D.sis.length},
     ].forEach(function(m) {
-      var met = el('div', {class:'met'});
+      var met = el('div', {class:'met', style:'cursor:'+(m.click?'pointer':'default')});
+      if (m.click) met.onclick = m.click;
       met.appendChild(el('div', {class:'mst', style:'background:'+m.color}));
       met.appendChild(el('div', {class:'mlb'}, m.label));
       met.appendChild(el('div', {class:'mv', style:'font-size:'+(m.val.toString().length>6?'18px':'26px')}, m.val));
@@ -353,58 +374,81 @@ function vDash() {
     });
     wrap.appendChild(mets);
 
-    // Tabla sistemas
-    if (D.sis.length) {
-      wrap.appendChild(el('div', {class:'sh'}, [el('span', {class:'st'}, 'Sistemas')]));
-      var card = el('div', {class:'card'});
-      var tbl = el('table', {class:'tbl'});
-      tbl.appendChild(elH('thead', {}, '<tr><th>Sistema</th><th>Plataforma</th><th>Impl.</th><th>Fee</th><th>Estado</th></tr>'));
-      var tb = el('tbody', {});
-      D.sis.forEach(function(s) {
-        var tr = el('tr', {});
-        var td1 = el('td', {}); td1.appendChild(chip(s.nombre));
-        if (s.url_produccion) td1.appendChild(el('div', {style:'font-size:11px;color:#94a3b8'}, s.url_produccion));
-        tr.appendChild(td1);
-        tr.appendChild(el('td', {}, [chipClass(P_LAB[s.plataforma]||s.plataforma, 'cb')]));
-        tr.appendChild(el('td', {style:'font-weight:500'}, fmt(s.costo_implementacion)));
-        tr.appendChild(el('td', {}, fmt(s.fee_mensual)+'/mes'));
-        tr.appendChild(el('td', {}, [chipClass(s.activo?'Activo':'Inactivo', s.activo?'cg':'cr')]));
-        tb.appendChild(tr);
+    // Fila 2: Estado clientes
+    wrap.appendChild(el('div', {class:'sh'}, [el('span', {class:'st'}, 'Estado de clientes')]));
+    var estadoCard = el('div', {class:'card', style:'display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:16px'});
+    [{label:'Al día', count:clsAlDia.length, color:'#3D8A32', bg:'#EDF7EA', items:clsAlDia},
+     {label:'Con saldo pendiente', count:clsDeuda.length, color:'#A32D2D', bg:'#FCEBEB', items:clsDeuda},
+     {label:'Sin sistema', count:clsSinSis.length, color:'#64748B', bg:'#F1F5F9', items:clsSinSis},
+    ].forEach(function(g) {
+      var col = el('div', {style:'background:'+g.bg+';border-radius:10px;padding:12px'});
+      col.appendChild(el('div', {style:'font-size:11px;font-weight:600;color:'+g.color+';text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px'}, g.label));
+      col.appendChild(el('div', {style:'font-size:28px;font-weight:700;color:'+g.color+';margin-bottom:8px'}, String(g.count)));
+      g.items.slice(0,4).forEach(function(cl){
+        col.appendChild(el('div', {style:'font-size:12px;color:#1a2e4a;padding:2px 0'}, cl.nombre+(cl.empresa?' — '+cl.empresa:'')));
       });
-      tbl.appendChild(tb);
-      card.appendChild(tbl);
-      wrap.appendChild(card);
-    }
+      if (g.items.length > 4) col.appendChild(el('div', {style:'font-size:11px;color:#94a3b8;margin-top:2px'}, '+'+(g.items.length-4)+' más'));
+      estadoCard.appendChild(col);
+    });
+    wrap.appendChild(estadoCard);
 
-    // Cobros pendientes
-    if (pen.length) {
-      wrap.appendChild(el('div', {class:'sh'}, [el('span', {class:'st'}, 'Cobros pendientes')]));
-      var card2 = el('div', {class:'card'});
-      var tbl2 = el('table', {class:'tbl'});
-      tbl2.appendChild(elH('thead', {}, '<tr><th>Cliente</th><th>Sistema</th><th>Tipo</th><th>Monto</th><th>Vence</th></tr>'));
-      var tb2 = el('tbody', {});
-      pen.forEach(function(c) {
-        var tr = el('tr', {});
-        tr.appendChild(el('td', {}, c._cli.nombre||'-'));
-        var td = el('td', {}); td.appendChild(chip(c._sis.nombre||'-')); tr.appendChild(td);
-        tr.appendChild(el('td', {}, [chipClass(c.tipo_cobro||'fee', 'cgr')]));
-        tr.appendChild(el('td', {style:'font-weight:500;color:#854f0b'}, fmt(c.monto)));
-        tr.appendChild(el('td', {}, fdate(c.fecha_vencimiento)));
-        tb2.appendChild(tr);
+    // Fila 3: Proximos vencimientos + Ultimos cobros
+    var row3 = el('div', {style:'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px'});
+
+    var vencWrap = el('div', {});
+    vencWrap.appendChild(el('div', {class:'sh'}, [el('span', {class:'st'}, 'Próximos vencimientos')]));
+    var vencCard = el('div', {class:'card'});
+    if (!proxVenc.length) {
+      vencCard.appendChild(el('div', {class:'emp'}, 'Sin vencimientos en los próximos 30 días'));
+    } else {
+      var vencTbl = el('table', {class:'tbl'});
+      vencTbl.appendChild(elH('thead',{},'<tr><th>Cliente</th><th>Sistema</th><th>Monto</th><th>Vence</th></tr>'));
+      var vencTb = el('tbody');
+      proxVenc.forEach(function(c) {
+        var diff = Math.round((new Date(c.fecha_vencimiento)-hoy)/(1000*60*60*24));
+        var col2 = diff<=3?'#A32D2D':diff<=7?'#854F0B':'#1a2e4a';
+        var tr = el('tr');
+        tr.appendChild(el('td',{},c._cli.nombre||'-'));
+        var td=el('td'); td.appendChild(chip(c._sis.nombre||'-')); tr.appendChild(td);
+        tr.appendChild(el('td',{style:'font-weight:500;color:#854f0b'},fmt(c.monto)));
+        tr.appendChild(el('td',{style:'color:'+col2+';font-size:12px'}, diff===0?'Hoy':diff===1?'Mañana':'En '+diff+'d'));
+        vencTb.appendChild(tr);
       });
-      tbl2.appendChild(tb2);
-      card2.appendChild(tbl2);
-      wrap.appendChild(card2);
+      vencTbl.appendChild(vencTb);
+      vencCard.appendChild(vencTbl);
     }
+    vencWrap.appendChild(vencCard);
+    row3.appendChild(vencWrap);
 
-    if (!D.sis.length && !pen.length) {
-      wrap.appendChild(el('div', {class:'card'}, [el('div', {class:'emp'}, 'Panel vacio - crea sistemas y clientes para empezar')]));
+    var cobsWrap = el('div', {});
+    cobsWrap.appendChild(el('div', {class:'sh'}, [el('span', {class:'st'}, 'Últimos cobros')]));
+    var cobsCard = el('div', {class:'card'});
+    if (!ultCobs.length) {
+      cobsCard.appendChild(el('div', {class:'emp'}, 'Sin cobros registrados'));
+    } else {
+      var cobsTbl = el('table', {class:'tbl'});
+      cobsTbl.appendChild(elH('thead',{},'<tr><th>Cliente</th><th>Sistema</th><th>Monto</th><th>Fecha</th></tr>'));
+      var cobsTb = el('tbody');
+      ultCobs.forEach(function(c) {
+        var tr = el('tr');
+        tr.appendChild(el('td',{},c._cli.nombre||'-'));
+        var td2=el('td'); td2.appendChild(chip(c._sis.nombre||'-')); tr.appendChild(td2);
+        tr.appendChild(el('td',{style:'font-weight:500;color:#3D8A32'},fmt(c.monto)));
+        tr.appendChild(el('td',{style:'font-size:12px;color:#64748B'},fdate(c.fecha_pago)));
+        cobsTb.appendChild(tr);
+      });
+      cobsTbl.appendChild(cobsTb);
+      cobsCard.appendChild(cobsTbl);
     }
+    cobsWrap.appendChild(cobsCard);
+    row3.appendChild(cobsWrap);
+    wrap.appendChild(row3);
     setApp(wrap);
   }).catch(function(e) {
     setApp(el('div', {class:'emp', style:'color:red'}, 'Error cargando datos: ' + e.message));
   });
 }
+
 
 // ── ALERTAS ────────────────────────────────────────────────────
 function vAlertas() {
