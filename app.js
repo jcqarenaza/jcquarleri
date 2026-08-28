@@ -2634,7 +2634,10 @@ function vFinanzas() {
     sbFetch('panel_pf_prestamos_pagos?select=*&order=fecha.asc').catch(function(){ return []; }),
     sbFetch('panel_pf_auto_registros?select=*&order=kms.desc.nullslast,fecha.desc.nullslast').catch(function(){ return []; }),
     sbFetch('panel_pf_deudas_movimientos?select=*&order=fecha.asc').catch(function(){ return []; }),
-    sbFetch('panel_pf_musica?select=*&order=fecha.asc').catch(function(){ return []; })
+    sbFetch('panel_pf_musica?select=*&order=fecha.asc').catch(function(){ return []; }),
+    sbFetch('panel_juntada_participantes?select=*&order=created_at.asc').catch(function(){ return []; }),
+    sbFetch('panel_juntada_pagos?select=*&order=fecha.asc').catch(function(){ return []; }),
+    sbFetch('panel_juntada_gastos?select=*&order=fecha.asc').catch(function(){ return []; })
   ]).then(function(r) {
     var cobros=r[0], gastos=r[1], ingresos=r[2], sistemas=r[3], clientes=r[4];
     var dolarData=r[5], pagoGastos=r[6], config=r[7]||[];
@@ -2645,6 +2648,7 @@ function vFinanzas() {
     var prestamosPagosPF=r[19]||[], autoPF=r[20]||[];
     var deudasMovsPF=r[21]||[];
     var musicaPF=r[22]||[];
+    var juntadaParticipantes=r[23]||[], juntadaPagos=r[24]||[], juntadaGastos=r[25]||[];
     var mesActualPF = (mesesPF.find(function(m){ return m.status==='open'; }) || mesesPF[mesesPF.length-1] || {}).id || null;
 
     pagoGastosPers = pagoGastosPers.map(function(p) {
@@ -4638,6 +4642,169 @@ function vFinanzas() {
     }
 
     renderAll();
+    
+    // ---- JUNTADA ----
+    (function() {
+      var TITULO = 'Juntada 2026 — 5 al 8/12 San Rafael';
+      var INTERES_MP = 0.00277; // 0.277% por dia
+
+      function renderJuntada() {
+        var old = document.getElementById('juntada-section');
+        if (old) old.remove();
+        var sec = el('div', {id:'juntada-section'});
+
+        var sh = el('div', {class:'sh', style:'display:flex;justify-content:space-between;align-items:center'});
+        sh.appendChild(el('span', {class:'st'}, '🎲 Juntada — San Rafael 2026'));
+        var btnNuevoPart = el('button', {class:'btn btnsm'}, '+ Participante');
+        btnNuevoPart.onclick = mNuevoParticipante;
+        sh.appendChild(btnNuevoPart);
+        sec.appendChild(sh);
+
+        // Calculos globales
+        var totalAportado = juntadaPagos.filter(function(p){ return p.tipo==='aporte'; }).reduce(function(s,p){ return s+Number(p.importe); }, 0);
+        var totalGastado = juntadaGastos.reduce(function(s,g){ return s+Number(g.importe); }, 0);
+        var senia = juntadaPagos.filter(function(p){ return p.tipo==='senia'; }).reduce(function(s,p){ return s+Number(p.importe); }, 0);
+
+        // Resumen global
+        var resCard = el('div', {class:'card', style:'display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:14px;margin-bottom:10px'});
+        [
+          {label:'Total aportado', val:fmt(totalAportado), color:'#3D8A32'},
+          {label:'Total gastado', val:fmt(totalGastado), color:'#A32D2D'},
+          {label:'Seña pagada', val:fmt(senia), color:'#854F0B'},
+          {label:'Disponible', val:fmt(totalAportado - totalGastado - senia), color:'#0B9EDA'},
+        ].forEach(function(m) {
+          var col = el('div', {style:'text-align:center'});
+          col.appendChild(el('div', {style:'font-size:11px;color:#64748B;margin-bottom:4px'}, m.label));
+          col.appendChild(el('div', {style:'font-size:18px;font-weight:700;color:'+m.color}, m.val));
+          resCard.appendChild(col);
+        });
+        sec.appendChild(resCard);
+
+        // Tabla por participante
+        var tblCard = el('div', {class:'card'});
+        var tbl = el('table', {class:'tbl'});
+        tbl.appendChild(elH('thead',{},'<tr><th>Participante</th><th style="text-align:center">Aportes</th><th style="text-align:right">Total aportado</th><th></th></tr>'));
+        var tb = el('tbody');
+        juntadaParticipantes.filter(function(p){ return p.activo; }).forEach(function(part) {
+          var pagosP = juntadaPagos.filter(function(p){ return p.participante_id===part.id && p.tipo==='aporte'; });
+          var totalP = pagosP.reduce(function(s,p){ return s+Number(p.importe); }, 0);
+          var tr = el('tr');
+          tr.appendChild(el('td', {style:'font-weight:500'}, part.nombre));
+          // Aportes como chips
+          var tdAp = el('td', {style:'text-align:center'});
+          pagosP.forEach(function(p) {
+            var chip2 = el('span', {style:'display:inline-block;background:#EDF7EA;color:#3D8A32;border-radius:6px;padding:2px 8px;font-size:11px;margin:2px;cursor:pointer'}, fmt(p.importe)+' '+fdate(p.fecha));
+            chip2.title = p.descripcion||'';
+            (function(pp){ chip2.onclick = function(){ if(confirm('Eliminar aporte '+fmt(pp.importe)+'?')){ sbFetch('panel_juntada_pagos?id=eq.'+pp.id,{method:'DELETE',headers:{'Prefer':'return=minimal'}}).then(function(){ juntadaPagos=juntadaPagos.filter(function(x){return x.id!==pp.id;}); renderJuntada(); }); } }; })(p);
+            tdAp.appendChild(chip2);
+          });
+          tr.appendChild(tdAp);
+          tr.appendChild(el('td', {style:'text-align:right;font-weight:700;color:#3D8A32'}, fmt(totalP)));
+          var tdAcc = el('td', {style:'text-align:right'});
+          var btnAp = el('button', {class:'btn btnsm'}, '+ Aporte');
+          (function(pp){ btnAp.onclick = function(){ mNuevoAporte(pp); }; })(part);
+          tdAcc.appendChild(btnAp);
+          tr.appendChild(tdAcc);
+          tb.appendChild(tr);
+        });
+        tbl.appendChild(tb);
+        tblCard.appendChild(tbl);
+        sec.appendChild(tblCard);
+
+        // Gastos comunes
+        var gsh = el('div', {class:'sh', style:'display:flex;justify-content:space-between;align-items:center;margin-top:8px'});
+        gsh.appendChild(el('span', {class:'st'}, 'Gastos comunes'));
+        var btnGasto = el('button', {class:'btn btnsm'}, '+ Gasto');
+        btnGasto.onclick = mNuevoGasto;
+        gsh.appendChild(btnGasto);
+        sec.appendChild(gsh);
+
+        var gtblCard = el('div', {class:'card'});
+        if (!juntadaGastos.length) {
+          gtblCard.appendChild(el('div', {class:'emp'}, 'Sin gastos registrados'));
+        } else {
+          var gtbl = el('table', {class:'tbl'});
+          gtbl.appendChild(elH('thead',{},'<tr><th>Descripción</th><th>Fecha</th><th style="text-align:right">Importe</th><th></th></tr>'));
+          var gtb = el('tbody');
+          juntadaGastos.forEach(function(g) {
+            var tr = el('tr');
+            tr.appendChild(el('td',{},g.descripcion));
+            tr.appendChild(el('td',{style:'font-size:12px;color:#64748B'},fdate(g.fecha)));
+            tr.appendChild(el('td',{style:'text-align:right;font-weight:500;color:#A32D2D'},fmt(g.importe)));
+            var tdX = el('td');
+            var btnX = el('button',{class:'btn btnsm',style:'color:#E53E3E;border-color:#FECACA'},'x');
+            (function(gg){ btnX.onclick = function(){ if(confirm('Eliminar gasto?')){ sbFetch('panel_juntada_gastos?id=eq.'+gg.id,{method:'DELETE',headers:{'Prefer':'return=minimal'}}).then(function(){ juntadaGastos=juntadaGastos.filter(function(x){return x.id!==gg.id;}); renderJuntada(); }); } }; })(g);
+            tdX.appendChild(btnX); tr.appendChild(tdX);
+            gtb.appendChild(tr);
+          });
+          gtbl.appendChild(gtb);
+          gtblCard.appendChild(gtbl);
+        }
+        sec.appendChild(gtblCard);
+
+        wrap.appendChild(sec);
+      }
+
+      function mNuevoParticipante() {
+        openM(makeModal('Nuevo participante', function(body) {
+          addFg(body, 'Nombre', mkInput('jp-nom','text',''));
+        }, function(foot) {
+          foot.appendChild(cancelBtn());
+          var ok = el('button',{class:'btn btnp'},'Agregar');
+          ok.onclick = function() {
+            var nom = gv('jp-nom').trim(); if(!nom){alert('Nombre obligatorio');return;}
+            ok.disabled=true;
+            dbIns('panel_juntada_participantes',{nombre:nom,activo:true}).then(function(r){
+              juntadaParticipantes.push(r[0]);
+              closeM(); renderJuntada();
+            });
+          };
+          foot.appendChild(ok);
+        }));
+      }
+
+      function mNuevoAporte(part) {
+        openM(makeModal('Aporte — '+part.nombre, function(body) {
+          mkRow2(body, mkFg('Importe ($)', mkInput('ja-imp','number','30000')), mkFg('Fecha', mkInput('ja-fec','date',new Date().toISOString().slice(0,10))));
+          addFg(body, 'Descripción (opcional)', mkInput('ja-desc','text',''));
+        }, function(foot) {
+          foot.appendChild(cancelBtn());
+          var ok = el('button',{class:'btn btnp'},'Guardar');
+          ok.onclick = function() {
+            var imp = Number(gv('ja-imp')||0); if(!imp){alert('Ingresá el importe');return;}
+            ok.disabled=true;
+            dbIns('panel_juntada_pagos',{participante_id:part.id,importe:imp,fecha:gv('ja-fec'),descripcion:gv('ja-desc')||null,tipo:'aporte'}).then(function(r){
+              juntadaPagos.push(r[0]);
+              closeM(); renderJuntada();
+            });
+          };
+          foot.appendChild(ok);
+        }));
+      }
+
+      function mNuevoGasto() {
+        openM(makeModal('Nuevo gasto', function(body) {
+          addFg(body, 'Descripción', mkInput('jg-desc','text',''));
+          mkRow2(body, mkFg('Importe ($)', mkInput('jg-imp','number','0')), mkFg('Fecha', mkInput('jg-fec','date',new Date().toISOString().slice(0,10))));
+        }, function(foot) {
+          foot.appendChild(cancelBtn());
+          var ok = el('button',{class:'btn btnp'},'Guardar');
+          ok.onclick = function() {
+            var desc = gv('jg-desc').trim(); if(!desc){alert('Descripción obligatoria');return;}
+            var imp = Number(gv('jg-imp')||0); if(!imp){alert('Ingresá el importe');return;}
+            ok.disabled=true;
+            dbIns('panel_juntada_gastos',{descripcion:desc,importe:imp,fecha:gv('jg-fec')}).then(function(r){
+              juntadaGastos.push(r[0]);
+              closeM(); renderJuntada();
+            });
+          };
+          foot.appendChild(ok);
+        }));
+      }
+
+      renderJuntada();
+    })();
+
     setApp(wrap);
   }).catch(function(e){ setApp(el('div',{class:'emp',style:'color:red'},'Error: '+e.message)); });
 }
