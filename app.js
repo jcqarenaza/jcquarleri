@@ -4644,7 +4644,7 @@ function vFinanzas() {
     renderAll();
     
     // ---- JUNTADA ----
-    (function() {
+    (function(juntadaParticipantes, juntadaPagos, juntadaGastos) {
       function renderJuntada() {
         var old = document.getElementById('juntada-section');
         if (old) old.remove();
@@ -4704,7 +4704,8 @@ function vFinanzas() {
               var isLast=i===pagosP.length-1;
               tr.appendChild(el('td',{style:'text-align:right;font-weight:'+(isLast?'700':'400')+';color:'+(isLast?'#3D8A32':'transparent')},isLast?fmt(subtotal):'.'));
               var tdAcc=el('td',{style:'text-align:right;white-space:nowrap'});
-              if (isLast) {
+              // Botón + Entrega siempre en la primera fila
+              if (i===0) {
                 var btnA2=el('button',{class:'btn btnsm'},'+ Entrega');
                 (function(pp){btnA2.onclick=function(){mNuevaEntrega(pp);};})(part);
                 tdAcc.appendChild(btnA2);
@@ -4822,7 +4823,7 @@ function vFinanzas() {
       }
 
       renderJuntada();
-    })();
+    })(juntadaParticipantes, juntadaPagos, juntadaGastos);
 
     setApp(wrap);
   }).catch(function(e){ setApp(el('div',{class:'emp',style:'color:red'},'Error: '+e.message)); });
