@@ -4645,8 +4645,8 @@ function vFinanzas() {
     
     // ---- JUNTADA ----
     (function(juntadaParticipantes, juntadaPagos, juntadaGastos) {
-      var collapsed = {_default: true};
-      function isCollapsed(id){ return collapsed[id] !== false; }
+      var collapsed = {};
+      function checkCollapsed(id){ return collapsed[id] !== false; }
 
       function renderJuntada() {
         var old = document.getElementById('juntada-section');
@@ -4699,15 +4699,15 @@ function vFinanzas() {
         juntadaParticipantes.filter(function(p){return p.activo;}).forEach(function(part){
           var pagosP = juntadaPagos.filter(function(p){return p.participante_id===part.id;}).sort(function(a,b){return new Date(a.fecha)-new Date(b.fecha);});
           var subtotal = pagosP.reduce(function(s,p){return s+Number(p.importe);},0);
-          var isCollapsed = isCollapsed(part.id);
+          var partCollapsed = checkCollapsed(part.id);
 
           // Fila header del participante (siempre visible)
           var trH = el('tr',{style:'background:#F8FAFC'});
           var tdToggle = el('td',{style:'font-weight:600;color:#1a2e4a;cursor:pointer;user-select:none'});
-          var arrow = el('span',{style:'margin-right:6px;font-size:10px;color:#94a3b8'},isCollapsed?'\u25B6':'\u25BC');
+          var arrow = el('span',{style:'margin-right:6px;font-size:10px;color:#94a3b8'},partCollapsed?'\u25B6':'\u25BC');
           tdToggle.appendChild(arrow);
           tdToggle.appendChild(document.createTextNode(part.nombre));
-          (function(pid){ tdToggle.onclick = function(){ collapsed[pid] = isCollapsed(pid) ? false : true; renderJuntada(); }; })(part.id);
+          (function(pid){ tdToggle.onclick = function(){ collapsed[pid] = checkCollapsed(pid) ? false : true; renderJuntada(); }; })(part.id);
           trH.appendChild(tdToggle);
           trH.appendChild(el('td',{},''));
           trH.appendChild(el('td',{style:'text-align:right;font-size:12px;color:#64748B'},pagosP.length ? pagosP.length+' entrega'+(pagosP.length!==1?'s':'') : '-'));
@@ -4720,7 +4720,7 @@ function vFinanzas() {
           tb.appendChild(trH);
 
           // Filas de entregas (colapsables)
-          if (!isCollapsed) {
+          if (!partCollapsed) {
             if (!pagosP.length) {
               var trVacio = el('tr');
               trVacio.appendChild(el('td',{colspan:'5',style:'text-align:center;font-size:12px;color:#94a3b8;padding:6px'},'Sin entregas'));
