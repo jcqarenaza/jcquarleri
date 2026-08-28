@@ -4645,7 +4645,8 @@ function vFinanzas() {
     
     // ---- JUNTADA ----
     (function(juntadaParticipantes, juntadaPagos, juntadaGastos) {
-      var collapsed = {};
+      var collapsed = {_default: true};
+      function isCollapsed(id){ return collapsed[id] !== false; }
 
       function renderJuntada() {
         var old = document.getElementById('juntada-section');
@@ -4669,9 +4670,9 @@ function vFinanzas() {
 
         var resCard = el('div',{class:'card',style:'display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:14px;margin-bottom:10px'});
         [{label:'Total aportado',val:fmt(totalAportado),color:'#3D8A32'},
-         {label:'Total gastado', val:fmt(totalGastado+totalIntereses), color:'#A32D2D'},
+         {label:'Total gastado', val:fmt(totalGastado), color:'#A32D2D'},
          {label:'Intereses MP',  val:fmt(totalIntereses), color:'#854F0B'},
-         {label:'Disponible',    val:fmt(totalAportado-totalGastado-totalIntereses), color:'#0B9EDA'},
+         {label:'Disponible',    val:fmt(totalAportado+totalIntereses-totalGastado), color:'#0B9EDA'},
         ].forEach(function(m){
           var col=el('div',{style:'text-align:center'});
           col.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-bottom:4px'},m.label));
@@ -4698,7 +4699,7 @@ function vFinanzas() {
         juntadaParticipantes.filter(function(p){return p.activo;}).forEach(function(part){
           var pagosP = juntadaPagos.filter(function(p){return p.participante_id===part.id;}).sort(function(a,b){return new Date(a.fecha)-new Date(b.fecha);});
           var subtotal = pagosP.reduce(function(s,p){return s+Number(p.importe);},0);
-          var isCollapsed = collapsed[part.id];
+          var isCollapsed = isCollapsed(part.id);
 
           // Fila header del participante (siempre visible)
           var trH = el('tr',{style:'background:#F8FAFC'});
@@ -4706,7 +4707,7 @@ function vFinanzas() {
           var arrow = el('span',{style:'margin-right:6px;font-size:10px;color:#94a3b8'},isCollapsed?'\u25B6':'\u25BC');
           tdToggle.appendChild(arrow);
           tdToggle.appendChild(document.createTextNode(part.nombre));
-          (function(pid){ tdToggle.onclick = function(){ collapsed[pid]=!collapsed[pid]; renderJuntada(); }; })(part.id);
+          (function(pid){ tdToggle.onclick = function(){ collapsed[pid] = isCollapsed(pid) ? false : true; renderJuntada(); }; })(part.id);
           trH.appendChild(tdToggle);
           trH.appendChild(el('td',{},''));
           trH.appendChild(el('td',{style:'text-align:right;font-size:12px;color:#64748B'},pagosP.length ? pagosP.length+' entrega'+(pagosP.length!==1?'s':'') : '-'));
