@@ -5586,6 +5586,7 @@ function calcImplConeos(modulos) {
   if (modulos.delivery)    extra += 150000;
   if (modulos.facturacion) extra += 100000;
   if (modulos.mercadopago) extra += 100000;
+  if (modulos.beneficios)  extra += 100000;
   return base + extra;
 }
 
@@ -5693,7 +5694,7 @@ function mModulosConeOS(emp) {
       benefRow.appendChild(benefDot);
       var benefTit = el('div', {style:'flex:1'});
       benefTit.appendChild(el('div', {style:'font-weight:600;font-size:13px;color:#1a2e4a'}, 'Programa de Beneficios'));
-      benefTit.appendChild(el('div', {style:'font-size:11px;color:#64748B;margin-top:2px'}, 'Los clientes acumulan puntos al comprar — sin redeploy'));
+      benefTit.appendChild(el('div', {style:'font-size:11px;color:#64748B;margin-top:2px'}, 'Los clientes acumulan puntos al comprar — impl. +$100.000'));
       benefRow.appendChild(benefTit);
       var benefTog = el('label', {class:'tog'});
       var benefInp = el('input', {type:'checkbox', id:'mod-beneficios'});
