@@ -5590,7 +5590,12 @@ function calcImplConeos(modulos) {
 }
 
 function mModulosConeOS(emp) {
-  coneosCall('get_modulos', { empresa_id: emp.id }).then(function(modulos) {
+  Promise.all([
+    coneosCall('get_modulos', { empresa_id: emp.id }),
+    coneosCall('get_beneficios_config', { empresa_id: emp.id })
+  ]).then(function(results) {
+    var modulos = results[0];
+    var benefConfig = results[1] || {};
     var MODULOS = [
       { key: 'kiosk',       label: 'Kiosk',        desc: 'Pantalla táctil para clientes — pedidos en mostrador', color: '#0B9EDA', base: true },
       { key: 'caja',        label: 'Caja',          desc: 'Gestión de pagos, cobros y arqueo de caja',           color: '#3D8A32', base: true },
@@ -5632,12 +5637,11 @@ function mModulosConeOS(emp) {
           mod[m.key] = inp ? inp.checked : false;
         });
         resImplVal.textContent = fmt(calcImplConeos(mod));
-        // fee: usamos dispActivos del contexto si está disponible, sino 1
         var disp = emp._dispActivos || 1;
         resFeeVal.textContent = fmt(calcFeeConeos(disp, emp.slug)) + '/mes';
       }
 
-      // Módulos base (siempre activos, no toggleables)
+      // Módulos base
       var baseWrap = el('div', {style:'margin-bottom:6px'});
       baseWrap.appendChild(el('div', {style:'font-size:11px;font-weight:500;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px'}, 'Módulos base — incluidos ($500.000)'));
       MODULOS.filter(function(m){ return m.base; }).forEach(function(m) {
@@ -5653,7 +5657,7 @@ function mModulosConeOS(emp) {
       });
       body.appendChild(baseWrap);
 
-      // Módulos extra (toggleables)
+      // Módulos extra
       var extraWrap = el('div', {style:'margin-top:10px'});
       extraWrap.appendChild(el('div', {style:'font-size:11px;font-weight:500;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px'}, 'Módulos adicionales'));
       MODULOS.filter(function(m){ return !m.base; }).forEach(function(m) {
@@ -5678,8 +5682,39 @@ function mModulosConeOS(emp) {
         card.appendChild(row);
         extraWrap.appendChild(card);
       });
-      body.appendChild(extraWrap);
 
+      // --- Módulo Programa de Beneficios ---
+      var benefActivo = !!benefConfig.activo;
+      var benefPPP = benefConfig.pesos_por_punto || 1000;
+      var benefColor = '#8B5CF6';
+      var benefCard = el('div', {style:'border:.5px solid '+(benefActivo?benefColor:'#E2E8F0')+';border-radius:10px;padding:11px 14px;margin-bottom:8px;background:'+(benefActivo?'#FAF8FF':'#FAFAFA')+';transition:border .15s'});
+      var benefRow = el('div', {style:'display:flex;align-items:center;gap:10px'});
+      var benefDot = el('div', {style:'width:10px;height:10px;border-radius:50%;flex-shrink:0;background:'+benefColor});
+      benefRow.appendChild(benefDot);
+      var benefTit = el('div', {style:'flex:1'});
+      benefTit.appendChild(el('div', {style:'font-weight:600;font-size:13px;color:#1a2e4a'}, 'Programa de Beneficios'));
+      benefTit.appendChild(el('div', {style:'font-size:11px;color:#64748B;margin-top:2px'}, 'Los clientes acumulan puntos al comprar — sin redeploy'));
+      benefRow.appendChild(benefTit);
+      var benefTog = el('label', {class:'tog'});
+      var benefInp = el('input', {type:'checkbox', id:'mod-beneficios'});
+      if (benefActivo) benefInp.checked = true;
+      benefInp.addEventListener('change', function() {
+        benefCard.style.border = '.5px solid '+(benefInp.checked ? benefColor : '#E2E8F0');
+        benefPPPBox.style.display = benefInp.checked ? '' : 'none';
+      });
+      benefTog.appendChild(benefInp); benefTog.appendChild(el('span', {class:'sl'}));
+      benefRow.appendChild(benefTog);
+      benefCard.appendChild(benefRow);
+      // Input pesos por punto
+      var benefPPPBox = el('div', {style:'margin-top:10px;display:'+(benefActivo?'':'none')});
+      var benefPPPLabel = el('div', {style:'font-size:11px;color:#64748B;margin-bottom:4px'}, 'Pesos por punto (cada X pesos = 1 punto)');
+      var benefPPPInp = mkInput('mod-beneficios-ppp', 'number', benefPPP);
+      benefPPPBox.appendChild(benefPPPLabel);
+      benefPPPBox.appendChild(benefPPPInp);
+      benefCard.appendChild(benefPPPBox);
+      extraWrap.appendChild(benefCard);
+
+      body.appendChild(extraWrap);
       actualizarResumen();
 
     }, function(foot) {
@@ -5692,8 +5727,14 @@ function mModulosConeOS(emp) {
           nuevosModulos[m.key] = inp ? inp.checked : false;
         });
         ok.textContent = 'Guardando...'; ok.disabled = true;
-        coneosCall('actualizar_modulos', { empresa_id: emp.id, modulos: nuevosModulos }).then(function(r) {
-          if (r.error) { alert('Error: '+r.error); ok.textContent = 'Guardar módulos'; ok.disabled = false; return; }
+        var benefActivoNuevo = document.getElementById('mod-beneficios').checked;
+        var benefPPPNuevo = Number(document.getElementById('mod-beneficios-ppp').value || 1000);
+        Promise.all([
+          coneosCall('actualizar_modulos', { empresa_id: emp.id, modulos: nuevosModulos }),
+          coneosCall('upsert_beneficios_config', { empresa_id: emp.id, activo: benefActivoNuevo, pesos_por_punto: benefPPPNuevo })
+        ]).then(function(rs) {
+          if (rs[0].error) { alert('Error módulos: '+rs[0].error); ok.textContent = 'Guardar módulos'; ok.disabled = false; return; }
+          if (rs[1].error) { alert('Error beneficios: '+rs[1].error); ok.textContent = 'Guardar módulos'; ok.disabled = false; return; }
           closeM();
         }).catch(function(){ ok.textContent = 'Guardar módulos'; ok.disabled = false; });
       };
