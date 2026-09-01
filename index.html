@@ -94,12 +94,126 @@ textarea.fi{resize:vertical;min-height:64px}
   <div style="background:var(--surface);border:.5px solid var(--border);border-radius:16px;padding:40px 48px;width:320px;box-shadow:0 8px 32px rgba(0,0,0,.08);text-align:center">
     <div style="font-size:22px;font-weight:700;color:var(--tx);margin-bottom:6px">QP C&IA</div>
     <div style="font-size:13px;color:var(--tx2);margin-bottom:28px">Panel de operaciones</div>
+    <button id="faceid-btn" onclick="doFaceID()" style="display:none;width:100%;padding:12px;background:#1a2e4a;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:500;cursor:pointer;margin-bottom:12px">🔒 Face ID / Touch ID</button>
     <input id="login-pass" type="password" placeholder="Contraseña" style="width:100%;padding:10px 14px;border:.5px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);color:var(--tx);outline:none;margin-bottom:12px;display:block">
-    <div id="login-err" style="color:#E53E3E;font-size:12px;margin-bottom:8px;display:none">Contraseña incorrecta</div>
-    <button onclick="doLogin()" style="width:100%;padding:10px;background:var(--ac);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer">Entrar</button>
+    <div id="login-err" style="color:#E53E3E;font-size:12px;margin-bottom:8px;display:none"></div>
+    <button onclick="doLogin()" style="width:100%;padding:10px;background:var(--ac);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;margin-bottom:10px">Entrar</button>
+    <div id="webauthn-register" style="display:none;margin-top:8px">
+      <button onclick="registerFaceID()" style="width:100%;padding:8px;background:none;color:var(--tx2);border:.5px solid var(--border);border-radius:8px;font-size:12px;cursor:pointer">+ Registrar Face ID en este dispositivo</button>
+    </div>
   </div>
 </div>
 <script>
+var SUPABASE_URL = 'https://tviiikkdskucmgcmtswu.supabase.co';
+var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR2aWlpa2tkc2t1Y21nY210c3d1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDM4MDI0MzMsImV4cCI6MjAxOTM3ODQzM30.VPEANTqGBnjVfHsXsiSHBYt4LXqJxDzKRuOEaQC-NsM';
+var RP_ID = 'jcquarleri.vercel.app';
+
+function unlockPanel() {
+  sessionStorage.setItem('qp_auth','ok');
+  document.getElementById('login-screen').style.display='none';
+  document.body.style.overflow='';
+}
+
+function showErr(msg) {
+  var e = document.getElementById('login-err');
+  e.textContent = msg;
+  e.style.display = 'block';
+}
+
+// Verificar si hay credencial guardada en este dispositivo
+async function checkFaceIDAvailable() {
+  if (!window.PublicKeyCredential) return;
+  try {
+    var available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+    if (!available) return;
+    // Buscar si hay credenciales registradas en Supabase
+    var res = await fetch(SUPABASE_URL + '/rest/v1/panel_webauthn_credentials?select=credential_id&limit=1', {
+      headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY }
+    });
+    var rows = await res.json();
+    if (rows && rows.length > 0) {
+      document.getElementById('faceid-btn').style.display = 'block';
+    }
+    // Mostrar opción de registro si ya autenticó con password
+    if (sessionStorage.getItem('qp_show_register') === '1') {
+      document.getElementById('webauthn-register').style.display = 'block';
+      sessionStorage.removeItem('qp_show_register');
+    }
+  } catch(e) {}
+}
+
+async function doFaceID() {
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/panel_webauthn_credentials?select=credential_id,public_key', {
+      headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY }
+    });
+    var rows = await res.json();
+    if (!rows || !rows.length) { showErr('Sin credencial registrada'); return; }
+
+    var allowCreds = rows.map(function(r) {
+      return {
+        id: Uint8Array.from(atob(r.credential_id.replace(/-/g,'+').replace(/_/g,'/')), function(c){ return c.charCodeAt(0); }),
+        type: 'public-key',
+        transports: ['internal']
+      };
+    });
+
+    var challenge = crypto.getRandomValues(new Uint8Array(32));
+    var assertion = await navigator.credentials.get({
+      publicKey: {
+        challenge: challenge,
+        rpId: RP_ID,
+        allowCredentials: allowCreds,
+        userVerification: 'required',
+        timeout: 60000
+      }
+    });
+    if (assertion) unlockPanel();
+  } catch(e) {
+    showErr('Face ID cancelado o no disponible');
+  }
+}
+
+async function registerFaceID() {
+  try {
+    var challenge = crypto.getRandomValues(new Uint8Array(32));
+    var userId = crypto.getRandomValues(new Uint8Array(16));
+    var cred = await navigator.credentials.create({
+      publicKey: {
+        challenge: challenge,
+        rp: { name: 'QP C&IA', id: RP_ID },
+        user: { id: userId, name: 'admin', displayName: 'Admin QP' },
+        pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+        authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required' },
+        timeout: 60000,
+        attestation: 'none'
+      }
+    });
+    // Guardar credential_id en Supabase (la public_key como placeholder)
+    var credId = btoa(String.fromCharCode.apply(null, new Uint8Array(cred.rawId))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+    var saveRes = await fetch(SUPABASE_URL + '/rest/v1/panel_webauthn_credentials', {
+      method: 'POST',
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: 'Bearer ' + SUPABASE_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify({ credential_id: credId, public_key: 'registered' })
+    });
+    if (saveRes.ok) {
+      document.getElementById('faceid-btn').style.display = 'block';
+      document.getElementById('webauthn-register').style.display = 'none';
+      showErr('✓ Face ID registrado correctamente');
+      document.getElementById('login-err').style.color = '#3D8A32';
+    } else {
+      showErr('Error al guardar la credencial');
+    }
+  } catch(e) {
+    showErr('Registro cancelado');
+  }
+}
+
 (function(){
   if(sessionStorage.getItem('qp_auth')==='ok') return;
   var ls=document.getElementById('login-screen');
@@ -107,14 +221,32 @@ textarea.fi{resize:vertical;min-height:64px}
   document.body.style.overflow='hidden';
   document.getElementById('login-pass').addEventListener('keydown',function(e){ if(e.key==='Enter') doLogin(); });
   setTimeout(function(){ document.getElementById('login-pass').focus(); },100);
+  checkFaceIDAvailable();
 })();
+
 function doLogin(){
   if(document.getElementById('login-pass').value==='Pedrito25'){
-    sessionStorage.setItem('qp_auth','ok');
-    document.getElementById('login-screen').style.display='none';
-    document.body.style.overflow='';
+    unlockPanel();
+    // Ofrecer registrar Face ID si aún no lo hizo y está disponible
+    if(window.PublicKeyCredential) {
+      fetch(SUPABASE_URL + '/rest/v1/panel_webauthn_credentials?select=credential_id&limit=1', {
+        headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY }
+      }).then(function(r){ return r.json(); }).then(function(rows){
+        if (!rows || !rows.length) {
+          // No hay credencial registrada → ofrecer en próximo login
+          setTimeout(function(){
+            if (confirm('¿Querés registrar Face ID para entrar más rápido la próxima vez?')) {
+              sessionStorage.setItem('qp_auth','ok');
+              document.getElementById('login-screen').style.display='flex';
+              document.body.style.overflow='hidden';
+              document.getElementById('webauthn-register').style.display='block';
+            }
+          }, 500);
+        }
+      }).catch(function(){});
+    }
   } else {
-    document.getElementById('login-err').style.display='block';
+    showErr('Contraseña incorrecta');
     document.getElementById('login-pass').value='';
     document.getElementById('login-pass').focus();
   }
