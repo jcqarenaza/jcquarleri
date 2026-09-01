@@ -376,7 +376,7 @@ function vDash() {
 
     // Fila 2: Estado clientes
     wrap.appendChild(el('div', {class:'sh'}, [el('span', {class:'st'}, 'Estado de clientes')]));
-    var estadoCard = el('div', {class:'card', style:'display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:16px'});
+    var estadoCard = el('div', {class:'card', style:'display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;padding:16px'});
     [{label:'Al día', count:clsAlDia.length, color:'#3D8A32', bg:'#EDF7EA', items:clsAlDia},
      {label:'Con saldo pendiente', count:clsDeuda.length, color:'#A32D2D', bg:'#FCEBEB', items:clsDeuda},
      {label:'Sin sistema', count:clsSinSis.length, color:'#64748B', bg:'#F1F5F9', items:clsSinSis},
@@ -393,7 +393,7 @@ function vDash() {
     wrap.appendChild(estadoCard);
 
     // Fila 3: Proximos vencimientos + Ultimos cobros
-    var row3 = el('div', {style:'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px'});
+    var row3 = el('div', {style:'display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:8px'});
 
     var vencWrap = el('div', {});
     vencWrap.appendChild(el('div', {class:'sh'}, [el('span', {class:'st'}, 'Próximos vencimientos')]));
@@ -569,7 +569,7 @@ function abrirDrawerClientes(s) {
       card.appendChild(top);
 
       // Métricas impl + fee
-      var mets = el('div', {style:'display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px'});
+      var mets = el('div', {style:'display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px'});
       [{label:'Impl. pagado', val:fmt(pagado), col:'#3D8A32'},
        {label:'Saldo impl.', val:fmt(saldo), col:saldo>0?'#854F0B':'#3D8A32'},
        {label:'Fees pend.', val:String(pendFees), col:pendFees>0?'#A32D2D':'#64748B'}
@@ -4668,7 +4668,7 @@ function vFinanzas() {
         var senia = gastosComunes.find(function(g){ return g.descripcion && g.descripcion.toLowerCase().indexOf('se') >= 0 && g.descripcion.toLowerCase().indexOf('a') >= 0; });
         var totalSenia = senia ? Number(senia.importe) : 0;
 
-        var resCard = el('div',{class:'card',style:'display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:14px;margin-bottom:10px'});
+        var resCard = el('div',{class:'card',style:'display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;padding:14px;margin-bottom:10px'});
         [{label:'Total aportado',val:fmt(totalAportado),color:'#3D8A32'},
          {label:'Total gastado', val:fmt(totalGastado), color:'#A32D2D'},
          {label:'Intereses MP',  val:fmt(totalIntereses), color:'#854F0B'},
