@@ -6251,87 +6251,86 @@ function vPartnerPropio() {
 }
 
 function mNuevoPartner(sistemas,cb) {
-  var box=el('div',{class:'mbox',style:'max-width:420px'});
-  box.appendChild(el('div',{class:'mh'},'+ Nuevo partner'));
-  var form=el('div',{style:'display:flex;flex-direction:column;gap:10px'});
-  form.appendChild(el('label',{class:'lbl'},'Nombre')); form.appendChild(el('input',{class:'inp',id:'pnombre',placeholder:'Nombre del partner'}));
-  form.appendChild(el('label',{class:'lbl'},'Email (login)')); form.appendChild(el('input',{class:'inp',id:'pemail',type:'email',placeholder:'email@ejemplo.com'}));
-  form.appendChild(el('label',{class:'lbl'},'Contraseña')); form.appendChild(el('input',{class:'inp',id:'ppass',type:'password',placeholder:'Contraseña inicial'}));
-  form.appendChild(el('label',{class:'lbl'},'Sistemas que puede vender'));
-  var sisDiv=el('div',{style:'display:flex;flex-direction:column;gap:6px'});
-  sistemas.forEach(function(s) {
-    var row=el('div',{style:'display:flex;align-items:center;gap:8px'});
-    var chk=el('input',{type:'checkbox',id:'psis_'+s.id});
-    row.appendChild(chk); row.appendChild(el('label',{for:'psis_'+s.id,style:'font-size:13px;cursor:pointer'},s.nombre));
-    sisDiv.appendChild(row);
-  });
-  form.appendChild(sisDiv);
-  var err=el('div',{style:'color:#c0392b;font-size:12px;display:none'}); form.appendChild(err);
-  box.appendChild(form);
-  var foot=el('div',{class:'mf'});
-  foot.appendChild(cancelBtn());
-  var btnG=el('button',{class:'btn btnp'},'Crear partner');
-  btnG.onclick=function() {
-    var nombre=gv('pnombre').trim(),email=gv('pemail').trim(),pass=gv('ppass').trim();
-    if (!nombre||!email||!pass){ err.textContent='Completá todos los campos'; err.style.display=''; return; }
-    btnG.disabled=true; btnG.textContent='Creando...';
-    fetch(SB_URL+'/functions/v1/panel-admin',{
-      method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+SB_KEY},
-      body:JSON.stringify({action:'crear_usuario_partner',email:email,password:pass,nombre:nombre})
-    }).then(function(r){ return r.json(); }).then(function(res) {
-      if (res.error) throw new Error(res.error);
-      return dbIns('revendedores',{nombre:nombre,email:email}).then(function(rows) {
-        var rev=rows[0];
-        return dbIns('panel_usuarios',{user_id:res.user_id,rol:'partner',revendedor_id:rev.id}).then(function() {
-          var checks=sistemas.filter(function(s){ var c=ge('psis_'+s.id); return c&&c.checked; });
-          if (!checks.length) return;
-          return Promise.all(checks.map(function(s){ return dbIns('panel_revendedor_sistemas',{revendedor_id:rev.id,sistema_id:s.id}); }));
+  var err;
+  openM(makeModal('+ Nuevo partner', function(body) {
+    addFg(body,'Nombre',mkInput('pnombre','text','','Nombre del partner'));
+    addFg(body,'Email (login)',mkInput('pemail','email','','email@ejemplo.com'));
+    addFg(body,'Contraseña',mkInput('ppass','password','','Contraseña inicial'));
+    var sg=el('div',{class:'fg'});
+    sg.appendChild(el('label',{class:'fl'},'Sistemas que puede vender'));
+    var sisDiv=el('div',{style:'display:flex;flex-direction:column;gap:6px;margin-top:4px'});
+    sistemas.forEach(function(s){
+      var row=el('div',{style:'display:flex;align-items:center;gap:8px'});
+      var chk=el('input',{type:'checkbox',id:'psis_'+s.id});
+      row.appendChild(chk); row.appendChild(el('label',{for:'psis_'+s.id,style:'font-size:13px;cursor:pointer'},s.nombre));
+      sisDiv.appendChild(row);
+    });
+    sg.appendChild(sisDiv); body.appendChild(sg);
+    err=el('div',{style:'color:#c0392b;font-size:12px;display:none;margin-top:4px'}); body.appendChild(err);
+  }, function(foot) {
+    foot.appendChild(cancelBtn());
+    var btnG=el('button',{class:'btn btnp'},'Crear partner');
+    btnG.onclick=function() {
+      var nombre=gv('pnombre').trim(),email=gv('pemail').trim(),pass=gv('ppass').trim();
+      if (!nombre||!email||!pass){ err.textContent='Completá todos los campos'; err.style.display=''; return; }
+      btnG.disabled=true; btnG.textContent='Creando...';
+      fetch(SB_URL+'/functions/v1/panel-admin',{
+        method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+SB_KEY},
+        body:JSON.stringify({action:'crear_usuario_partner',email:email,password:pass,nombre:nombre})
+      }).then(function(r){ return r.json(); }).then(function(res) {
+        if (res.error) throw new Error(res.error);
+        return dbIns('revendedores',{nombre:nombre,email:email}).then(function(rows) {
+          var rev=rows[0];
+          return dbIns('panel_usuarios',{user_id:res.user_id,rol:'partner',revendedor_id:rev.id}).then(function() {
+            var checks=sistemas.filter(function(s){ var c=ge('psis_'+s.id); return c&&c.checked; });
+            if (!checks.length) return;
+            return Promise.all(checks.map(function(s){ return dbIns('panel_revendedor_sistemas',{revendedor_id:rev.id,sistema_id:s.id}); }));
+          });
         });
-      });
-    }).then(function(){ closeM(); cb(); })
-    .catch(function(e){ err.textContent='Error: '+e.message; err.style.display=''; btnG.disabled=false; btnG.textContent='Crear partner'; });
-  };
-  foot.appendChild(btnG); box.appendChild(foot); openM(box);
+      }).then(function(){ closeM(); cb(); })
+      .catch(function(e){ err.textContent='Error: '+e.message; err.style.display=''; btnG.disabled=false; btnG.textContent='Crear partner'; });
+    };
+    foot.appendChild(btnG);
+  }));
 }
 
 function mEditarPartner(rev,sisList,sistemas,cb) {
-  var box=el('div',{class:'mbox',style:'max-width:420px'});
-  box.appendChild(el('div',{class:'mh'},'Editar — '+rev.nombre));
-  var form=el('div',{style:'display:flex;flex-direction:column;gap:10px'});
-  form.appendChild(el('label',{class:'lbl'},'Nombre'));
-  var inpNom=el('input',{class:'inp',id:'epnombre'}); inpNom.value=rev.nombre; form.appendChild(inpNom);
-  form.appendChild(el('label',{class:'lbl'},'Sistemas que puede vender'));
-  var sisIds=sisList.map(function(s){ return s.id; });
-  var sisDiv=el('div',{style:'display:flex;flex-direction:column;gap:6px'});
-  sistemas.forEach(function(s) {
-    var row=el('div',{style:'display:flex;align-items:center;gap:8px'});
-    var chk=el('input',{type:'checkbox',id:'epsis_'+s.id});
-    if (sisIds.indexOf(s.id)!==-1) chk.checked=true;
-    row.appendChild(chk); row.appendChild(el('label',{for:'epsis_'+s.id,style:'font-size:13px;cursor:pointer'},s.nombre));
-    sisDiv.appendChild(row);
-  });
-  form.appendChild(sisDiv);
-  var err=el('div',{style:'color:#c0392b;font-size:12px;display:none'}); form.appendChild(err);
-  box.appendChild(form);
-  var foot=el('div',{class:'mf'});
-  foot.appendChild(cancelBtn());
-  var btnG=el('button',{class:'btn btnp'},'Guardar');
-  btnG.onclick=function() {
-    var nombre=gv('epnombre').trim();
-    if (!nombre){ err.textContent='Ingresá un nombre'; err.style.display=''; return; }
-    btnG.disabled=true; btnG.textContent='Guardando...';
-    dbUpd('revendedores',rev.id,{nombre:nombre}).then(function() {
-      return fetch(SB_URL+'/rest/v1/panel_revendedor_sistemas?revendedor_id=eq.'+rev.id,{
-        method:'DELETE',headers:{apikey:SB_KEY,'Authorization':'Bearer '+SB_KEY}
-      });
-    }).then(function() {
-      var checks=sistemas.filter(function(s){ var c=ge('epsis_'+s.id); return c&&c.checked; });
-      if (!checks.length) return;
-      return Promise.all(checks.map(function(s){ return dbIns('panel_revendedor_sistemas',{revendedor_id:rev.id,sistema_id:s.id}); }));
-    }).then(function(){ closeM(); cb(); })
-    .catch(function(e){ err.textContent='Error: '+e.message; err.style.display=''; btnG.disabled=false; btnG.textContent='Guardar'; });
-  };
-  foot.appendChild(btnG); box.appendChild(foot); openM(box);
+  var err;
+  openM(makeModal('Editar partner — '+rev.nombre, function(body) {
+    addFg(body,'Nombre',mkInput('epnombre','text',rev.nombre,''));
+    var sg=el('div',{class:'fg'});
+    sg.appendChild(el('label',{class:'fl'},'Sistemas que puede vender'));
+    var sisIds=sisList.map(function(s){ return s.id; });
+    var sisDiv=el('div',{style:'display:flex;flex-direction:column;gap:6px;margin-top:4px'});
+    sistemas.forEach(function(s){
+      var row=el('div',{style:'display:flex;align-items:center;gap:8px'});
+      var chk=el('input',{type:'checkbox',id:'epsis_'+s.id});
+      if (sisIds.indexOf(s.id)!==-1) chk.checked=true;
+      row.appendChild(chk); row.appendChild(el('label',{for:'epsis_'+s.id,style:'font-size:13px;cursor:pointer'},s.nombre));
+      sisDiv.appendChild(row);
+    });
+    sg.appendChild(sisDiv); body.appendChild(sg);
+    err=el('div',{style:'color:#c0392b;font-size:12px;display:none;margin-top:4px'}); body.appendChild(err);
+  }, function(foot) {
+    foot.appendChild(cancelBtn());
+    var btnG=el('button',{class:'btn btnp'},'Guardar');
+    btnG.onclick=function() {
+      var nombre=gv('epnombre').trim();
+      if (!nombre){ err.textContent='Ingresá un nombre'; err.style.display=''; return; }
+      btnG.disabled=true; btnG.textContent='Guardando...';
+      dbUpd('revendedores',rev.id,{nombre:nombre}).then(function() {
+        return fetch(SB_URL+'/rest/v1/panel_revendedor_sistemas?revendedor_id=eq.'+rev.id,{
+          method:'DELETE',headers:{apikey:SB_KEY,'Authorization':'Bearer '+SB_KEY}
+        });
+      }).then(function() {
+        var checks=sistemas.filter(function(s){ var c=ge('epsis_'+s.id); return c&&c.checked; });
+        if (!checks.length) return;
+        return Promise.all(checks.map(function(s){ return dbIns('panel_revendedor_sistemas',{revendedor_id:rev.id,sistema_id:s.id}); }));
+      }).then(function(){ closeM(); cb(); })
+      .catch(function(e){ err.textContent='Error: '+e.message; err.style.display=''; btnG.disabled=false; btnG.textContent='Guardar'; });
+    };
+    foot.appendChild(btnG);
+  }));
 }
 
 function vClientesPartner(rev,sistemas) {
@@ -6382,65 +6381,59 @@ function vClientesPartner(rev,sistemas) {
 }
 
 function mNuevoClientePartner(rev,sisDisp,cb) {
-  var box=el('div',{class:'mbox',style:'max-width:420px'});
-  box.appendChild(el('div',{class:'mh'},'+ Nuevo cliente'));
-  var form=el('div',{style:'display:flex;flex-direction:column;gap:10px'});
-  form.appendChild(el('label',{class:'lbl'},'Nombre')); form.appendChild(el('input',{class:'inp',id:'pcnombre',placeholder:'Nombre del cliente'}));
-  form.appendChild(el('label',{class:'lbl'},'Empresa')); form.appendChild(el('input',{class:'inp',id:'pcempresa',placeholder:'Empresa'}));
-  form.appendChild(el('label',{class:'lbl'},'Email')); form.appendChild(el('input',{class:'inp',id:'pcemail',type:'email',placeholder:'email@ejemplo.com'}));
-  form.appendChild(el('label',{class:'lbl'},'Teléfono')); form.appendChild(el('input',{class:'inp',id:'pctelefono',placeholder:'Teléfono'}));
-  var err=el('div',{style:'color:#c0392b;font-size:12px;display:none'}); form.appendChild(err);
-  box.appendChild(form);
-  var foot=el('div',{class:'mf'});
-  foot.appendChild(cancelBtn());
-  var btnG=el('button',{class:'btn btnp'},'Crear cliente');
-  btnG.onclick=function() {
-    var nombre=gv('pcnombre').trim();
-    if (!nombre){ err.textContent='Ingresá el nombre'; err.style.display=''; return; }
-    btnG.disabled=true; btnG.textContent='Creando...';
-    dbIns('panel_clientes',{nombre:nombre,empresa:gv('pcempresa').trim()||null,email:gv('pcemail').trim()||null,telefono:gv('pctelefono').trim()||null,revendedor_id:rev.id})
-    .then(function(){ closeM(); cb(); })
-    .catch(function(e){ err.textContent='Error: '+e.message; err.style.display=''; btnG.disabled=false; btnG.textContent='Crear cliente'; });
-  };
-  foot.appendChild(btnG); box.appendChild(foot); openM(box);
+  var err;
+  openM(makeModal('+ Nuevo cliente', function(body) {
+    addFg(body,'Nombre',mkInput('pcnombre','text','','Nombre del cliente'));
+    addFg(body,'Empresa',mkInput('pcempresa','text','','Empresa'));
+    addFg(body,'Email',mkInput('pcemail','email','','email@ejemplo.com'));
+    addFg(body,'Teléfono',mkInput('pctelefono','text','','Teléfono'));
+    err=el('div',{style:'color:#c0392b;font-size:12px;display:none;margin-top:4px'}); body.appendChild(err);
+  }, function(foot) {
+    foot.appendChild(cancelBtn());
+    var btnG=el('button',{class:'btn btnp'},'Crear cliente');
+    btnG.onclick=function() {
+      var nombre=gv('pcnombre').trim();
+      if (!nombre){ err.textContent='Ingresá el nombre'; err.style.display=''; return; }
+      btnG.disabled=true; btnG.textContent='Creando...';
+      dbIns('panel_clientes',{nombre:nombre,empresa:gv('pcempresa').trim()||null,email:gv('pcemail').trim()||null,telefono:gv('pctelefono').trim()||null,revendedor_id:rev.id})
+      .then(function(){ closeM(); cb(); })
+      .catch(function(e){ err.textContent='Error: '+e.message; err.style.display=''; btnG.disabled=false; btnG.textContent='Crear cliente'; });
+    };
+    foot.appendChild(btnG);
+  }));
 }
 
 function mAsignacionesPartner(cl,asigs,sisDisp,cb) {
-  var box=el('div',{class:'mbox',style:'max-width:440px'});
-  box.appendChild(el('div',{class:'mh'},'Sistemas — '+cl.nombre));
-  var wrap=el('div',{style:'display:flex;flex-direction:column;gap:10px'});
-  if (asigs.length) {
-    wrap.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px'},'Asignados'));
-    asigs.forEach(function(a) {
-      var row=el('div',{style:'display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9'});
-      row.appendChild(el('span',{style:'font-size:13px;font-weight:500'},a.sistema_id));
-      row.appendChild(chipClass(a.activo?'Activo':'Inactivo',a.activo?'ct':'cgr'));
-      wrap.appendChild(row);
-    });
-  }
-  wrap.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-top:4px'},'+ Asignar sistema'));
-  var selSis=el('select',{class:'inp',id:'pasis'});
-  selSis.appendChild(el('option',{value:''},'— Seleccionar sistema —'));
-  var asigSisIds=asigs.map(function(a){ return a.sistema_id; });
-  sisDisp.forEach(function(s){ if (asigSisIds.indexOf(s.id)===-1) selSis.appendChild(el('option',{value:s.id},s.nombre)); });
-  wrap.appendChild(selSis);
-  var grid=el('div',{style:'display:grid;grid-template-columns:1fr 1fr;gap:8px'});
-  grid.appendChild(el('label',{class:'lbl'},'Fee mensual')); grid.appendChild(el('label',{class:'lbl'},'Día de cobro'));
-  grid.appendChild(el('input',{class:'inp',id:'pasisfee',type:'number',placeholder:'0'}));
-  grid.appendChild(el('input',{class:'inp',id:'pasisdiac',type:'number',placeholder:'1',value:'1'}));
-  wrap.appendChild(grid);
-  var err=el('div',{style:'color:#c0392b;font-size:12px;display:none'}); wrap.appendChild(err);
-  box.appendChild(wrap);
-  var foot=el('div',{class:'mf'});
-  foot.appendChild(cancelBtn());
-  var btnG=el('button',{class:'btn btnp'},'+ Asignar');
-  btnG.onclick=function() {
-    var sisId=gv('pasis');
-    if (!sisId){ err.textContent='Seleccioná un sistema'; err.style.display=''; return; }
-    btnG.disabled=true; btnG.textContent='Asignando...';
-    dbIns('panel_asignaciones',{cliente_id:cl.id,sistema_id:sisId,fee_mensual:Number(gv('pasisfee'))||0,dia_cobro:Number(gv('pasisdiac'))||1,activo:true})
-    .then(function(){ closeM(); cb(); })
-    .catch(function(e){ err.textContent='Error: '+e.message; err.style.display=''; btnG.disabled=false; btnG.textContent='+ Asignar'; });
-  };
-  foot.appendChild(btnG); box.appendChild(foot); openM(box);
+  var err;
+  openM(makeModal('Sistemas — '+cl.nombre, function(body) {
+    if (asigs.length) {
+      body.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px'},'Asignados'));
+      asigs.forEach(function(a) {
+        var row=el('div',{style:'display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f5f9'});
+        row.appendChild(el('span',{style:'font-size:13px;font-weight:500'},a.sistema_id));
+        row.appendChild(chipClass(a.activo?'Activo':'Inactivo',a.activo?'ct':'cgr'));
+        body.appendChild(row);
+      });
+      body.appendChild(el('div',{style:'margin-top:12px;font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px'},'+ Asignar sistema'));
+    }
+    var selSis=el('select',{class:'fi',id:'pasis',style:'margin-top:6px'});
+    selSis.appendChild(el('option',{value:''},'— Seleccionar sistema —'));
+    var asigSisIds=asigs.map(function(a){ return a.sistema_id; });
+    sisDisp.forEach(function(s){ if (asigSisIds.indexOf(s.id)===-1) selSis.appendChild(el('option',{value:s.id},s.nombre)); });
+    body.appendChild(selSis);
+    mkRow2(body, mkFg('Fee mensual',mkInput('pasisfee','number','','0')), mkFg('Día de cobro',mkInput('pasisdiac','number','1','')));
+    err=el('div',{style:'color:#c0392b;font-size:12px;display:none;margin-top:4px'}); body.appendChild(err);
+  }, function(foot) {
+    foot.appendChild(cancelBtn());
+    var btnG=el('button',{class:'btn btnp'},'+ Asignar');
+    btnG.onclick=function() {
+      var sisId=gv('pasis');
+      if (!sisId){ err.textContent='Seleccioná un sistema'; err.style.display=''; return; }
+      btnG.disabled=true; btnG.textContent='Asignando...';
+      dbIns('panel_asignaciones',{cliente_id:cl.id,sistema_id:sisId,fee_mensual:Number(gv('pasisfee'))||0,dia_cobro:Number(gv('pasisdiac'))||1,activo:true})
+      .then(function(){ closeM(); cb(); })
+      .catch(function(e){ err.textContent='Error: '+e.message; err.style.display=''; btnG.disabled=false; btnG.textContent='+ Asignar'; });
+    };
+    foot.appendChild(btnG);
+  }));
 }
