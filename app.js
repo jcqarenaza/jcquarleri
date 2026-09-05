@@ -196,7 +196,7 @@ function go(v) {
   document.querySelectorAll('.nb').forEach(function(b){ b.classList.remove('on'); });
   var nb = ge('nb-'+v); if (nb) nb.classList.add('on');
   loading();
-  ({dash:vDash, sistemas:vSistemas, clientes:vClientes, cobros:vCobros, alertas:vAlertas, salud:vSalud, gastos:vFinanzas})[v]();
+  ({dash:vDash, sistemas:vSistemas, clientes:vClientes, cobros:vCobros, alertas:vAlertas, salud:vSalud, gastos:vFinanzas, partners:vPartners})[v]();
 }
 
 // ── RECIBO ─────────────────────────────────────────────────────
