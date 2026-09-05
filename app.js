@@ -6194,7 +6194,7 @@ function vPartners() {
     sbFetch('panel_sistemas?select=*&order=nombre.asc'),
     sbFetch('panel_clientes?select=*')
   ]).then(function(r) {
-    var revs=r[0], revSis=r[1], sistemas=r[2], clientes=r[3];
+    var revs=r[0],revSis=r[1],sistemas=r[2],clientes=r[3];
     var wrap=el('div',{}); var sh=el('div',{class:'sh'});
     sh.appendChild(el('span',{class:'st'},'Partners ('+revs.length+')'));
     var btnN=el('button',{class:'btn btnp'},'+ Nuevo partner');
@@ -6251,7 +6251,7 @@ function vPartnerPropio() {
 }
 
 function mNuevoPartner(sistemas,cb) {
-  var m=el('div',{class:'modal'}); var box=el('div',{class:'mbox',style:'max-width:420px'});
+  var box=el('div',{class:'mbox',style:'max-width:420px'});
   box.appendChild(el('div',{class:'mh'},'+ Nuevo partner'));
   var form=el('div',{style:'display:flex;flex-direction:column;gap:10px'});
   form.appendChild(el('label',{class:'lbl'},'Nombre')); form.appendChild(el('input',{class:'inp',id:'pnombre',placeholder:'Nombre del partner'}));
@@ -6269,7 +6269,7 @@ function mNuevoPartner(sistemas,cb) {
   var err=el('div',{style:'color:#c0392b;font-size:12px;display:none'}); form.appendChild(err);
   box.appendChild(form);
   var foot=el('div',{class:'mf'});
-  var btnC=el('button',{class:'btn'},'Cancelar'); btnC.onclick=function(){ closeM(); }; foot.appendChild(btnC);
+  foot.appendChild(cancelBtn());
   var btnG=el('button',{class:'btn btnp'},'Crear partner');
   btnG.onclick=function() {
     var nombre=gv('pnombre').trim(),email=gv('pemail').trim(),pass=gv('ppass').trim();
@@ -6291,12 +6291,11 @@ function mNuevoPartner(sistemas,cb) {
     }).then(function(){ closeM(); cb(); })
     .catch(function(e){ err.textContent='Error: '+e.message; err.style.display=''; btnG.disabled=false; btnG.textContent='Crear partner'; });
   };
-  foot.appendChild(btnG); box.appendChild(foot); m.appendChild(box);
-  m.onclick=function(ev){ if(ev.target===m) closeM(); }; ge('modal').appendChild(m);
+  foot.appendChild(btnG); box.appendChild(foot); openM(box);
 }
 
 function mEditarPartner(rev,sisList,sistemas,cb) {
-  var m=el('div',{class:'modal'}); var box=el('div',{class:'mbox',style:'max-width:420px'});
+  var box=el('div',{class:'mbox',style:'max-width:420px'});
   box.appendChild(el('div',{class:'mh'},'Editar — '+rev.nombre));
   var form=el('div',{style:'display:flex;flex-direction:column;gap:10px'});
   form.appendChild(el('label',{class:'lbl'},'Nombre'));
@@ -6315,7 +6314,7 @@ function mEditarPartner(rev,sisList,sistemas,cb) {
   var err=el('div',{style:'color:#c0392b;font-size:12px;display:none'}); form.appendChild(err);
   box.appendChild(form);
   var foot=el('div',{class:'mf'});
-  var btnC=el('button',{class:'btn'},'Cancelar'); btnC.onclick=function(){ closeM(); }; foot.appendChild(btnC);
+  foot.appendChild(cancelBtn());
   var btnG=el('button',{class:'btn btnp'},'Guardar');
   btnG.onclick=function() {
     var nombre=gv('epnombre').trim();
@@ -6332,8 +6331,7 @@ function mEditarPartner(rev,sisList,sistemas,cb) {
     }).then(function(){ closeM(); cb(); })
     .catch(function(e){ err.textContent='Error: '+e.message; err.style.display=''; btnG.disabled=false; btnG.textContent='Guardar'; });
   };
-  foot.appendChild(btnG); box.appendChild(foot); m.appendChild(box);
-  m.onclick=function(ev){ if(ev.target===m) closeM(); }; ge('modal').appendChild(m);
+  foot.appendChild(btnG); box.appendChild(foot); openM(box);
 }
 
 function vClientesPartner(rev,sistemas) {
@@ -6384,7 +6382,7 @@ function vClientesPartner(rev,sistemas) {
 }
 
 function mNuevoClientePartner(rev,sisDisp,cb) {
-  var m=el('div',{class:'modal'}); var box=el('div',{class:'mbox',style:'max-width:420px'});
+  var box=el('div',{class:'mbox',style:'max-width:420px'});
   box.appendChild(el('div',{class:'mh'},'+ Nuevo cliente'));
   var form=el('div',{style:'display:flex;flex-direction:column;gap:10px'});
   form.appendChild(el('label',{class:'lbl'},'Nombre')); form.appendChild(el('input',{class:'inp',id:'pcnombre',placeholder:'Nombre del cliente'}));
@@ -6394,7 +6392,7 @@ function mNuevoClientePartner(rev,sisDisp,cb) {
   var err=el('div',{style:'color:#c0392b;font-size:12px;display:none'}); form.appendChild(err);
   box.appendChild(form);
   var foot=el('div',{class:'mf'});
-  var btnC=el('button',{class:'btn'},'Cancelar'); btnC.onclick=function(){ closeM(); }; foot.appendChild(btnC);
+  foot.appendChild(cancelBtn());
   var btnG=el('button',{class:'btn btnp'},'Crear cliente');
   btnG.onclick=function() {
     var nombre=gv('pcnombre').trim();
@@ -6404,12 +6402,11 @@ function mNuevoClientePartner(rev,sisDisp,cb) {
     .then(function(){ closeM(); cb(); })
     .catch(function(e){ err.textContent='Error: '+e.message; err.style.display=''; btnG.disabled=false; btnG.textContent='Crear cliente'; });
   };
-  foot.appendChild(btnG); box.appendChild(foot); m.appendChild(box);
-  m.onclick=function(ev){ if(ev.target===m) closeM(); }; ge('modal').appendChild(m);
+  foot.appendChild(btnG); box.appendChild(foot); openM(box);
 }
 
 function mAsignacionesPartner(cl,asigs,sisDisp,cb) {
-  var m=el('div',{class:'modal'}); var box=el('div',{class:'mbox',style:'max-width:440px'});
+  var box=el('div',{class:'mbox',style:'max-width:440px'});
   box.appendChild(el('div',{class:'mh'},'Sistemas — '+cl.nombre));
   var wrap=el('div',{style:'display:flex;flex-direction:column;gap:10px'});
   if (asigs.length) {
@@ -6435,7 +6432,7 @@ function mAsignacionesPartner(cl,asigs,sisDisp,cb) {
   var err=el('div',{style:'color:#c0392b;font-size:12px;display:none'}); wrap.appendChild(err);
   box.appendChild(wrap);
   var foot=el('div',{class:'mf'});
-  var btnC=el('button',{class:'btn'},'Cerrar'); btnC.onclick=function(){ closeM(); }; foot.appendChild(btnC);
+  foot.appendChild(cancelBtn());
   var btnG=el('button',{class:'btn btnp'},'+ Asignar');
   btnG.onclick=function() {
     var sisId=gv('pasis');
@@ -6445,6 +6442,5 @@ function mAsignacionesPartner(cl,asigs,sisDisp,cb) {
     .then(function(){ closeM(); cb(); })
     .catch(function(e){ err.textContent='Error: '+e.message; err.style.display=''; btnG.disabled=false; btnG.textContent='+ Asignar'; });
   };
-  foot.appendChild(btnG); box.appendChild(foot); m.appendChild(box);
-  m.onclick=function(ev){ if(ev.target===m) closeM(); }; ge('modal').appendChild(m);
+  foot.appendChild(btnG); box.appendChild(foot); openM(box);
 }
