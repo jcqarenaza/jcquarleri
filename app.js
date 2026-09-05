@@ -6183,3 +6183,268 @@ function mNuevoAdminConeos(emp, cb) {
 }
 
 go('dash');
+// ── PARTNERS ────────────────────────────────────────────────────
+
+function vPartners() {
+  if (!isSuperAdmin()) { vPartnerPropio(); return; }
+  loading();
+  Promise.all([
+    sbFetch('revendedores?select=*&order=nombre.asc'),
+    sbFetch('panel_revendedor_sistemas?select=*'),
+    sbFetch('panel_sistemas?select=*&order=nombre.asc'),
+    sbFetch('panel_clientes?select=*')
+  ]).then(function(r) {
+    var revs=r[0], revSis=r[1], sistemas=r[2], clientes=r[3];
+    var wrap=el('div',{}); var sh=el('div',{class:'sh'});
+    sh.appendChild(el('span',{class:'st'},'Partners ('+revs.length+')'));
+    var btnN=el('button',{class:'btn btnp'},'+ Nuevo partner');
+    btnN.onclick=function(){ mNuevoPartner(sistemas,function(){ vPartners(); }); };
+    sh.appendChild(btnN); wrap.appendChild(sh);
+    if (!revs.length) {
+      wrap.appendChild(el('div',{class:'card'},[el('div',{class:'emp'},'No hay partners todavía')]));
+    } else {
+      revs.forEach(function(rev) {
+        var sisIds=revSis.filter(function(rs){ return rs.revendedor_id===rev.id; }).map(function(rs){ return rs.sistema_id; });
+        var sisList=sistemas.filter(function(s){ return sisIds.indexOf(s.id)!==-1; });
+        var cliCount=clientes.filter(function(c){ return c.revendedor_id===rev.id; }).length;
+        var card=el('div',{class:'cc'}); var ch=el('div',{class:'ch'});
+        var ini=rev.nombre.split(' ').map(function(x){ return x[0]||''; }).slice(0,2).join('');
+        ch.appendChild(el('div',{class:'av'},ini));
+        var info=el('div',{style:'flex:1'});
+        info.appendChild(el('div',{style:'font-weight:500;font-size:14px'},rev.nombre));
+        info.appendChild(el('div',{style:'font-size:12px;color:#94a3b8'},[rev.email,cliCount+' cliente'+(cliCount!==1?'s':'')].filter(Boolean).join(' · ')));
+        ch.appendChild(info);
+        var btnE=el('button',{class:'btn btnsm'},'Editar');
+        btnE.onclick=(function(rv,sl){ return function(){ mEditarPartner(rv,sl,sistemas,function(){ vPartners(); }); }; })(rev,sisList);
+        ch.appendChild(btnE);
+        var btnV=el('button',{class:'btn btnsm btnp',style:'margin-left:4px'},'Ver clientes');
+        btnV.onclick=(function(rv){ return function(){ vClientesPartner(rv,sistemas); }; })(rev);
+        ch.appendChild(btnV); card.appendChild(ch);
+        if (sisList.length) {
+          var body=el('div',{style:'padding:8px 12px 10px;display:flex;flex-wrap:wrap;gap:6px'});
+          sisList.forEach(function(s){ body.appendChild(chip(s.nombre)); });
+          card.appendChild(body);
+        } else {
+          card.appendChild(el('div',{style:'padding:6px 12px 10px;font-size:12px;color:#94a3b8'},'Sin sistemas asignados'));
+        }
+        wrap.appendChild(card);
+      });
+    }
+    setApp(wrap);
+  }).catch(function(e){ setApp(el('div',{class:'emp',style:'color:red'},'Error partners: '+e.message)); });
+}
+
+function vPartnerPropio() {
+  var revId=getRevendedorId();
+  if (!revId){ setApp(el('div',{class:'emp'},'Sin partner asignado')); return; }
+  loading();
+  Promise.all([
+    sbFetch('revendedores?id=eq.'+revId+'&select=*'),
+    sbFetch('panel_revendedor_sistemas?revendedor_id=eq.'+revId+'&select=sistema_id'),
+    sbFetch('panel_sistemas?select=*&order=nombre.asc')
+  ]).then(function(r) {
+    var rev=r[0][0];
+    var sisIds=r[1].map(function(x){ return x.sistema_id; });
+    var sisDisp=r[2].filter(function(s){ return sisIds.indexOf(s.id)!==-1; });
+    vClientesPartner(rev,sisDisp);
+  }).catch(function(e){ setApp(el('div',{class:'emp',style:'color:red'},'Error: '+e.message)); });
+}
+
+function mNuevoPartner(sistemas,cb) {
+  var m=el('div',{class:'modal'}); var box=el('div',{class:'mbox',style:'max-width:420px'});
+  box.appendChild(el('div',{class:'mh'},'+ Nuevo partner'));
+  var form=el('div',{style:'display:flex;flex-direction:column;gap:10px'});
+  form.appendChild(el('label',{class:'lbl'},'Nombre')); form.appendChild(el('input',{class:'inp',id:'pnombre',placeholder:'Nombre del partner'}));
+  form.appendChild(el('label',{class:'lbl'},'Email (login)')); form.appendChild(el('input',{class:'inp',id:'pemail',type:'email',placeholder:'email@ejemplo.com'}));
+  form.appendChild(el('label',{class:'lbl'},'Contraseña')); form.appendChild(el('input',{class:'inp',id:'ppass',type:'password',placeholder:'Contraseña inicial'}));
+  form.appendChild(el('label',{class:'lbl'},'Sistemas que puede vender'));
+  var sisDiv=el('div',{style:'display:flex;flex-direction:column;gap:6px'});
+  sistemas.forEach(function(s) {
+    var row=el('div',{style:'display:flex;align-items:center;gap:8px'});
+    var chk=el('input',{type:'checkbox',id:'psis_'+s.id});
+    row.appendChild(chk); row.appendChild(el('label',{for:'psis_'+s.id,style:'font-size:13px;cursor:pointer'},s.nombre));
+    sisDiv.appendChild(row);
+  });
+  form.appendChild(sisDiv);
+  var err=el('div',{style:'color:#c0392b;font-size:12px;display:none'}); form.appendChild(err);
+  box.appendChild(form);
+  var foot=el('div',{class:'mf'});
+  var btnC=el('button',{class:'btn'},'Cancelar'); btnC.onclick=function(){ closeM(); }; foot.appendChild(btnC);
+  var btnG=el('button',{class:'btn btnp'},'Crear partner');
+  btnG.onclick=function() {
+    var nombre=gv('pnombre').trim(),email=gv('pemail').trim(),pass=gv('ppass').trim();
+    if (!nombre||!email||!pass){ err.textContent='Completá todos los campos'; err.style.display=''; return; }
+    btnG.disabled=true; btnG.textContent='Creando...';
+    fetch(SB_URL+'/functions/v1/panel-admin',{
+      method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+SB_KEY},
+      body:JSON.stringify({action:'crear_usuario_partner',email:email,password:pass,nombre:nombre})
+    }).then(function(r){ return r.json(); }).then(function(res) {
+      if (res.error) throw new Error(res.error);
+      return dbIns('revendedores',{nombre:nombre,email:email}).then(function(rows) {
+        var rev=rows[0];
+        return dbIns('panel_usuarios',{user_id:res.user_id,rol:'partner',revendedor_id:rev.id}).then(function() {
+          var checks=sistemas.filter(function(s){ var c=ge('psis_'+s.id); return c&&c.checked; });
+          if (!checks.length) return;
+          return Promise.all(checks.map(function(s){ return dbIns('panel_revendedor_sistemas',{revendedor_id:rev.id,sistema_id:s.id}); }));
+        });
+      });
+    }).then(function(){ closeM(); cb(); })
+    .catch(function(e){ err.textContent='Error: '+e.message; err.style.display=''; btnG.disabled=false; btnG.textContent='Crear partner'; });
+  };
+  foot.appendChild(btnG); box.appendChild(foot); m.appendChild(box);
+  m.onclick=function(ev){ if(ev.target===m) closeM(); }; ge('modal').appendChild(m);
+}
+
+function mEditarPartner(rev,sisList,sistemas,cb) {
+  var m=el('div',{class:'modal'}); var box=el('div',{class:'mbox',style:'max-width:420px'});
+  box.appendChild(el('div',{class:'mh'},'Editar — '+rev.nombre));
+  var form=el('div',{style:'display:flex;flex-direction:column;gap:10px'});
+  form.appendChild(el('label',{class:'lbl'},'Nombre'));
+  var inpNom=el('input',{class:'inp',id:'epnombre'}); inpNom.value=rev.nombre; form.appendChild(inpNom);
+  form.appendChild(el('label',{class:'lbl'},'Sistemas que puede vender'));
+  var sisIds=sisList.map(function(s){ return s.id; });
+  var sisDiv=el('div',{style:'display:flex;flex-direction:column;gap:6px'});
+  sistemas.forEach(function(s) {
+    var row=el('div',{style:'display:flex;align-items:center;gap:8px'});
+    var chk=el('input',{type:'checkbox',id:'epsis_'+s.id});
+    if (sisIds.indexOf(s.id)!==-1) chk.checked=true;
+    row.appendChild(chk); row.appendChild(el('label',{for:'epsis_'+s.id,style:'font-size:13px;cursor:pointer'},s.nombre));
+    sisDiv.appendChild(row);
+  });
+  form.appendChild(sisDiv);
+  var err=el('div',{style:'color:#c0392b;font-size:12px;display:none'}); form.appendChild(err);
+  box.appendChild(form);
+  var foot=el('div',{class:'mf'});
+  var btnC=el('button',{class:'btn'},'Cancelar'); btnC.onclick=function(){ closeM(); }; foot.appendChild(btnC);
+  var btnG=el('button',{class:'btn btnp'},'Guardar');
+  btnG.onclick=function() {
+    var nombre=gv('epnombre').trim();
+    if (!nombre){ err.textContent='Ingresá un nombre'; err.style.display=''; return; }
+    btnG.disabled=true; btnG.textContent='Guardando...';
+    dbUpd('revendedores',rev.id,{nombre:nombre}).then(function() {
+      return fetch(SB_URL+'/rest/v1/panel_revendedor_sistemas?revendedor_id=eq.'+rev.id,{
+        method:'DELETE',headers:{apikey:SB_KEY,'Authorization':'Bearer '+SB_KEY}
+      });
+    }).then(function() {
+      var checks=sistemas.filter(function(s){ var c=ge('epsis_'+s.id); return c&&c.checked; });
+      if (!checks.length) return;
+      return Promise.all(checks.map(function(s){ return dbIns('panel_revendedor_sistemas',{revendedor_id:rev.id,sistema_id:s.id}); }));
+    }).then(function(){ closeM(); cb(); })
+    .catch(function(e){ err.textContent='Error: '+e.message; err.style.display=''; btnG.disabled=false; btnG.textContent='Guardar'; });
+  };
+  foot.appendChild(btnG); box.appendChild(foot); m.appendChild(box);
+  m.onclick=function(ev){ if(ev.target===m) closeM(); }; ge('modal').appendChild(m);
+}
+
+function vClientesPartner(rev,sistemas) {
+  loading();
+  Promise.all([
+    sbFetch('panel_clientes?revendedor_id=eq.'+rev.id+'&select=*&order=nombre.asc'),
+    sbFetch('panel_asignaciones?select=*'),
+    sbFetch('panel_revendedor_sistemas?revendedor_id=eq.'+rev.id+'&select=sistema_id')
+  ]).then(function(r) {
+    var clientes=r[0],asigs=r[1],revSis=r[2];
+    var sisPermitidos=revSis.map(function(rs){ return rs.sistema_id; });
+    var sisDisp=Array.isArray(sistemas)?sistemas.filter(function(s){ return sisPermitidos.indexOf(s.id)!==-1; }):[];
+    var wrap=el('div',{}); var sh=el('div',{class:'sh'});
+    if (isSuperAdmin()) {
+      var btnBack=el('button',{class:'btn btnsm'},'← Partners');
+      btnBack.onclick=function(){ vPartners(); }; sh.appendChild(btnBack);
+    }
+    sh.appendChild(el('span',{class:'st',style:'margin-left:8px'},rev.nombre+' — '+clientes.length+' cliente'+(clientes.length!==1?'s':'')));
+    var btnN=el('button',{class:'btn btnp'},'+ Nuevo cliente');
+    btnN.onclick=function(){ mNuevoClientePartner(rev,sisDisp,function(){ vClientesPartner(rev,sistemas); }); };
+    sh.appendChild(btnN); wrap.appendChild(sh);
+    if (!clientes.length) {
+      wrap.appendChild(el('div',{class:'card'},[el('div',{class:'emp'},'No hay clientes todavía')]));
+    } else {
+      clientes.forEach(function(cl) {
+        var misAsigs=asigs.filter(function(a){ return a.cliente_id===cl.id; });
+        var card=el('div',{class:'cc'}); var ch=el('div',{class:'ch'});
+        var ini=cl.nombre.split(' ').map(function(x){ return x[0]||''; }).slice(0,2).join('');
+        ch.appendChild(el('div',{class:'av'},ini));
+        var info=el('div',{style:'flex:1'});
+        info.appendChild(el('div',{style:'font-weight:500;font-size:14px'},cl.nombre));
+        var sub=[cl.empresa,cl.email].filter(Boolean).join(' · ');
+        if (sub) info.appendChild(el('div',{style:'font-size:12px;color:#94a3b8'},sub));
+        ch.appendChild(info);
+        var btnA=el('button',{class:'btn btnsm'+(misAsigs.length?'':' btnp')},misAsigs.length?'Sistemas ('+misAsigs.length+')':'+ Asignar sistema');
+        btnA.onclick=(function(c,aa){ return function(){ mAsignacionesPartner(c,aa,sisDisp,function(){ vClientesPartner(rev,sistemas); }); }; })(cl,misAsigs);
+        ch.appendChild(btnA); card.appendChild(ch);
+        if (misAsigs.length) {
+          var body=el('div',{style:'padding:6px 12px 10px;display:flex;flex-wrap:wrap;gap:6px'});
+          misAsigs.forEach(function(a){ body.appendChild(chipClass(a.activo?'Activo':'Inactivo',a.activo?'ct':'cgr')); });
+          card.appendChild(body);
+        }
+        wrap.appendChild(card);
+      });
+    }
+    setApp(wrap);
+  }).catch(function(e){ setApp(el('div',{class:'emp',style:'color:red'},'Error: '+e.message)); });
+}
+
+function mNuevoClientePartner(rev,sisDisp,cb) {
+  var m=el('div',{class:'modal'}); var box=el('div',{class:'mbox',style:'max-width:420px'});
+  box.appendChild(el('div',{class:'mh'},'+ Nuevo cliente'));
+  var form=el('div',{style:'display:flex;flex-direction:column;gap:10px'});
+  form.appendChild(el('label',{class:'lbl'},'Nombre')); form.appendChild(el('input',{class:'inp',id:'pcnombre',placeholder:'Nombre del cliente'}));
+  form.appendChild(el('label',{class:'lbl'},'Empresa')); form.appendChild(el('input',{class:'inp',id:'pcempresa',placeholder:'Empresa'}));
+  form.appendChild(el('label',{class:'lbl'},'Email')); form.appendChild(el('input',{class:'inp',id:'pcemail',type:'email',placeholder:'email@ejemplo.com'}));
+  form.appendChild(el('label',{class:'lbl'},'Teléfono')); form.appendChild(el('input',{class:'inp',id:'pctelefono',placeholder:'Teléfono'}));
+  var err=el('div',{style:'color:#c0392b;font-size:12px;display:none'}); form.appendChild(err);
+  box.appendChild(form);
+  var foot=el('div',{class:'mf'});
+  var btnC=el('button',{class:'btn'},'Cancelar'); btnC.onclick=function(){ closeM(); }; foot.appendChild(btnC);
+  var btnG=el('button',{class:'btn btnp'},'Crear cliente');
+  btnG.onclick=function() {
+    var nombre=gv('pcnombre').trim();
+    if (!nombre){ err.textContent='Ingresá el nombre'; err.style.display=''; return; }
+    btnG.disabled=true; btnG.textContent='Creando...';
+    dbIns('panel_clientes',{nombre:nombre,empresa:gv('pcempresa').trim()||null,email:gv('pcemail').trim()||null,telefono:gv('pctelefono').trim()||null,revendedor_id:rev.id})
+    .then(function(){ closeM(); cb(); })
+    .catch(function(e){ err.textContent='Error: '+e.message; err.style.display=''; btnG.disabled=false; btnG.textContent='Crear cliente'; });
+  };
+  foot.appendChild(btnG); box.appendChild(foot); m.appendChild(box);
+  m.onclick=function(ev){ if(ev.target===m) closeM(); }; ge('modal').appendChild(m);
+}
+
+function mAsignacionesPartner(cl,asigs,sisDisp,cb) {
+  var m=el('div',{class:'modal'}); var box=el('div',{class:'mbox',style:'max-width:440px'});
+  box.appendChild(el('div',{class:'mh'},'Sistemas — '+cl.nombre));
+  var wrap=el('div',{style:'display:flex;flex-direction:column;gap:10px'});
+  if (asigs.length) {
+    wrap.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px'},'Asignados'));
+    asigs.forEach(function(a) {
+      var row=el('div',{style:'display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9'});
+      row.appendChild(el('span',{style:'font-size:13px;font-weight:500'},a.sistema_id));
+      row.appendChild(chipClass(a.activo?'Activo':'Inactivo',a.activo?'ct':'cgr'));
+      wrap.appendChild(row);
+    });
+  }
+  wrap.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-top:4px'},'+ Asignar sistema'));
+  var selSis=el('select',{class:'inp',id:'pasis'});
+  selSis.appendChild(el('option',{value:''},'— Seleccionar sistema —'));
+  var asigSisIds=asigs.map(function(a){ return a.sistema_id; });
+  sisDisp.forEach(function(s){ if (asigSisIds.indexOf(s.id)===-1) selSis.appendChild(el('option',{value:s.id},s.nombre)); });
+  wrap.appendChild(selSis);
+  var grid=el('div',{style:'display:grid;grid-template-columns:1fr 1fr;gap:8px'});
+  grid.appendChild(el('label',{class:'lbl'},'Fee mensual')); grid.appendChild(el('label',{class:'lbl'},'Día de cobro'));
+  grid.appendChild(el('input',{class:'inp',id:'pasisfee',type:'number',placeholder:'0'}));
+  grid.appendChild(el('input',{class:'inp',id:'pasisdiac',type:'number',placeholder:'1',value:'1'}));
+  wrap.appendChild(grid);
+  var err=el('div',{style:'color:#c0392b;font-size:12px;display:none'}); wrap.appendChild(err);
+  box.appendChild(wrap);
+  var foot=el('div',{class:'mf'});
+  var btnC=el('button',{class:'btn'},'Cerrar'); btnC.onclick=function(){ closeM(); }; foot.appendChild(btnC);
+  var btnG=el('button',{class:'btn btnp'},'+ Asignar');
+  btnG.onclick=function() {
+    var sisId=gv('pasis');
+    if (!sisId){ err.textContent='Seleccioná un sistema'; err.style.display=''; return; }
+    btnG.disabled=true; btnG.textContent='Asignando...';
+    dbIns('panel_asignaciones',{cliente_id:cl.id,sistema_id:sisId,fee_mensual:Number(gv('pasisfee'))||0,dia_cobro:Number(gv('pasisdiac'))||1,activo:true})
+    .then(function(){ closeM(); cb(); })
+    .catch(function(e){ err.textContent='Error: '+e.message; err.style.display=''; btnG.disabled=false; btnG.textContent='+ Asignar'; });
+  };
+  foot.appendChild(btnG); box.appendChild(foot); m.appendChild(box);
+  m.onclick=function(ev){ if(ev.target===m) closeM(); }; ge('modal').appendChild(m);
+}
