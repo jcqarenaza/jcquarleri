@@ -115,6 +115,9 @@ function unlockPanel(token, usuario) {
   localStorage.setItem('qp_auth', JSON.stringify({ token: token, usuario: usuario, ts: Date.now() }));
   document.getElementById('login-screen').style.display = 'none';
   document.body.style.overflow = '';
+  var btnP = document.getElementById('nb-partners');
+  if (btnP) btnP.style.display = (!usuario || usuario.rol === 'superadmin') ? '' : 'none';
+  if (usuario && usuario.rol === 'partner') setTimeout(function(){ go('partners'); }, 100);
   if (window._onAuthReady) window._onAuthReady(usuario);
 }
 
@@ -169,6 +172,11 @@ async function doLogin() {
       if (data.token && data.usuario) {
         _authToken = data.token;
         _currentUser = data.usuario;
+        setTimeout(function(){
+          var btnP = document.getElementById('nb-partners');
+          if (btnP) btnP.style.display = (!data.usuario || data.usuario.rol === 'superadmin') ? '' : 'none';
+          if (data.usuario && data.usuario.rol === 'partner') go('partners');
+        }, 50);
         return; // sesion valida, entrar directo
       }
     } catch(e) {}
@@ -180,10 +188,6 @@ async function doLogin() {
   document.getElementById('login-pass').addEventListener('keydown', function(e){ if(e.key==='Enter') doLogin(); });
   setTimeout(function(){ document.getElementById('login-email').focus(); }, 100);
 })();
-
-    }
-  } catch(e) {}
-});
 </script>
 <div style="display:flex;flex-direction:column;min-height:100vh">
   <div class="top">
@@ -195,6 +199,7 @@ async function doLogin() {
       <button class="nb" id="nb-cobros" onclick="go('cobros')">Cobros<span class="badge" id="abadge" style="display:none">0</span></button>
       <button class="nb" id="nb-salud" onclick="go('salud')">Salud &#x2665;</button>
       <button class="nb" id="nb-gastos" onclick="go('gastos')">Finanzas</button>
+      <button class="nb" id="nb-partners" onclick="go('partners')" style="display:none">Partners</button>
     </nav>
   </div>
   <div class="app" id="app">Cargando...</div>
