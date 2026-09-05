@@ -5861,6 +5861,7 @@ function calcFeeConeos(dispActivos, slug) {
 function calcImplConeos(modulos) {
   var base = 500000;
   var extra = 0;
+  if (modulos.mesas)       extra += 100000;
   if (modulos.delivery)    extra += 150000;
   if (modulos.facturacion) extra += 100000;
   if (modulos.mercadopago) extra += 100000;
@@ -5880,6 +5881,7 @@ function mModulosConeOS(emp) {
       { key: 'caja',        label: 'Caja',          desc: 'Gestión de pagos, cobros y arqueo de caja',           color: '#3D8A32', base: true },
       { key: 'preparacion', label: 'Preparación',   desc: 'Pantalla de preparación para el equipo interno',      color: '#7C3AED', base: true },
       { key: 'display',     label: 'Display',        desc: 'Pantalla pública con menú y precios',                color: '#F59E0B', base: true },
+      { key: 'mesas',       label: 'Mesas',          desc: 'Gestión de mesas y pedidos en salón — impl. +$100.000', color: '#10B981', base: false, impl: 100000 },
       { key: 'delivery',    label: 'Delivery',       desc: 'Pedidos a domicilio — impl. +$150.000',              color: '#E53E3E', base: false, impl: 150000 },
       { key: 'facturacion', label: 'Facturación',    desc: 'Emisión de facturas electrónicas — impl. +$100.000', color: '#0891B2', base: false, impl: 100000 },
       { key: 'mercadopago', label: 'MercadoPago',    desc: 'Cobros con MercadoPago integrado — impl. +$100.000', color: '#009EE3', base: false, impl: 100000 },
