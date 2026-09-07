@@ -5898,6 +5898,7 @@ function mModulosConeOS(emp) {
       { key: 'delivery',    label: 'Delivery',       desc: 'Pedidos a domicilio — impl. +$150.000',              color: '#E53E3E', base: false, impl: 150000 },
       { key: 'facturacion', label: 'Facturación',    desc: 'Emisión de facturas electrónicas — impl. +$100.000', color: '#0891B2', base: false, impl: 100000 },
       { key: 'mercadopago', label: 'MercadoPago',    desc: 'Cobros con MercadoPago integrado — impl. +$100.000', color: '#009EE3', base: false, impl: 100000 },
+      { key: 'beneficios',  label: 'Programa de Beneficios', desc: 'Los clientes acumulan puntos al comprar — impl. +$100.000', color: '#7C3AED', base: false, impl: 100000 },
     ];
 
     openM(makeModal('🍦 '+emp.nombre+' — Módulos', function(body) {
