@@ -6422,33 +6422,58 @@ function mAsignacionesPartner(cl,asigs,sisDisp,cb) {
   var err;
   openM(makeModal('Sistemas — '+cl.nombre, function(body) {
     if (asigs.length) {
-      body.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px'},'Asignados'));
+      body.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px'},'Asignados'));
       asigs.forEach(function(a) {
-        var row=el('div',{style:'display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f5f9'});
-        row.appendChild(el('span',{style:'font-size:13px;font-weight:500'},a.sistema_id));
+        // Buscar nombre del sistema
+        var sis = sisDisp.filter(function(s){ return s.id===a.sistema_id; })[0];
+        var sisNom = sis ? sis.nombre : a.sistema_id;
+        var sisPlat = sis ? sis.plataforma : null;
+        var row=el('div',{style:'display:flex;align-items:center;gap:8px;padding:8px 10px;background:#f8fafc;border-radius:8px;margin-bottom:6px'});
+        var info=el('div',{style:'flex:1'});
+        info.appendChild(el('div',{style:'font-size:13px;font-weight:500'},sisNom));
+        row.appendChild(info);
         row.appendChild(chipClass(a.activo?'Activo':'Inactivo',a.activo?'ct':'cgr'));
+        // Botón módulos si es ConeOS
+        if (sisPlat==='coneos') {
+          var btnMod=el('button',{class:'btn btnsm',style:'margin-left:4px'},'Módulos');
+          btnMod.onclick=function(){ closeM(); mModulosConeOS({id:cl.empresa_id||a.cliente_id, nombre:cl.nombre}); };
+          row.appendChild(btnMod);
+        }
+        // Botón facturación para cualquier sistema
+        var btnFac=el('button',{class:'btn btnsm',style:'margin-left:4px'},'Facturación');
+        btnFac.onclick=function(){ closeM(); mConfigFacturacionConeos({id:cl.empresa_id||a.cliente_id, nombre:cl.nombre},null,null,function(){}); };
+        row.appendChild(btnFac);
         body.appendChild(row);
       });
-      body.appendChild(el('div',{style:'margin-top:12px;font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px'},'+ Asignar sistema'));
+      body.appendChild(el('div',{style:'margin-top:12px;border-top:1px solid #f1f5f9;padding-top:12px;font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px'},'+ Asignar sistema'));
     }
-    var selSis=el('select',{class:'fi',id:'pasis',style:'margin-top:6px'});
-    selSis.appendChild(el('option',{value:''},'— Seleccionar sistema —'));
     var asigSisIds=asigs.map(function(a){ return a.sistema_id; });
-    sisDisp.forEach(function(s){ if (asigSisIds.indexOf(s.id)===-1) selSis.appendChild(el('option',{value:s.id},s.nombre)); });
-    body.appendChild(selSis);
-    mkRow2(body, mkFg('Fee mensual',mkInput('pasisfee','number','','0')), mkFg('Día de cobro',mkInput('pasisdiac','number','1','')));
+    var disponibles=sisDisp.filter(function(s){ return asigSisIds.indexOf(s.id)===-1; });
+    if (disponibles.length) {
+      var selSis=el('select',{class:'fi',id:'pasis',style:'margin-top:6px'});
+      selSis.appendChild(el('option',{value:''},'— Seleccionar sistema —'));
+      disponibles.forEach(function(s){ selSis.appendChild(el('option',{value:s.id},s.nombre)); });
+      body.appendChild(selSis);
+      mkRow2(body, mkFg('Fee mensual',mkInput('pasisfee','number','','0')), mkFg('Día de cobro',mkInput('pasisdiac','number','1','')));
+    } else if (!asigs.length) {
+      body.appendChild(el('div',{style:'font-size:12px;color:#94a3b8;margin-top:8px'},'No hay sistemas disponibles para asignar'));
+    }
     err=el('div',{style:'color:#c0392b;font-size:12px;display:none;margin-top:4px'}); body.appendChild(err);
   }, function(foot) {
     foot.appendChild(cancelBtn());
-    var btnG=el('button',{class:'btn btnp'},'+ Asignar');
-    btnG.onclick=function() {
-      var sisId=gv('pasis');
-      if (!sisId){ err.textContent='Seleccioná un sistema'; err.style.display=''; return; }
-      btnG.disabled=true; btnG.textContent='Asignando...';
-      dbIns('panel_asignaciones',{cliente_id:cl.id,sistema_id:sisId,fee_mensual:Number(gv('pasisfee'))||0,dia_cobro:Number(gv('pasisdiac'))||1,activo:true})
-      .then(function(){ closeM(); cb(); })
-      .catch(function(e){ err.textContent='Error: '+e.message; err.style.display=''; btnG.disabled=false; btnG.textContent='+ Asignar'; });
-    };
-    foot.appendChild(btnG);
+    var asigSisIds2=asigs.map(function(a){ return a.sistema_id; });
+    var disponibles2=sisDisp.filter(function(s){ return asigSisIds2.indexOf(s.id)===-1; });
+    if (disponibles2.length) {
+      var btnG=el('button',{class:'btn btnp'},'+ Asignar');
+      btnG.onclick=function() {
+        var sisId=gv('pasis');
+        if (!sisId){ err.textContent='Seleccioná un sistema'; err.style.display=''; return; }
+        btnG.disabled=true; btnG.textContent='Asignando...';
+        dbIns('panel_asignaciones',{cliente_id:cl.id,sistema_id:sisId,fee_mensual:Number(gv('pasisfee'))||0,dia_cobro:Number(gv('pasisdiac'))||1,activo:true})
+        .then(function(){ closeM(); cb(); })
+        .catch(function(e){ err.textContent='Error: '+e.message; err.style.display=''; btnG.disabled=false; btnG.textContent='+ Asignar'; });
+      };
+      foot.appendChild(btnG);
+    }
   }));
 }
