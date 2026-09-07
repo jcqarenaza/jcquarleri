@@ -1792,6 +1792,19 @@ function mEditSistema(s) {
     addFg(body, 'URL produccion', mkInput('esu','text',s.url_produccion||''));
     addFg(body, 'Orden (1 = primero)', mkInput('esor','number',s.orden||99));
     body.appendChild(el('div', {style:'border-top:.5px solid #E2E8F0;margin:14px 0;padding-top:14px'}));
+    var revRow = el('div', {style:'display:flex;align-items:center;justify-content:space-between;padding:6px 0'});
+    revRow.appendChild(el('div', {}, [
+      el('div', {style:'font-size:13px;font-weight:500'}, 'Disponible para reventa'),
+      el('div', {style:'font-size:11px;color:#94a3b8'}, 'Los partners pueden vender este sistema')
+    ]));
+    var togRev = el('input', {type:'checkbox', id:'es_reventa', class:'tgl'});
+    if (s.para_reventa) togRev.checked = true;
+    var togRevLbl = el('label', {for:'es_reventa', class:'tgl-lbl'});
+    var togRevWrap = el('div', {style:'display:flex;align-items:center;gap:6px'});
+    togRevWrap.appendChild(togRev); togRevWrap.appendChild(togRevLbl);
+    revRow.appendChild(togRevWrap);
+    body.appendChild(revRow);
+    body.appendChild(el('div', {style:'border-top:.5px solid #E2E8F0;margin:14px 0;padding-top:14px'}));
     body.appendChild(el('div', {style:'font-size:11px;font-weight:500;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px'}, 'Integracion Supabase (metricas)'));
     addFg(body, 'Supabase URL', mkInput('essurl','text',s.supabase_url||'','https://xxx.supabase.co'));
     addFg(body, 'Supabase Anon Key', mkInput('esskey','text',s.supabase_key||'','eyJ...'));
@@ -6193,7 +6206,7 @@ function vPartners() {
   Promise.all([
     sbFetch('revendedores?select=*&order=nombre.asc'),
     sbFetch('panel_revendedor_sistemas?select=*'),
-    sbFetch('panel_sistemas?select=*&order=nombre.asc'),
+    sbFetch('panel_sistemas?select=*&order=nombre.asc&para_reventa=eq.true'),
     sbFetch('panel_clientes?select=*')
   ]).then(function(r) {
     var revs=r[0],revSis=r[1],sistemas=r[2],clientes=r[3];
@@ -6281,7 +6294,7 @@ function mNuevoPartner(sistemas,cb) {
         body:JSON.stringify({action:'crear_usuario_partner',email:email,password:pass,nombre:nombre})
       }).then(function(r){ return r.json(); }).then(function(res) {
         if (res.error) throw new Error(res.error);
-        return dbIns('revendedores',{nombre:nombre,email:email}).then(function(rows) {
+        return dbIns('revendedores',{nombre:nombre}).then(function(rows) {
           var rev=rows[0];
           return dbIns('panel_usuarios',{user_id:res.user_id,rol:'partner',revendedor_id:rev.id}).then(function() {
             var checks=sistemas.filter(function(s){ var c=ge('psis_'+s.id); return c&&c.checked; });
