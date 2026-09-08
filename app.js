@@ -5995,8 +5995,17 @@ function mPlanConeOS(emp, asigId) {
         el('div',{style:'font-size:12px;color:#64748b'},'Fee mensual estimado'),
         el('div',{style:'font-size:11px;color:#94a3b8'},dispActivos+' disp. activos + IVA')
       ]));
-      feeBox.appendChild(el('div',{style:'font-weight:700;font-size:16px;color:#0B9EDA'},'USD '+feeUSD));
+      var feeRight = el('div',{style:'text-align:right'});
+      feeRight.appendChild(el('div',{style:'font-weight:700;font-size:16px;color:#0B9EDA'},'USD '+feeUSD));
+      var feeARS = el('div',{style:'font-size:11px;color:#94a3b8'},'...');
+      feeRight.appendChild(feeARS);
+      feeBox.appendChild(feeRight);
       body.appendChild(feeBox);
+      // Traer dólar oficial
+      fetch('https://dolarapi.com/v1/dolares/oficial').then(function(r){ return r.json(); }).then(function(d){
+        var tc = d && d.venta ? Number(d.venta) : null;
+        if (tc) feeARS.textContent = '≈ $'+Math.round(feeUSD*tc).toLocaleString('es-AR')+' ARS (oficial $'+tc.toLocaleString('es-AR')+')';
+      }).catch(function(){});
 
       // Impl cobrada
       if (asigId) {
@@ -6026,10 +6035,14 @@ function mPlanConeOS(emp, asigId) {
         modWrap.innerHTML = '';
         MODULOS_INFO.forEach(function(m) {
           var activo = !!plan.modulos[m.key];
-          var row = el('div',{style:'display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;background:'+(activo?'#F0FDF4':'#F8FAFC')});
-          row.appendChild(el('span',{style:'font-size:13px'},activo?'✅':'⬜'));
+          // MercadoPago: siempre mostrar, pero con nota si está en plan Full
+          var esMp = m.key === 'mercadopago';
+          var incluidoComercial = esMp && planActual === 'full';
+          var row = el('div',{style:'display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;background:'+(activo||incluidoComercial?'#F0FDF4':'#F8FAFC')});
+          row.appendChild(el('span',{style:'font-size:13px'},activo?'✅':(incluidoComercial?'🔗':'⬜')));
           var txt = el('div',{style:'flex:1'});
-          txt.appendChild(el('div',{style:'font-size:13px;font-weight:500;color:'+(activo?'#1a2e4a':'#94a3b8')},m.label));
+          txt.appendChild(el('div',{style:'font-size:13px;font-weight:500;color:'+(activo||incluidoComercial?'#1a2e4a':'#94a3b8')},m.label));
+          if (incluidoComercial) txt.appendChild(el('div',{style:'font-size:11px;color:#94a3b8'},'Incluido — el dueño conecta su cuenta por OAuth'));
           row.appendChild(txt);
           modWrap.appendChild(row);
         });
