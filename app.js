@@ -5865,13 +5865,46 @@ function mConfigFacturacionConeos(emp, sucursalId, cfg, cb) {
   }));
 }
 
+// Config de precios ConeOS — se carga una vez y se cachea
+var _configPrecios = null;
+
+function cargarConfigPrecios() {
+  if (_configPrecios) return Promise.resolve(_configPrecios);
+  return sbFetch('panel_config_coneos?select=*').then(function(rows) {
+    var cfg = {};
+    (rows||[]).forEach(function(r){ cfg[r.clave] = r.valor; });
+    _configPrecios = {
+      impl:   cfg.implementacion || { starter:100, pro:150, full:200 },
+      fee:    cfg.fee_base       || { usd:50, dispositivos_incluidos:4 },
+      tramos: cfg.fee_tramos     || []
+    };
+    return _configPrecios;
+  });
+}
+
+function calcFeeUSD(dispActivos, cfg) {
+  var base = cfg.fee.usd;
+  var incl = cfg.fee.dispositivos_incluidos || 4;
+  if (dispActivos <= incl) return base;
+  var extra = dispActivos - incl;
+  // Buscar tramo
+  var tramos = cfg.tramos || [];
+  var adicional = 0;
+  for (var i=0; i<tramos.length; i++) {
+    if (extra <= tramos[i].hasta) { adicional = tramos[i].usd_por_disp * extra; break; }
+  }
+  return base + adicional;
+}
+
 function calcFeeConeos(dispActivos, slug) {
+  // Legacy ARS — se mantiene para compatibilidad con vista principal mientras no haya TCambio
   if (slug === 'cecchetto-lucia') return 75000;
   if (dispActivos <= 3) return 75000;
   return 75000 + (dispActivos - 3) * 25000;
 }
 
 function calcImplConeos(modulos) {
+  // Legacy ARS — ya no se usa en mPlanConeOS
   var base = 500000;
   var extra = 0;
   if (modulos.mesas)       extra += 100000;
@@ -5904,17 +5937,17 @@ var MODULOS_INFO = [
 function mModulosConeOS(emp) { mPlanConeOS(emp, null); }
 
 function mPlanConeOS(emp, asigId) {
-  // asigId: id de panel_asignaciones para guardar el plan; null = solo desde vista QP sin asignación
   Promise.all([
     coneosCall('get_modulos', { empresa_id: emp.id }),
     coneosCall('get_beneficios_config', { empresa_id: emp.id }),
-    asigId ? sbFetch('panel_asignaciones?id=eq.'+asigId+'&select=coneos_plan').then(function(r){ return r[0]||{}; }) : Promise.resolve({})
+    asigId ? sbFetch('panel_asignaciones?id=eq.'+asigId+'&select=coneos_plan,impl_cobrada_usd').then(function(r){ return r[0]||{}; }) : Promise.resolve({}),
+    cargarConfigPrecios()
   ]).then(function(results) {
     var modActuales = results[0] || {};
     var benefConfig = results[1] || {};
     var asigData    = results[2] || {};
+    var cfg         = results[3];
 
-    // Detectar plan actual desde módulos si no hay plan guardado
     var planActual = asigData.coneos_plan || null;
     if (!planActual) {
       if (modActuales.facturacion) planActual = 'full';
@@ -5924,14 +5957,16 @@ function mPlanConeOS(emp, asigId) {
 
     openM(makeModal('🍦 '+emp.nombre+' — Plan', function(body) {
 
-      // Selector de plan
+      // Selector de plan con precio USD
       body.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px'},'Plan asignado'));
       var planBtns = {};
       var planWrap = el('div',{style:'display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px'});
       ['starter','pro','full'].forEach(function(p) {
         var info = PLANES_CONEOS[p];
-        var btn = el('div',{id:'planbtn-'+p,style:'border:2px solid '+(planActual===p?info.color:'#E2E8F0')+';border-radius:10px;padding:10px;text-align:center;cursor:pointer;background:'+(planActual===p?info.color+'18':'#fff')+';transition:all .15s'});
+        var precio = cfg.impl[p] || 0;
+        var btn = el('div',{style:'border:2px solid '+(planActual===p?info.color:'#E2E8F0')+';border-radius:10px;padding:10px;text-align:center;cursor:pointer;background:'+(planActual===p?info.color+'18':'#fff')+';transition:all .15s'});
         btn.appendChild(el('div',{style:'font-weight:700;font-size:14px;color:'+(planActual===p?info.color:'#64748b')},info.label));
+        btn.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-top:2px'},'impl. USD '+precio));
         planBtns[p] = btn;
         btn.onclick = function() {
           planActual = p;
@@ -5943,19 +5978,45 @@ function mPlanConeOS(emp, asigId) {
             b.style.background = pp===p ? inf.color+'18' : '#fff';
             b.querySelector('div').style.color = pp===p ? inf.color : '#64748b';
           });
+          // Actualizar impl cobrada sugerida
+          var implInp = document.getElementById('_impl_cobrada');
+          if (implInp && !implInp._editado) implInp.value = cfg.impl[p] || 0;
           actualizarModulos();
         };
         planWrap.appendChild(btn);
       });
       body.appendChild(planWrap);
 
-      // Lista de módulos del plan
+      // Fee mensual estimado
+      var dispActivos = emp._dispActivos || 0;
+      var feeUSD = calcFeeUSD(dispActivos, cfg);
+      var feeBox = el('div',{style:'background:#f0f9ff;border-radius:8px;padding:10px 12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center'});
+      feeBox.appendChild(el('div',{}, [
+        el('div',{style:'font-size:12px;color:#64748b'},'Fee mensual estimado'),
+        el('div',{style:'font-size:11px;color:#94a3b8'},dispActivos+' disp. activos + IVA')
+      ]));
+      feeBox.appendChild(el('div',{style:'font-weight:700;font-size:16px;color:#0B9EDA'},'USD '+feeUSD));
+      body.appendChild(feeBox);
+
+      // Impl cobrada
+      if (asigId) {
+        var implWrap = el('div',{class:'fg',style:'margin-bottom:12px'});
+        implWrap.appendChild(el('label',{class:'fl'},'Implementación cobrada (USD)'));
+        var implInp = el('input',{class:'fi',id:'_impl_cobrada',type:'number',placeholder:'0'});
+        implInp.value = asigData.impl_cobrada_usd || cfg.impl[planActual] || 0;
+        implInp._editado = false;
+        implInp.addEventListener('input', function(){ implInp._editado = true; });
+        implWrap.appendChild(implInp);
+        body.appendChild(implWrap);
+      }
+
+      // Módulos del plan
       body.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px'},'Módulos incluidos'));
-      var modWrap = el('div',{id:'plan-modulos',style:'display:flex;flex-direction:column;gap:4px'});
+      var modWrap = el('div',{style:'display:flex;flex-direction:column;gap:4px'});
       body.appendChild(modWrap);
 
-      // Campo pesos por punto (beneficios)
-      var pppWrap = el('div',{id:'ppp-wrap',style:'margin-top:10px;display:none'});
+      // Pesos por punto
+      var pppWrap = el('div',{style:'margin-top:10px;display:none'});
       pppWrap.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-bottom:4px'},'Pesos por punto (Programa de Beneficios)'));
       pppWrap.appendChild(mkInput('mod-beneficios-ppp','number',benefConfig.pesos_por_punto||1000,''));
       body.appendChild(pppWrap);
@@ -5972,25 +6033,31 @@ function mPlanConeOS(emp, asigId) {
           row.appendChild(txt);
           modWrap.appendChild(row);
         });
-        // Mostrar campo pesos por punto si beneficios activo
-        var benefActivo = !!plan.modulos.beneficios;
-        pppWrap.style.display = benefActivo ? '' : 'none';
+        pppWrap.style.display = !!plan.modulos.beneficios ? '' : 'none';
       }
-
       actualizarModulos();
 
     }, function(foot) {
+      // Botón config precios (solo superadmin)
+      if (isSuperAdmin()) {
+        var btnCfg = el('button',{class:'btn btnsm',style:'margin-right:auto'},'⚙ Precios');
+        btnCfg.onclick = function(){ closeM(); mConfigPreciosConeos(function(){ _configPrecios=null; mPlanConeOS(emp,asigId); }); };
+        foot.appendChild(btnCfg);
+      }
       foot.appendChild(cancelBtn());
       var ok = el('button',{class:'btn btnp'},'Guardar plan');
       ok.onclick = function() {
         var plan = PLANES_CONEOS[planActual];
         ok.textContent = 'Guardando...'; ok.disabled = true;
-        var pppVal = Number((ge('mod-beneficios-ppp')||{}).value || 1000);
+        var pppVal = Number((document.getElementById('mod-beneficios-ppp')||{}).value || 1000);
         var promesas = [
           coneosCall('actualizar_modulos', { empresa_id: emp.id, modulos: plan.modulos }),
           coneosCall('upsert_beneficios_config', { empresa_id: emp.id, activo: !!plan.modulos.beneficios, pesos_por_punto: pppVal })
         ];
-        if (asigId) promesas.push(dbUpd('panel_asignaciones', asigId, { coneos_plan: planActual }));
+        if (asigId) {
+          var implVal = Number((document.getElementById('_impl_cobrada')||{}).value || 0);
+          promesas.push(dbUpd('panel_asignaciones', asigId, { coneos_plan: planActual, impl_cobrada_usd: implVal }));
+        }
         Promise.all(promesas).then(function(rs) {
           if (rs[0] && rs[0].error) { alert('Error: '+rs[0].error); ok.textContent='Guardar plan'; ok.disabled=false; return; }
           closeM();
@@ -6000,6 +6067,74 @@ function mPlanConeOS(emp, asigId) {
     }));
   }).catch(function(e){ alert('Error al cargar plan: '+e.message); });
 }
+
+function mConfigPreciosConeos(cb) {
+  cargarConfigPrecios().then(function(cfg) {
+    openM(makeModal('⚙ Configuración de precios ConeOS', function(body) {
+
+      body.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px'},'Implementación (USD, pago único)'));
+      var gridImpl = el('div',{style:'display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px'});
+      ['starter','pro','full'].forEach(function(p) {
+        var fg = el('div',{class:'fg'});
+        fg.appendChild(el('label',{class:'fl'},p.toUpperCase()));
+        fg.appendChild(mkInput('cfg-impl-'+p,'number',cfg.impl[p]||0,''));
+        gridImpl.appendChild(fg);
+      });
+      body.appendChild(gridImpl);
+
+      body.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px'},'Fee mensual base (USD)'));
+      var gridFee = el('div',{style:'display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px'});
+      var fg1=el('div',{class:'fg'}); fg1.appendChild(el('label',{class:'fl'},'USD base')); fg1.appendChild(mkInput('cfg-fee-usd','number',cfg.fee.usd||50,'')); gridFee.appendChild(fg1);
+      var fg2=el('div',{class:'fg'}); fg2.appendChild(el('label',{class:'fl'},'Dispositivos incluidos')); fg2.appendChild(mkInput('cfg-fee-disp','number',cfg.fee.dispositivos_incluidos||4,'')); gridFee.appendChild(fg2);
+      body.appendChild(gridFee);
+
+      body.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px'},'Tramos adicionales (USD por dispositivo extra)'));
+      body.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-bottom:8px'},'Configurar cuando haya más de '+( cfg.fee.dispositivos_incluidos||4)+' dispositivos. Por ahora vacío.'));
+      // Tramos: tabla simple
+      var tramosWrap = el('div',{id:'_tramos_wrap',style:'display:flex;flex-direction:column;gap:6px'});
+      var tramos = JSON.parse(JSON.stringify(cfg.tramos||[]));
+      function renderTramos() {
+        tramosWrap.innerHTML = '';
+        tramos.forEach(function(t,i) {
+          var row = el('div',{style:'display:flex;gap:8px;align-items:center'});
+          var inpH = el('input',{class:'fi',type:'number',placeholder:'Hasta N disp',style:'flex:1'}); inpH.value=t.hasta||'';
+          var inpU = el('input',{class:'fi',type:'number',placeholder:'USD/disp',style:'flex:1'}); inpU.value=t.usd_por_disp||'';
+          inpH.oninput=function(){ tramos[i].hasta=Number(inpH.value); };
+          inpU.oninput=function(){ tramos[i].usd_por_disp=Number(inpU.value); };
+          var btnX=el('button',{class:'btn btnsm',style:'color:#e53e3e;border-color:#e53e3e'},'✕');
+          btnX.onclick=function(){ tramos.splice(i,1); renderTramos(); };
+          row.appendChild(inpH); row.appendChild(inpU); row.appendChild(btnX);
+          tramosWrap.appendChild(row);
+        });
+        var btnAdd=el('button',{class:'btn btnsm'},'+ Tramo');
+        btnAdd.onclick=function(){ tramos.push({hasta:0,usd_por_disp:0}); renderTramos(); };
+        tramosWrap.appendChild(btnAdd);
+      }
+      renderTramos();
+      body.appendChild(tramosWrap);
+
+    }, function(foot) {
+      foot.appendChild(cancelBtn());
+      var ok = el('button',{class:'btn btnp'},'Guardar precios');
+      ok.onclick = function() {
+        ok.textContent='Guardando...'; ok.disabled=true;
+        var implNew = { starter:Number(document.getElementById('cfg-impl-starter').value||100), pro:Number(document.getElementById('cfg-impl-pro').value||150), full:Number(document.getElementById('cfg-impl-full').value||200) };
+        var feeNew  = { usd:Number(document.getElementById('cfg-fee-usd').value||50), dispositivos_incluidos:Number(document.getElementById('cfg-fee-disp').value||4) };
+        Promise.all([
+          sbFetch('panel_config_coneos?on_conflict=clave', {method:'POST', body:{clave:'implementacion',valor:implNew}, headers:{'Prefer':'resolution=merge-duplicates'}}),
+          sbFetch('panel_config_coneos?on_conflict=clave', {method:'POST', body:{clave:'fee_base',valor:feeNew}, headers:{'Prefer':'resolution=merge-duplicates'}}),
+          sbFetch('panel_config_coneos?on_conflict=clave', {method:'POST', body:{clave:'fee_tramos',valor:tramos}, headers:{'Prefer':'resolution=merge-duplicates'}})
+        ]).then(function(){
+          _configPrecios = null; // invalidar cache
+          closeM();
+          if (cb) cb();
+        }).catch(function(e){ alert('Error: '+e.message); ok.textContent='Guardar precios'; ok.disabled=false; });
+      };
+      foot.appendChild(ok);
+    }));
+  });
+}
+
 
 function mEditarEmpresaConeos(emp, cb) {
   // Cargar módulos para calcular precio de referencia
