@@ -5926,16 +5926,19 @@ function mPlanConeOS(emp, asigId) {
 
       // Selector de plan
       body.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px'},'Plan asignado'));
+      var planBtns = {};
       var planWrap = el('div',{style:'display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px'});
       ['starter','pro','full'].forEach(function(p) {
         var info = PLANES_CONEOS[p];
         var btn = el('div',{id:'planbtn-'+p,style:'border:2px solid '+(planActual===p?info.color:'#E2E8F0')+';border-radius:10px;padding:10px;text-align:center;cursor:pointer;background:'+(planActual===p?info.color+'18':'#fff')+';transition:all .15s'});
         btn.appendChild(el('div',{style:'font-weight:700;font-size:14px;color:'+(planActual===p?info.color:'#64748b')},info.label));
+        planBtns[p] = btn;
         btn.onclick = function() {
           planActual = p;
           ['starter','pro','full'].forEach(function(pp) {
             var inf = PLANES_CONEOS[pp];
-            var b = ge('planbtn-'+pp);
+            var b = planBtns[pp];
+            if (!b) return;
             b.style.border = '2px solid '+(pp===p?inf.color:'#E2E8F0');
             b.style.background = pp===p ? inf.color+'18' : '#fff';
             b.querySelector('div').style.color = pp===p ? inf.color : '#64748b';
@@ -5971,7 +5974,7 @@ function mPlanConeOS(emp, asigId) {
         });
         // Mostrar campo pesos por punto si beneficios activo
         var benefActivo = !!plan.modulos.beneficios;
-        ge('ppp-wrap').style.display = benefActivo ? '' : 'none';
+        pppWrap.style.display = benefActivo ? '' : 'none';
       }
 
       actualizarModulos();
