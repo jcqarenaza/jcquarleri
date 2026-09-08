@@ -5940,7 +5940,7 @@ function mPlanConeOS(emp, asigId) {
   Promise.all([
     coneosCall('get_modulos', { empresa_id: emp.id }),
     coneosCall('get_beneficios_config', { empresa_id: emp.id }),
-    asigId ? sbFetch('panel_asignaciones?id=eq.'+asigId+'&select=coneos_plan,impl_cobrada_usd').then(function(r){ return r[0]||{}; }) : Promise.resolve({}),
+    asigId ? sbFetch('panel_asignaciones?id=eq.'+asigId+'&select=coneos_plan,impl_cobrada_usd,mayorista_pct_impl,mayorista_pct_fee,fee_acordado_usd').then(function(r){ return r[0]||{}; }) : Promise.resolve({}),
     cargarConfigPrecios()
   ]).then(function(results) {
     var modActuales = results[0] || {};
@@ -6019,6 +6019,37 @@ function mPlanConeOS(emp, asigId) {
         body.appendChild(implWrap);
       }
 
+      // Campos mayorista (solo si hay asigId)
+      if (asigId) {
+        body.appendChild(el('div',{style:'border-top:.5px solid #E2E8F0;margin:10px 0 10px'}));
+        body.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px'},'Condiciones mayoristas'));
+        // Fee acordado
+        var feeAcordadoWrap=el('div',{class:'fg',style:'margin-bottom:8px'});
+        feeAcordadoWrap.appendChild(el('label',{class:'fl'},'Fee acordado (USD/mes) — sugerido: '+feeUSD));
+        var feeAcordadoInp=el('input',{class:'fi',id:'_fee_acordado',type:'number',placeholder:String(feeUSD)});
+        feeAcordadoInp.value = asigData.fee_acordado_usd != null ? asigData.fee_acordado_usd : feeUSD;
+        feeAcordadoWrap.appendChild(feeAcordadoInp);
+        body.appendChild(feeAcordadoWrap);
+        // % mayorista impl y fee en grid
+        var gridM=el('div',{style:'display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px'});
+        var fgI=el('div',{class:'fg'}); fgI.appendChild(el('label',{class:'fl'},'% mayorista impl.')); var inpPI=el('input',{class:'fi',id:'_pct_impl',type:'number',placeholder:'0',min:'0',max:'100'}); inpPI.value=asigData.mayorista_pct_impl||0; fgI.appendChild(inpPI); gridM.appendChild(fgI);
+        var fgF=el('div',{class:'fg'}); fgF.appendChild(el('label',{class:'fl'},'% mayorista fee')); var inpPF=el('input',{class:'fi',id:'_pct_fee',type:'number',placeholder:'0',min:'0',max:'100'}); inpPF.value=asigData.mayorista_pct_fee||0; fgF.appendChild(inpPF); gridM.appendChild(fgF);
+        body.appendChild(gridM);
+        // Preview de lo que paga el partner
+        var prevM=el('div',{style:'font-size:11px;color:#64748b;background:#f8fafc;border-radius:6px;padding:6px 10px;margin-bottom:8px'});
+        function actualizarPreviewMayorista() {
+          var pctI=Number(inpPI.value)||0, pctF=Number(inpPF.value)||0;
+          var implCobrada=Number((document.getElementById('_impl_cobrada')||{}).value||0);
+          var feeAcordado=Number(feeAcordadoInp.value||feeUSD);
+          var mayorImpl=implCobrada*pctI/100, mayorFee=feeAcordado*pctF/100;
+          prevM.textContent='Partner paga: USD '+mayorImpl.toFixed(0)+' impl + USD '+mayorFee.toFixed(0)+'/mes';
+        }
+        inpPI.oninput=actualizarPreviewMayorista; inpPF.oninput=actualizarPreviewMayorista; feeAcordadoInp.oninput=actualizarPreviewMayorista;
+        actualizarPreviewMayorista();
+        body.appendChild(prevM);
+        body.appendChild(el('div',{style:'border-top:.5px solid #E2E8F0;margin:0 0 10px'}));
+      }
+
       // Módulos del plan
       body.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px'},'Módulos incluidos'));
       var modWrap = el('div',{style:'display:flex;flex-direction:column;gap:4px'});
@@ -6069,7 +6100,16 @@ function mPlanConeOS(emp, asigId) {
         ];
         if (asigId) {
           var implVal = Number((document.getElementById('_impl_cobrada')||{}).value || 0);
-          promesas.push(dbUpd('panel_asignaciones', asigId, { coneos_plan: planActual, impl_cobrada_usd: implVal }));
+          var feeAcordadoEl = document.getElementById('_fee_acordado');
+          var pctImplEl = document.getElementById('_pct_impl');
+          var pctFeeEl  = document.getElementById('_pct_fee');
+          promesas.push(dbUpd('panel_asignaciones', asigId, {
+            coneos_plan: planActual,
+            impl_cobrada_usd: implVal,
+            fee_acordado_usd: feeAcordadoEl ? Number(feeAcordadoEl.value)||null : null,
+            mayorista_pct_impl: pctImplEl ? Number(pctImplEl.value)||0 : 0,
+            mayorista_pct_fee:  pctFeeEl  ? Number(pctFeeEl.value)||0  : 0
+          }));
         }
         Promise.all(promesas).then(function(rs) {
           if (rs[0] && rs[0].error) { alert('Error: '+rs[0].error); ok.textContent='Guardar plan'; ok.disabled=false; return; }
@@ -6319,9 +6359,12 @@ function vPartners() {
     sbFetch('revendedores?select=*&order=nombre.asc'),
     sbFetch('panel_revendedor_sistemas?select=*'),
     sbFetch('panel_sistemas?select=*&order=nombre.asc&para_reventa=eq.true'),
-    sbFetch('panel_clientes?select=*')
+    sbFetch('panel_clientes?select=*'),
+    sbFetch('panel_asignaciones?select=*'),
+    fetch('https://dolarapi.com/v1/dolares/oficial').then(function(r){ return r.json(); }).catch(function(){ return null; })
   ]).then(function(r) {
-    var revs=r[0],revSis=r[1],sistemas=r[2],clientes=r[3];
+    var revs=r[0],revSis=r[1],sistemas=r[2],clientes=r[3],asigs=r[4],dolarData=r[5];
+    var tc = dolarData && dolarData.venta ? Number(dolarData.venta) : null;
     var wrap=el('div',{}); var sh=el('div',{class:'sh'});
     sh.appendChild(el('span',{class:'st'},'Partners ('+revs.length+')'));
     var btnN=el('button',{class:'btn btnp'},'+ Nuevo partner');
@@ -6333,7 +6376,23 @@ function vPartners() {
       revs.forEach(function(rev) {
         var sisIds=revSis.filter(function(rs){ return rs.revendedor_id===rev.id; }).map(function(rs){ return rs.sistema_id; });
         var sisList=sistemas.filter(function(s){ return sisIds.indexOf(s.id)!==-1; });
-        var cliCount=clientes.filter(function(c){ return c.revendedor_id===rev.id; }).length;
+        var clisDel = clientes.filter(function(c){ return c.revendedor_id===rev.id; });
+        var cliCount = clisDel.length;
+
+        // Calcular saldo a cobrar este mes
+        var saldoImplUSD = 0, saldoFeeUSD = 0;
+        clisDel.forEach(function(cl) {
+          var asigsCli = asigs.filter(function(a){ return a.cliente_id===cl.id; });
+          asigsCli.forEach(function(a) {
+            if (a.mayorista_pct_impl && a.impl_cobrada_usd) saldoImplUSD += a.impl_cobrada_usd * a.mayorista_pct_impl / 100;
+            if (a.mayorista_pct_fee) {
+              var feeBase = a.fee_acordado_usd != null ? a.fee_acordado_usd : 50;
+              saldoFeeUSD += feeBase * a.mayorista_pct_fee / 100;
+            }
+          });
+        });
+        var saldoTotalUSD = saldoImplUSD + saldoFeeUSD;
+
         var card=el('div',{class:'cc'}); var ch=el('div',{class:'ch'});
         var ini=rev.nombre.split(' ').map(function(x){ return x[0]||''; }).slice(0,2).join('');
         ch.appendChild(el('div',{class:'av'},ini));
@@ -6341,12 +6400,24 @@ function vPartners() {
         info.appendChild(el('div',{style:'font-weight:500;font-size:14px'},rev.nombre));
         info.appendChild(el('div',{style:'font-size:12px;color:#94a3b8'},[rev.email,cliCount+' cliente'+(cliCount!==1?'s':'')].filter(Boolean).join(' · ')));
         ch.appendChild(info);
+
+        // Saldo a cobrar
+        if (saldoTotalUSD > 0) {
+          var saldoEl = el('div',{style:'text-align:right;margin-right:8px'});
+          saldoEl.appendChild(el('div',{style:'font-size:13px;font-weight:700;color:#0B9EDA'},'USD '+saldoTotalUSD.toFixed(0)));
+          if (tc) saldoEl.appendChild(el('div',{style:'font-size:11px;color:#94a3b8'},'$'+Math.round(saldoTotalUSD*tc).toLocaleString('es-AR')));
+          saldoEl.appendChild(el('div',{style:'font-size:10px;color:#94a3b8'},'este mes'));
+          ch.appendChild(saldoEl);
+        }
+
         var btnE=el('button',{class:'btn btnsm'},'Editar');
         btnE.onclick=(function(rv,sl){ return function(){ mEditarPartner(rv,sl,sistemas,function(){ vPartners(); }); }; })(rev,sisList);
         ch.appendChild(btnE);
         var btnV=el('button',{class:'btn btnsm btnp',style:'margin-left:4px'},'Ver clientes');
         btnV.onclick=(function(rv){ return function(){ vClientesPartner(rv,sistemas); }; })(rev);
-        ch.appendChild(btnV); card.appendChild(ch);
+        var btnL=el('button',{class:'btn btnsm',style:'margin-left:4px'},'Liquidación');
+        btnL.onclick=(function(rv,cds,asg,t){ return function(){ vLiquidacionPartner(rv,cds,asg,t); }; })(rev,clisDel,asigs,tc);
+        ch.appendChild(btnV); ch.appendChild(btnL); card.appendChild(ch);
         if (sisList.length) {
           var body=el('div',{style:'padding:8px 12px 10px;display:flex;flex-wrap:wrap;gap:6px'});
           sisList.forEach(function(s){ body.appendChild(chip(s.nombre)); });
@@ -6613,4 +6684,107 @@ function mAsignacionesPartner(cl,asigs,sisDisp,cb) {
       foot.appendChild(btnG);
     }
   }));
+}
+
+// ── LIQUIDACIÓN PARTNER ─────────────────────────────────────────
+
+function vLiquidacionPartner(rev, clientes, asigs, tc) {
+  var wrap = el('div',{});
+  var sh = el('div',{class:'sh'});
+  var btnBack = el('button',{class:'btn btnsm'},'← Partners');
+  btnBack.onclick = function(){ vPartners(); };
+  sh.appendChild(btnBack);
+  sh.appendChild(el('span',{class:'st',style:'margin-left:8px'},'Liquidación — '+rev.nombre));
+  wrap.appendChild(sh);
+
+  // Totales del mes
+  var totalImplUSD=0, totalFeeUSD=0;
+  clientes.forEach(function(cl) {
+    asigs.filter(function(a){ return a.cliente_id===cl.id; }).forEach(function(a) {
+      if (a.mayorista_pct_impl && a.impl_cobrada_usd) totalImplUSD += a.impl_cobrada_usd * a.mayorista_pct_impl / 100;
+      if (a.mayorista_pct_fee) totalFeeUSD += (a.fee_acordado_usd!=null?a.fee_acordado_usd:50) * a.mayorista_pct_fee / 100;
+    });
+  });
+  var totalUSD = totalImplUSD + totalFeeUSD;
+
+  // KPIs
+  var kpiRow = el('div',{style:'display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px'});
+  function kpi(label, val, sub) {
+    var k=el('div',{class:'card',style:'padding:12px;text-align:center'});
+    k.appendChild(el('div',{style:'font-size:11px;color:#64748b;margin-bottom:4px'},label));
+    k.appendChild(el('div',{style:'font-size:18px;font-weight:700;color:#0B9EDA'},val));
+    if (sub) k.appendChild(el('div',{style:'font-size:11px;color:#94a3b8'},sub));
+    return k;
+  }
+  kpiRow.appendChild(kpi('Impl. este mes','USD '+totalImplUSD.toFixed(0), tc?'$'+Math.round(totalImplUSD*tc).toLocaleString('es-AR'):null));
+  kpiRow.appendChild(kpi('Fee mensual','USD '+totalFeeUSD.toFixed(0), tc?'$'+Math.round(totalFeeUSD*tc).toLocaleString('es-AR'):null));
+  kpiRow.appendChild(kpi('Total a cobrar','USD '+totalUSD.toFixed(0), tc?'$'+Math.round(totalUSD*tc).toLocaleString('es-AR'):null));
+  wrap.appendChild(kpiRow);
+
+  // Detalle por cliente
+  wrap.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px'},'Detalle por cliente'));
+
+  if (!clientes.length) {
+    wrap.appendChild(el('div',{class:'card'},[el('div',{class:'emp'},'Sin clientes')]));
+  } else {
+    clientes.forEach(function(cl) {
+      var asigsCli = asigs.filter(function(a){ return a.cliente_id===cl.id; });
+      var card = el('div',{class:'cc'});
+
+      // Header cliente
+      var ch = el('div',{class:'ch'});
+      var ini = cl.nombre.split(' ').map(function(x){ return x[0]||''; }).slice(0,2).join('');
+      ch.appendChild(el('div',{class:'av'},ini));
+      var info = el('div',{style:'flex:1'});
+      info.appendChild(el('div',{style:'font-weight:500;font-size:14px'},cl.nombre));
+      if (cl.empresa) info.appendChild(el('div',{style:'font-size:12px;color:#94a3b8'},cl.empresa));
+      ch.appendChild(info);
+      card.appendChild(ch);
+
+      // Detalle por asignación
+      asigsCli.forEach(function(a) {
+        var implMay = (a.mayorista_pct_impl && a.impl_cobrada_usd) ? a.impl_cobrada_usd * a.mayorista_pct_impl / 100 : 0;
+        var feeBase = a.fee_acordado_usd != null ? a.fee_acordado_usd : 50;
+        var feeMay  = a.mayorista_pct_fee ? feeBase * a.mayorista_pct_fee / 100 : 0;
+        var planLabel = a.coneos_plan ? a.coneos_plan.toUpperCase() : '—';
+
+        var det = el('div',{style:'padding:8px 12px;border-top:.5px solid #f1f5f9;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;font-size:12px'});
+
+        function col(label, val, color) {
+          var d = el('div',{});
+          d.appendChild(el('div',{style:'color:#94a3b8;font-size:10px'},label));
+          d.appendChild(el('div',{style:'font-weight:500;color:'+(color||'#1a2e4a')},val));
+          return d;
+        }
+
+        det.appendChild(col('Plan', planLabel));
+        det.appendChild(col('Fee acordado', 'USD '+feeBase));
+        det.appendChild(col('Impl. mayorista', implMay>0?'USD '+implMay.toFixed(0):'—', implMay>0?'#0B9EDA':null));
+        det.appendChild(col('Fee mayorista/mes', feeMay>0?'USD '+feeMay.toFixed(0):'—', feeMay>0?'#0B9EDA':null));
+        card.appendChild(det);
+
+        // Si no tiene % configurado, mostrar aviso
+        if (!a.mayorista_pct_fee && !a.mayorista_pct_impl) {
+          var aviso = el('div',{style:'padding:4px 12px 8px;font-size:11px;color:#f59e0b'});
+          aviso.textContent = '⚠ Sin porcentajes mayoristas configurados — abrí Plan para definirlos';
+          card.appendChild(aviso);
+        }
+      });
+
+      if (!asigsCli.length) {
+        var sin = el('div',{style:'padding:8px 12px;font-size:12px;color:#94a3b8'});
+        sin.textContent = 'Sin sistemas asignados';
+        card.appendChild(sin);
+      }
+
+      wrap.appendChild(card);
+    });
+  }
+
+  // Nota dólar
+  if (tc) {
+    wrap.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-top:8px;text-align:right'},'Dólar oficial: $'+tc.toLocaleString('es-AR')));
+  }
+
+  setApp(wrap);
 }
