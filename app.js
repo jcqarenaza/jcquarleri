@@ -5494,8 +5494,8 @@ function vConeosEmpresa(emp) {
   var btnEdit = el('button', { class: 'btn' }, 'Editar');
   btnEdit.onclick = function() { mEditarEmpresaConeos(emp, function(empAct) { vConeosEmpresa(empAct); }); };
   sh.appendChild(btnEdit);
-  var btnMod = el('button', { class: 'btn', style:'background:#6366F1;border-color:#6366F1;color:#fff' }, 'Módulos');
-  btnMod.onclick = function() { mModulosConeOS(emp); };
+  var btnMod = el('button', { class: 'btn', style:'background:#6366F1;border-color:#6366F1;color:#fff' }, 'Plan');
+  btnMod.onclick = function() { mPlanConeOS(emp, null); };
   sh.appendChild(btnMod);
   var btnAdmin = el('button', { class: 'btn btnp' }, '+ Usuario admin');
   btnAdmin.onclick = function() { mNuevoAdminConeos(emp, function() { vConeosEmpresa(emp); }); };
@@ -5882,160 +5882,120 @@ function calcImplConeos(modulos) {
   return base + extra;
 }
 
-function mModulosConeOS(emp) {
+// PLANES CONEOS ── reemplaza mModulosConeOS
+var PLANES_CONEOS = {
+  starter: { label: 'STARTER', color: '#3D8A32', modulos: { kiosk:true, caja:true, preparacion:true, display:true, beneficios:true, mesas:false, delivery:false, facturacion:false, mercadopago:false } },
+  pro:     { label: 'PRO',     color: '#0B9EDA', modulos: { kiosk:true, caja:true, preparacion:true, display:true, beneficios:true, mesas:true,  delivery:true,  facturacion:false, mercadopago:false } },
+  full:    { label: 'FULL',    color: '#7C3AED', modulos: { kiosk:true, caja:true, preparacion:true, display:true, beneficios:true, mesas:true,  delivery:true,  facturacion:true,  mercadopago:false } }
+};
+
+var MODULOS_INFO = [
+  { key:'kiosk',       label:'Kiosk',                   desc:'Pantalla táctil para clientes — pedidos en mostrador' },
+  { key:'caja',        label:'Caja',                    desc:'Gestión de pagos, cobros y arqueo de caja' },
+  { key:'preparacion', label:'Preparación',             desc:'Pantalla de preparación para el equipo interno' },
+  { key:'display',     label:'Display',                 desc:'Pantalla pública con menú y precios' },
+  { key:'beneficios',  label:'Programa de Beneficios',  desc:'Los clientes acumulan puntos al comprar' },
+  { key:'mesas',       label:'Mesas',                   desc:'Gestión de mesas y pedidos en salón' },
+  { key:'delivery',    label:'Delivery',                desc:'Pedidos a domicilio' },
+  { key:'facturacion', label:'Facturación',             desc:'Emisión de facturas electrónicas ARCA' },
+  { key:'mercadopago', label:'MercadoPago',             desc:'Cobros con MercadoPago integrado' }
+];
+
+function mModulosConeOS(emp) { mPlanConeOS(emp, null); }
+
+function mPlanConeOS(emp, asigId) {
+  // asigId: id de panel_asignaciones para guardar el plan; null = solo desde vista QP sin asignación
   Promise.all([
     coneosCall('get_modulos', { empresa_id: emp.id }),
-    coneosCall('get_beneficios_config', { empresa_id: emp.id })
+    coneosCall('get_beneficios_config', { empresa_id: emp.id }),
+    asigId ? sbFetch('panel_asignaciones?id=eq.'+asigId+'&select=coneos_plan').then(function(r){ return r[0]||{}; }) : Promise.resolve({})
   ]).then(function(results) {
-    var modulos = results[0];
+    var modActuales = results[0] || {};
     var benefConfig = results[1] || {};
-    var MODULOS = [
-      { key: 'kiosk',       label: 'Kiosk',        desc: 'Pantalla táctil para clientes — pedidos en mostrador', color: '#0B9EDA', base: true },
-      { key: 'caja',        label: 'Caja',          desc: 'Gestión de pagos, cobros y arqueo de caja',           color: '#3D8A32', base: true },
-      { key: 'preparacion', label: 'Preparación',   desc: 'Pantalla de preparación para el equipo interno',      color: '#7C3AED', base: true },
-      { key: 'display',     label: 'Display',        desc: 'Pantalla pública con menú y precios',                color: '#F59E0B', base: true },
-      { key: 'mesas',       label: 'Mesas',          desc: 'Gestión de mesas y pedidos en salón — impl. +$100.000', color: '#10B981', base: false, impl: 100000 },
-      { key: 'delivery',    label: 'Delivery',       desc: 'Pedidos a domicilio — impl. +$150.000',              color: '#E53E3E', base: false, impl: 150000 },
-      { key: 'facturacion', label: 'Facturación',    desc: 'Emisión de facturas electrónicas — impl. +$100.000', color: '#0891B2', base: false, impl: 100000 },
-      { key: 'mercadopago', label: 'MercadoPago',    desc: 'Cobros con MercadoPago integrado — impl. +$100.000', color: '#009EE3', base: false, impl: 100000 },
-      { key: 'beneficios',  label: 'Programa de Beneficios', desc: 'Los clientes acumulan puntos al comprar — impl. +$100.000', color: '#7C3AED', base: false, impl: 100000 },
-    ];
+    var asigData    = results[2] || {};
 
-    openM(makeModal('🍦 '+emp.nombre+' — Módulos', function(body) {
+    // Detectar plan actual desde módulos si no hay plan guardado
+    var planActual = asigData.coneos_plan || null;
+    if (!planActual) {
+      if (modActuales.facturacion) planActual = 'full';
+      else if (modActuales.delivery || modActuales.mesas) planActual = 'pro';
+      else planActual = 'starter';
+    }
 
-      // Info banner
-      var info = el('div', {style:'background:#EEF2FF;border:.5px solid #6366F1;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#4338CA'});
-      info.appendChild(el('b', {}, 'Control de módulos activos.'));
-      info.appendChild(document.createTextNode(' Los cambios se aplican al guardar.'));
-      body.appendChild(info);
+    openM(makeModal('🍦 '+emp.nombre+' — Plan', function(body) {
 
-      // Resumen de precios (dinámico)
-      var resBox = el('div', {style:'background:#F8FAFC;border:.5px solid #E2E8F0;border-radius:10px;padding:12px 16px;margin-bottom:14px'});
-      var resTitle = el('div', {style:'font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px'}, 'Precio calculado');
-      resBox.appendChild(resTitle);
-      var resImpl = el('div', {style:'display:flex;justify-content:space-between;font-size:13px;padding:3px 0'});
-      resImpl.appendChild(el('span', {style:'color:#64748B'}, 'Implementación'));
-      var resImplVal = el('span', {style:'font-weight:600;color:#1a2e4a'});
-      resImpl.appendChild(resImplVal);
-      resBox.appendChild(resImpl);
-      var resFee = el('div', {style:'display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-top:.5px solid #F1F5F9;margin-top:4px'});
-      resFee.appendChild(el('span', {style:'color:#64748B'}, 'Fee mensual'));
-      var resFeeVal = el('span', {style:'font-weight:600;color:#F59E0B'});
-      resFee.appendChild(resFeeVal);
-      resBox.appendChild(resFee);
-      body.appendChild(resBox);
+      // Selector de plan
+      body.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px'},'Plan asignado'));
+      var planWrap = el('div',{style:'display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px'});
+      ['starter','pro','full'].forEach(function(p) {
+        var info = PLANES_CONEOS[p];
+        var btn = el('div',{id:'planbtn-'+p,style:'border:2px solid '+(planActual===p?info.color:'#E2E8F0')+';border-radius:10px;padding:10px;text-align:center;cursor:pointer;background:'+(planActual===p?info.color+'18':'#fff')+';transition:all .15s'});
+        btn.appendChild(el('div',{style:'font-weight:700;font-size:14px;color:'+(planActual===p?info.color:'#64748b')},info.label));
+        btn.onclick = function() {
+          planActual = p;
+          ['starter','pro','full'].forEach(function(pp) {
+            var inf = PLANES_CONEOS[pp];
+            var b = ge('planbtn-'+pp);
+            b.style.border = '2px solid '+(pp===p?inf.color:'#E2E8F0');
+            b.style.background = pp===p ? inf.color+'18' : '#fff';
+            b.querySelector('div').style.color = pp===p ? inf.color : '#64748b';
+          });
+          actualizarModulos();
+        };
+        planWrap.appendChild(btn);
+      });
+      body.appendChild(planWrap);
 
-      function actualizarResumen() {
-        var mod = {};
-        MODULOS.forEach(function(m) {
-          var inp = document.getElementById('mod-'+m.key);
-          mod[m.key] = inp ? inp.checked : false;
+      // Lista de módulos del plan
+      body.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px'},'Módulos incluidos'));
+      var modWrap = el('div',{id:'plan-modulos',style:'display:flex;flex-direction:column;gap:4px'});
+      body.appendChild(modWrap);
+
+      // Campo pesos por punto (beneficios)
+      var pppWrap = el('div',{id:'ppp-wrap',style:'margin-top:10px;display:none'});
+      pppWrap.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-bottom:4px'},'Pesos por punto (Programa de Beneficios)'));
+      pppWrap.appendChild(mkInput('mod-beneficios-ppp','number',benefConfig.pesos_por_punto||1000,''));
+      body.appendChild(pppWrap);
+
+      function actualizarModulos() {
+        var plan = PLANES_CONEOS[planActual];
+        modWrap.innerHTML = '';
+        MODULOS_INFO.forEach(function(m) {
+          var activo = !!plan.modulos[m.key];
+          var row = el('div',{style:'display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;background:'+(activo?'#F0FDF4':'#F8FAFC')});
+          row.appendChild(el('span',{style:'font-size:13px'},activo?'✅':'⬜'));
+          var txt = el('div',{style:'flex:1'});
+          txt.appendChild(el('div',{style:'font-size:13px;font-weight:500;color:'+(activo?'#1a2e4a':'#94a3b8')},m.label));
+          row.appendChild(txt);
+          modWrap.appendChild(row);
         });
-        resImplVal.textContent = fmt(calcImplConeos(mod));
-        var disp = emp._dispActivos || 1;
-        resFeeVal.textContent = fmt(calcFeeConeos(disp, emp.slug)) + '/mes';
+        // Mostrar campo pesos por punto si beneficios activo
+        var benefActivo = !!plan.modulos.beneficios;
+        ge('ppp-wrap').style.display = benefActivo ? '' : 'none';
       }
 
-      // Módulos base
-      var baseWrap = el('div', {style:'margin-bottom:6px'});
-      baseWrap.appendChild(el('div', {style:'font-size:11px;font-weight:500;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px'}, 'Módulos base — incluidos ($500.000)'));
-      MODULOS.filter(function(m){ return m.base; }).forEach(function(m) {
-        var row = el('div', {style:'display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:.5px solid #F1F5F9'});
-        var dot = el('div', {style:'width:8px;height:8px;border-radius:50%;background:'+m.color+';flex-shrink:0'});
-        row.appendChild(dot);
-        row.appendChild(el('span', {style:'font-size:13px;color:#1a2e4a;flex:1'}, m.label));
-        row.appendChild(el('span', {style:'font-size:11px;color:#5BBD4E;font-weight:600'}, '✓ Incluido'));
-        var inp = el('input', {type:'checkbox', id:'mod-'+m.key, style:'display:none'});
-        inp.checked = true;
-        row.appendChild(inp);
-        baseWrap.appendChild(row);
-      });
-      body.appendChild(baseWrap);
-
-      // Módulos extra
-      var extraWrap = el('div', {style:'margin-top:10px'});
-      extraWrap.appendChild(el('div', {style:'font-size:11px;font-weight:500;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px'}, 'Módulos adicionales'));
-      MODULOS.filter(function(m){ return !m.base; }).forEach(function(m) {
-        var activo = !!modulos[m.key];
-        var card = el('div', {style:'border:.5px solid '+(activo?m.color:'#E2E8F0')+';border-radius:10px;padding:11px 14px;margin-bottom:8px;background:'+(activo?'#FAFBFF':'#FAFAFA')+';transition:border .15s'});
-        var row = el('div', {style:'display:flex;align-items:center;gap:10px'});
-        var dot = el('div', {style:'width:10px;height:10px;border-radius:50%;flex-shrink:0;background:'+m.color});
-        row.appendChild(dot);
-        var titWrap = el('div', {style:'flex:1'});
-        titWrap.appendChild(el('div', {style:'font-weight:600;font-size:13px;color:#1a2e4a'}, m.label));
-        titWrap.appendChild(el('div', {style:'font-size:11px;color:#64748B;margin-top:2px'}, m.desc));
-        row.appendChild(titWrap);
-        var tog = el('label', {class:'tog'});
-        var inp = el('input', {type:'checkbox', id:'mod-'+m.key});
-        if (activo) inp.checked = true;
-        inp.addEventListener('change', function() {
-          card.style.border = '.5px solid '+(inp.checked ? m.color : '#E2E8F0');
-          actualizarResumen();
-        });
-        tog.appendChild(inp); tog.appendChild(el('span', {class:'sl'}));
-        row.appendChild(tog);
-        card.appendChild(row);
-        extraWrap.appendChild(card);
-      });
-
-      // --- Módulo Programa de Beneficios ---
-      var benefActivo = !!benefConfig.activo;
-      var benefPPP = benefConfig.pesos_por_punto || 1000;
-      var benefColor = '#8B5CF6';
-      var benefCard = el('div', {style:'border:.5px solid '+(benefActivo?benefColor:'#E2E8F0')+';border-radius:10px;padding:11px 14px;margin-bottom:8px;background:'+(benefActivo?'#FAF8FF':'#FAFAFA')+';transition:border .15s'});
-      var benefRow = el('div', {style:'display:flex;align-items:center;gap:10px'});
-      var benefDot = el('div', {style:'width:10px;height:10px;border-radius:50%;flex-shrink:0;background:'+benefColor});
-      benefRow.appendChild(benefDot);
-      var benefTit = el('div', {style:'flex:1'});
-      benefTit.appendChild(el('div', {style:'font-weight:600;font-size:13px;color:#1a2e4a'}, 'Programa de Beneficios'));
-      benefTit.appendChild(el('div', {style:'font-size:11px;color:#64748B;margin-top:2px'}, 'Los clientes acumulan puntos al comprar — impl. +$100.000'));
-      benefRow.appendChild(benefTit);
-      var benefTog = el('label', {class:'tog'});
-      var benefInp = el('input', {type:'checkbox', id:'mod-beneficios'});
-      if (benefActivo) benefInp.checked = true;
-      benefInp.addEventListener('change', function() {
-        benefCard.style.border = '.5px solid '+(benefInp.checked ? benefColor : '#E2E8F0');
-        benefPPPBox.style.display = benefInp.checked ? '' : 'none';
-      });
-      benefTog.appendChild(benefInp); benefTog.appendChild(el('span', {class:'sl'}));
-      benefRow.appendChild(benefTog);
-      benefCard.appendChild(benefRow);
-      // Input pesos por punto
-      var benefPPPBox = el('div', {style:'margin-top:10px;display:'+(benefActivo?'':'none')});
-      var benefPPPLabel = el('div', {style:'font-size:11px;color:#64748B;margin-bottom:4px'}, 'Pesos por punto (cada X pesos = 1 punto)');
-      var benefPPPInp = mkInput('mod-beneficios-ppp', 'number', benefPPP);
-      benefPPPBox.appendChild(benefPPPLabel);
-      benefPPPBox.appendChild(benefPPPInp);
-      benefCard.appendChild(benefPPPBox);
-      extraWrap.appendChild(benefCard);
-
-      body.appendChild(extraWrap);
-      actualizarResumen();
+      actualizarModulos();
 
     }, function(foot) {
       foot.appendChild(cancelBtn());
-      var ok = el('button', {class:'btn btnp'}, 'Guardar módulos');
+      var ok = el('button',{class:'btn btnp'},'Guardar plan');
       ok.onclick = function() {
-        var nuevosModulos = {};
-        MODULOS.forEach(function(m){
-          var inp = document.getElementById('mod-'+m.key);
-          nuevosModulos[m.key] = inp ? inp.checked : false;
-        });
+        var plan = PLANES_CONEOS[planActual];
         ok.textContent = 'Guardando...'; ok.disabled = true;
-        var benefActivoNuevo = document.getElementById('mod-beneficios').checked;
-        var benefPPPNuevo = Number(document.getElementById('mod-beneficios-ppp').value || 1000);
-        Promise.all([
-          coneosCall('actualizar_modulos', { empresa_id: emp.id, modulos: nuevosModulos }),
-          coneosCall('upsert_beneficios_config', { empresa_id: emp.id, activo: benefActivoNuevo, pesos_por_punto: benefPPPNuevo })
-        ]).then(function(rs) {
-          if (rs[0].error) { alert('Error módulos: '+rs[0].error); ok.textContent = 'Guardar módulos'; ok.disabled = false; return; }
-          if (rs[1].error) { alert('Error beneficios: '+rs[1].error); ok.textContent = 'Guardar módulos'; ok.disabled = false; return; }
+        var pppVal = Number((ge('mod-beneficios-ppp')||{}).value || 1000);
+        var promesas = [
+          coneosCall('actualizar_modulos', { empresa_id: emp.id, modulos: plan.modulos }),
+          coneosCall('upsert_beneficios_config', { empresa_id: emp.id, activo: !!plan.modulos.beneficios, pesos_por_punto: pppVal })
+        ];
+        if (asigId) promesas.push(dbUpd('panel_asignaciones', asigId, { coneos_plan: planActual }));
+        Promise.all(promesas).then(function(rs) {
+          if (rs[0] && rs[0].error) { alert('Error: '+rs[0].error); ok.textContent='Guardar plan'; ok.disabled=false; return; }
           closeM();
-        }).catch(function(){ ok.textContent = 'Guardar módulos'; ok.disabled = false; });
+        }).catch(function(e){ alert('Error: '+e.message); ok.textContent='Guardar plan'; ok.disabled=false; });
       };
       foot.appendChild(ok);
     }));
-  }).catch(function(e){ alert('Error al cargar módulos: '+e.message); });
+  }).catch(function(e){ alert('Error al cargar plan: '+e.message); });
 }
 
 function mEditarEmpresaConeos(emp, cb) {
@@ -6438,12 +6398,11 @@ function mAsignacionesPartner(cl,asigs,sisDisp,cb) {
         row.appendChild(chipClass(a.activo?'Activo':'Inactivo',a.activo?'ct':'cgr'));
         // Botón módulos si es ConeOS y tiene empresa vinculada
         if (esConeos) {
-          var btnMod=el('button',{class:'btn btnsm',style:'margin-left:4px'},a.coneos_empresa_id?'Módulos':'⚠ Vincular ConeOS');
+          var btnMod=el('button',{class:'btn btnsm',style:'margin-left:4px'},a.coneos_empresa_id?'Plan':'⚠ Vincular ConeOS');
           (function(asig,cnombre){ btnMod.onclick=function(){
             if (asig.coneos_empresa_id) {
-              closeM(); mModulosConeOS({id:asig.coneos_empresa_id, nombre:cnombre});
+              closeM(); mPlanConeOS({id:asig.coneos_empresa_id, nombre:cnombre}, asig.id);
             } else {
-              // Vincular empresa ConeOS
               coneosCall('listar_empresas',{}).then(function(emps){
                 var sel=el('select',{class:'fi',id:'_cemp'});
                 sel.appendChild(el('option',{value:''},'— Seleccionar empresa —'));
@@ -6459,7 +6418,7 @@ function mAsignacionesPartner(cl,asigs,sisDisp,cb) {
                     if (!empId) return;
                     dbUpd('panel_asignaciones',asig.id,{coneos_empresa_id:empId}).then(function(){
                       asig.coneos_empresa_id=empId; closeM();
-                      mModulosConeOS({id:empId,nombre:cnombre});
+                      mPlanConeOS({id:empId,nombre:cnombre}, asig.id);
                     });
                   };
                   f.appendChild(btnV);

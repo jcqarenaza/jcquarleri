@@ -112,7 +112,7 @@ var _currentUser = null;
 function unlockPanel(token, usuario) {
   _authToken = token;
   _currentUser = usuario;
-  localStorage.setItem('qp_auth', JSON.stringify({ token: token, usuario: usuario, ts: Date.now() }));
+  sessionStorage.setItem('qp_auth', JSON.stringify({ token: token, usuario: usuario, ts: Date.now() }));
   document.getElementById('login-screen').style.display = 'none';
   document.body.style.overflow = '';
   var btnP = document.getElementById('nb-partners');
@@ -165,7 +165,7 @@ async function doLogin() {
 }
 
 (function(){
-  var saved = localStorage.getItem('qp_auth');
+  var saved = sessionStorage.getItem('qp_auth');
   if (saved) {
     try {
       var data = JSON.parse(saved);
@@ -179,6 +179,8 @@ async function doLogin() {
         }, 50);
         return; // sesion valida, entrar directo
       }
+      // Sesion expirada — limpiar
+      sessionStorage.removeItem('qp_auth');
     } catch(e) {}
   }
   var ls = document.getElementById('login-screen');
