@@ -3785,7 +3785,7 @@ function vFinanzas() {
         var dsPend2 = tt.juanDS - transI2;
         var dsPendAbs2 = Math.round(Math.abs(dsPend2)*100)/100;
         // Sueldo depositado
-        var sueldoDep2 = Number(gv('jpf-juan_sueldo')||0);
+        var sueldoDep2 = Number((ge('jpf-juan_sueldo')?gv('jpf-juan_sueldo'):null)||tt.juanSueldo||0);
         if (transI2 > 0 || tt.juanDS > 0) {
           var dsLine2 = el('div',{style:'margin-top:6px;padding-top:6px;border-top:1px solid #E2E8F0;font-size:12px'});
           // Sueldo bruto y depositado
