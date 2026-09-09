@@ -6019,8 +6019,8 @@ function mPlanConeOS(emp, asigId) {
         body.appendChild(implWrap);
       }
 
-      // Campos mayorista (solo si hay asigId)
-      if (asigId) {
+      // Campos mayorista solo para superadmin
+      if (asigId && isSuperAdmin()) {
         body.appendChild(el('div',{style:'border-top:.5px solid #E2E8F0;margin:10px 0 10px'}));
         body.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px'},'Condiciones mayoristas'));
         // Fee acordado
@@ -6349,7 +6349,12 @@ function mNuevoAdminConeos(emp, cb) {
   }));
 }
 
-(function(){ var u=window._currentUser; if(u&&u.rol==='partner') go('partners'); else go('dash'); })();
+(function(){
+  var u=window._currentUser;
+  var appEl=document.getElementById('app');
+  if(appEl) appEl.style.visibility='';
+  if(u&&u.rol==='partner') go('partners'); else go('dash');
+})();
 // ── PARTNERS ────────────────────────────────────────────────────
 
 function vPartners() {

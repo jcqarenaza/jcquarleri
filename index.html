@@ -187,9 +187,14 @@ async function doLogin() {
           });
           var btnP = document.getElementById('nb-partners');
           if (btnP) btnP.style.display = (esSuperAdmin2 || esPartner2) ? '' : 'none';
-          if (esPartner2) go('partners');
+          if (esPartner2) go('partners'); else go('dash');
+          var appEl2 = document.getElementById('app');
+          if (appEl2) appEl2.style.visibility = '';
         }, 50);
-        return; // sesion valida, entrar directo
+        // Ocultar app hasta resolver rol
+      var appEl = document.getElementById('app');
+      if (appEl) appEl.style.visibility = 'hidden';
+      return; // sesion valida, entrar directo
       }
       // Sesion expirada — limpiar
       sessionStorage.removeItem('qp_auth');
