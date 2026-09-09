@@ -179,18 +179,17 @@ async function doLogin() {
       if (data.token && data.usuario) {
         _authToken = data.token;
         _currentUser = data.usuario;
-        setTimeout(function(){
-          var esPartner2 = data.usuario && data.usuario.rol === 'partner';
-          var esSuperAdmin2 = !data.usuario || data.usuario.rol === 'superadmin';
+        window._onAuthReady = function(usuario) {
+          var esPartner2 = usuario && usuario.rol === 'partner';
+          var esSuperAdmin2 = !usuario || usuario.rol === 'superadmin';
           ['nb-dash','nb-sistemas','nb-clientes','nb-cobros','nb-salud','nb-gastos'].forEach(function(id){
             var b = document.getElementById(id); if (b) b.style.display = esSuperAdmin2 ? '' : 'none';
           });
           var btnP = document.getElementById('nb-partners');
           if (btnP) btnP.style.display = (esSuperAdmin2 || esPartner2) ? '' : 'none';
-          if (esPartner2) go('partners'); else go('dash');
           var appEl2 = document.getElementById('app');
           if (appEl2) appEl2.style.visibility = '';
-        }, 50);
+        };
         // Ocultar app hasta resolver rol
       var appEl = document.getElementById('app');
       if (appEl) appEl.style.visibility = 'hidden';
