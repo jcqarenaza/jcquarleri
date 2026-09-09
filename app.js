@@ -661,9 +661,11 @@ function vSistemas() {
         var hdr = el('div', {style:'padding:14px 16px 10px'});
         var topRow = el('div', {style:'display:flex;align-items:center;gap:8px;margin-bottom:4px'});
         // Ícono: emoji si tiene, si no letra
-        var icono = cfg.emoji
-          ? el('span', {style:'font-size:22px;line-height:1'}, cfg.emoji)
-          : el('span', {style:'width:28px;height:28px;border-radius:50%;background:'+cfg.bgLetra+';color:'+cfg.color+';font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0'}, cfg.letra);
+        var icono = cfg.logoUrl
+          ? el('img', {src:cfg.logoUrl, style:'width:28px;height:28px;object-fit:contain;border-radius:6px;flex-shrink:0'})
+          : cfg.emoji
+            ? el('span', {style:'font-size:22px;line-height:1'}, cfg.emoji)
+            : el('span', {style:'width:28px;height:28px;border-radius:50%;background:'+cfg.bgLetra+';color:'+cfg.color+';font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0'}, cfg.letra);
         topRow.appendChild(icono);
         topRow.appendChild(el('span', {style:'font-size:15px;font-weight:700;color:'+cfg.color}, s.nombre));
         var tc = s.tipo==='multi_empresa'?'cp':s.tipo==='multi_usuario'?'ct':s.tipo==='saas'?'cb':'cgr';
