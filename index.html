@@ -115,9 +115,16 @@ function unlockPanel(token, usuario) {
   sessionStorage.setItem('qp_auth', JSON.stringify({ token: token, usuario: usuario, ts: Date.now() }));
   document.getElementById('login-screen').style.display = 'none';
   document.body.style.overflow = '';
+  var esPartner = usuario && usuario.rol === 'partner';
+  var esSuperAdmin = !usuario || usuario.rol === 'superadmin';
+  // Tabs solo para superadmin
+  ['nb-dash','nb-sistemas','nb-clientes','nb-cobros','nb-salud','nb-gastos'].forEach(function(id){
+    var b = document.getElementById(id); if (b) b.style.display = esSuperAdmin ? '' : 'none';
+  });
+  // Tab partners: superadmin y partner
   var btnP = document.getElementById('nb-partners');
-  if (btnP) btnP.style.display = (!usuario || usuario.rol === 'superadmin') ? '' : 'none';
-  if (usuario && usuario.rol === 'partner') setTimeout(function(){ go('partners'); }, 100);
+  if (btnP) btnP.style.display = (esSuperAdmin || esPartner) ? '' : 'none';
+  if (esPartner) setTimeout(function(){ go('partners'); }, 100);
   if (window._onAuthReady) window._onAuthReady(usuario);
 }
 
@@ -173,9 +180,14 @@ async function doLogin() {
         _authToken = data.token;
         _currentUser = data.usuario;
         setTimeout(function(){
+          var esPartner2 = data.usuario && data.usuario.rol === 'partner';
+          var esSuperAdmin2 = !data.usuario || data.usuario.rol === 'superadmin';
+          ['nb-dash','nb-sistemas','nb-clientes','nb-cobros','nb-salud','nb-gastos'].forEach(function(id){
+            var b = document.getElementById(id); if (b) b.style.display = esSuperAdmin2 ? '' : 'none';
+          });
           var btnP = document.getElementById('nb-partners');
-          if (btnP) btnP.style.display = (!data.usuario || data.usuario.rol === 'superadmin') ? '' : 'none';
-          if (data.usuario && data.usuario.rol === 'partner') go('partners');
+          if (btnP) btnP.style.display = (esSuperAdmin2 || esPartner2) ? '' : 'none';
+          if (esPartner2) go('partners');
         }, 50);
         return; // sesion valida, entrar directo
       }
