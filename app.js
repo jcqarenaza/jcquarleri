@@ -194,8 +194,9 @@ function calcAlertas(asigs, alertasDb) {
 var _D = null;
 function getSisIconEl(nombre, size) {
   size = size || 20;
-  if (nombre === 'ConeOS') return el('img',{src:'https://jcquarleri.vercel.app/coneos-logo.png',style:'width:'+size+'px;height:'+size+'px;object-fit:contain;border-radius:4px;vertical-align:middle'});
-  var emojis = {'Cortelab':'📐','El Piamonte':'🚗','MobixERP':'📱'};
+  var logos = {'ConeOS':'https://jcquarleri.vercel.app/coneos-logo.png','El Piamonte':'https://jcquarleri.vercel.app/piamonte-logo.png'};
+  if (logos[nombre]) return el('img',{src:logos[nombre],style:'width:'+size+'px;height:'+size+'px;object-fit:contain;border-radius:4px;vertical-align:middle'});
+  var emojis = {'Cortelab':'📐','MobixERP':'📱'};
   return el('span',{style:'font-size:'+size+'px'},emojis[nombre]||'💻');
 }
 
@@ -291,7 +292,7 @@ function gerarRecibo(d, numRec) {
     + '</div></div>'
     + '<div class="grid">'
     + '<div><div class="lb">Cliente</div><div class="vl">' + (d.cli||'-') + '</div></div>'
-    + '<div><div class="lb">Servicio</div><div class="vl" style="display:flex;align-items:center;gap:6px">' + (d.sis==='ConeOS' ? '<img src="https://jcquarleri.vercel.app/coneos-logo.png" style="width:20px;height:20px;object-fit:contain;border-radius:4px">' : '') + (d.sis||'-') + '</div></div>'
+    + '<div><div class="lb">Servicio</div><div class="vl" style="display:flex;align-items:center;gap:6px">' + ({'ConeOS':'<img src="https://jcquarleri.vercel.app/coneos-logo.png" style="width:20px;height:20px;object-fit:contain;border-radius:4px">','El Piamonte':'<img src="https://jcquarleri.vercel.app/piamonte-logo.png" style="width:20px;height:20px;object-fit:contain;border-radius:4px">'}[d.sis]||'') + (d.sis||'-') + '</div></div>'
     + '<div><div class="lb">Metodo de pago</div><div class="vl">' + mn + '</div></div>'
     + '<div><div class="lb">Fecha</div><div class="vl">' + fechaStr + '</div></div>'
     + '</div>'
@@ -648,7 +649,7 @@ function vSistemas() {
     } else {
       var SIS_CONFIG = {
         'Cortelab':    {letra:'CL', color:'#16A34A', bgLetra:'#DCFCE7', emoji:'📐'},
-        'El Piamonte': {letra:'EP', color:'#0284C7', bgLetra:'#E0F2FE', emoji:'🚗'},
+        'El Piamonte': {letra:'EP', color:'#0284C7', bgLetra:'#E0F2FE', emoji:'🚗', logoUrl:'https://jcquarleri.vercel.app/piamonte-logo.png'},
         'MobixERP':    {letra:'MX', color:'#7C3AED', bgLetra:'#EDE9FE', emoji:'📱'},
         'ConeOS':      {letra:'CO', color:'#F59E0B', bgLetra:'#FEF3C7', emoji:'🍦', logoUrl:'https://jcquarleri.vercel.app/coneos-logo.png'},
       };
@@ -5358,7 +5359,12 @@ function renderModalFases(faseActual) {
   var shF = el('div',{class:'sh',style:'margin-bottom:16px'});
   var bSisF = el('button',{class:'btn'},'← Sistemas'); bSisF.onclick=function(){ go('sistemas'); };
   shF.appendChild(bSisF);
-  shF.appendChild(el('span',{class:'st',style:'margin-left:12px'},'🚗 El Piamonte — Control de fases'));
+  (function(){
+    var hP=el('div',{style:'display:flex;align-items:center;gap:6px;margin-left:12px'});
+    hP.appendChild(el('img',{src:'https://jcquarleri.vercel.app/piamonte-logo.png',style:'width:20px;height:20px;object-fit:contain;border-radius:4px'}));
+    hP.appendChild(el('span',{class:'st'},'El Piamonte — Control de fases'));
+    shF.appendChild(hP);
+  })();
   wrapF.appendChild(shF);
   var body = el('div',{});
   wrapF.appendChild(body);
