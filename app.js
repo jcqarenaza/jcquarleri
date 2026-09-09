@@ -6370,8 +6370,12 @@ function mNuevoAdminConeos(emp, cb) {
 
 (function(){
   var u=window._currentUser;
-  var appEl=document.getElementById('app');
-  if(appEl) appEl.style.visibility='';
+  // Notificar tabs/visibilidad si hay sesión guardada
+  if (window._onAuthReady && u) window._onAuthReady(u);
+  else {
+    var appEl=document.getElementById('app');
+    if(appEl) appEl.style.visibility='';
+  }
   if(u&&u.rol==='partner') go('partners'); else go('dash');
 })();
 // ── PARTNERS ────────────────────────────────────────────────────

@@ -179,6 +179,10 @@ async function doLogin() {
       if (data.token && data.usuario) {
         _authToken = data.token;
         _currentUser = data.usuario;
+        // Ocultar hasta que app.js cargue y llame go()
+        var appEl = document.getElementById('app');
+        if (appEl) appEl.style.visibility = 'hidden';
+        // _onAuthReady se llama desde unlockPanel (login) o desde go() (sesión guardada)
         window._onAuthReady = function(usuario) {
           var esPartner2 = usuario && usuario.rol === 'partner';
           var esSuperAdmin2 = !usuario || usuario.rol === 'superadmin';
@@ -190,10 +194,7 @@ async function doLogin() {
           var appEl2 = document.getElementById('app');
           if (appEl2) appEl2.style.visibility = '';
         };
-        // Ocultar app hasta resolver rol
-      var appEl = document.getElementById('app');
-      if (appEl) appEl.style.visibility = 'hidden';
-      return; // sesion valida, entrar directo
+        return; // sesion valida, app.js toma el control
       }
       // Sesion expirada — limpiar
       sessionStorage.removeItem('qp_auth');
