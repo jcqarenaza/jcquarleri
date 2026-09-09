@@ -6349,7 +6349,7 @@ function mNuevoAdminConeos(emp, cb) {
   }));
 }
 
-go('dash');
+(function(){ var u=window._currentUser; if(u&&u.rol==='partner') go('partners'); else go('dash'); })();
 // ── PARTNERS ────────────────────────────────────────────────────
 
 function vPartners() {
