@@ -6370,13 +6370,12 @@ function mNuevoAdminConeos(emp, cb) {
 
 (function(){
   var u=window._currentUser;
-  // Notificar tabs/visibilidad si hay sesión guardada
+  // Primero ocultar para evitar flash, luego ir a la vista correcta
   if (window._onAuthReady && u) window._onAuthReady(u);
-  else {
-    var appEl=document.getElementById('app');
-    if(appEl) appEl.style.visibility='';
-  }
-  if(u&&u.rol==='partner') go('partners'); else go('dash');
+  else { var ae=document.getElementById('app'); if(ae) ae.style.visibility=''; }
+  // Ir a la vista según rol — partners va directo sin pasar por dash
+  if (u && u.rol==='partner') go('partners');
+  else go('dash');
 })();
 // ── PARTNERS ────────────────────────────────────────────────────
 
@@ -6522,8 +6521,34 @@ function mNuevoPartner(sistemas,cb) {
 
 function mEditarPartner(rev,sisList,sistemas,cb) {
   var err;
+  var _logoInp, _logoB64;
   openM(makeModal('Editar partner — '+rev.nombre, function(body) {
     addFg(body,'Nombre',mkInput('epnombre','text',rev.nombre,''));
+
+    // Logo
+    var logoFg=el('div',{class:'fg'});
+    logoFg.appendChild(el('label',{class:'fl'},'Logo del partner'));
+    var logoPreview=el('div',{style:'margin-bottom:8px'});
+    if (rev.logo_b64) {
+      logoPreview.appendChild(el('img',{src:rev.logo_b64,style:'height:48px;object-fit:contain;border-radius:8px;border:1px solid #E2E8F0'}));
+    }
+    logoFg.appendChild(logoPreview);
+    _logoInp=el('input',{type:'file',accept:'image/*',style:'font-size:12px;width:100%'});
+    _logoInp.onchange=function(){
+      var file=_logoInp.files[0];
+      if (!file) return;
+      if (file.size > 300*1024){ alert('El logo no puede superar 300KB'); _logoInp.value=''; return; }
+      var reader=new FileReader();
+      reader.onload=function(e){
+        _logoB64=e.target.result;
+        logoPreview.innerHTML='';
+        logoPreview.appendChild(el('img',{src:_logoB64,style:'height:48px;object-fit:contain;border-radius:8px;border:1px solid #E2E8F0'}));
+      };
+      reader.readAsDataURL(file);
+    };
+    logoFg.appendChild(_logoInp);
+    body.appendChild(logoFg);
+
     var sg=el('div',{class:'fg'});
     sg.appendChild(el('label',{class:'fl'},'Sistemas que puede vender'));
     var sisIds=sisList.map(function(s){ return s.id; });
@@ -6544,7 +6569,9 @@ function mEditarPartner(rev,sisList,sistemas,cb) {
       var nombre=gv('epnombre').trim();
       if (!nombre){ err.textContent='Ingresá un nombre'; err.style.display=''; return; }
       btnG.disabled=true; btnG.textContent='Guardando...';
-      dbUpd('revendedores',rev.id,{nombre:nombre}).then(function() {
+      var revData={nombre:nombre};
+      if (_logoB64) revData.logo_b64=_logoB64;
+      dbUpd('revendedores',rev.id,revData).then(function() {
         return fetch(SB_URL+'/rest/v1/panel_revendedor_sistemas?revendedor_id=eq.'+rev.id,{
           method:'DELETE',headers:{apikey:SB_KEY,'Authorization':'Bearer '+SB_KEY}
         });
