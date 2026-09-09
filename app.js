@@ -6739,6 +6739,15 @@ function vLiquidacionPartner(rev, clientes, asigs, tc) {
       info.appendChild(el('div',{style:'font-weight:500;font-size:14px'},cl.nombre));
       if (cl.empresa) info.appendChild(el('div',{style:'font-size:12px;color:#94a3b8'},cl.empresa));
       ch.appendChild(info);
+      // Botón Plan directo desde liquidación
+      var primerAsig = asigsCli[0];
+      if (primerAsig && primerAsig.coneos_empresa_id) {
+        var btnPlan = el('button',{class:'btn btnsm btnp'},'⚙ Plan');
+        (function(asig, cnombre){ btnPlan.onclick = function(){
+          mPlanConeOS({id:asig.coneos_empresa_id, nombre:cnombre, _dispActivos:0}, asig.id);
+        }; })(primerAsig, cl.nombre);
+        ch.appendChild(btnPlan);
+      }
       card.appendChild(ch);
 
       // Detalle por asignación
