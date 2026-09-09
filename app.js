@@ -534,7 +534,7 @@ function abrirDrawerClientes(s) {
 
   // Header
   var dh = el('div', {style:'display:flex;align-items:center;gap:12px;padding:20px 20px 16px;border-bottom:.5px solid #E2E8F0'});
-  dh.appendChild(el('span', {style:'font-size:20px'}, s.nombre==='Cortelab'?'📐':s.nombre==='El Piamonte'?'🚗':s.nombre==='MobixERP'?'📱':s.nombre==='ConeOS'?'🍦':'💻'));
+  dh.appendChild(el('span', {style:'font-size:20px'}, s.nombre==='Cortelab'?'📐':s.nombre==='El Piamonte'?'🚗':s.nombre==='MobixERP'?'📱':s.nombre==='ConeOS'?'<img src="https://jcquarleri.vercel.app/coneos-logo.png" style="width:20px;height:20px;object-fit:contain;border-radius:4px;vertical-align:middle">':'💻'));
   var dhText = el('div', {style:'flex:1'});
   dhText.appendChild(el('div', {style:'font-size:15px;font-weight:700;color:#1a2e4a'}, s.nombre));
   dhText.appendChild(el('div', {style:'font-size:12px;color:#94a3b8'}, asigsSis.length+' cliente'+(asigsSis.length!==1?'s':'')+' asignado'+(asigsSis.length!==1?'s':'')));
@@ -587,7 +587,7 @@ function abrirDrawerClientes(s) {
 
       // Botón vincular empresa ConeOS (si es ConeOS)
       if (s.nombre === 'ConeOS') {
-        var btnVinc = el('button', {class:'btn btnsm', style:'margin-top:6px;width:100%;color:'+(a.coneos_empresa_id?'#3D8A32':'#854F0B')}, a.coneos_empresa_id ? '🍦 Empresa vinculada — cambiar' : '⚠ Vincular empresa ConeOS');
+        var btnVinc = el('button', {class:'btn btnsm', style:'margin-top:6px;width:100%;color:'+(a.coneos_empresa_id?'#3D8A32':'#854F0B')}, a.coneos_empresa_id ? '✅ Empresa vinculada — cambiar' : '⚠ Vincular empresa ConeOS');
         (function(aa){ btnVinc.onclick = function(){ drawer.remove(); overlay.remove(); mVincularEmpresaConeos(aa); }; })(a);
         card.appendChild(btnVinc);
       }
@@ -643,7 +643,7 @@ function vSistemas() {
         'Cortelab':    {letra:'CL', color:'#16A34A', bgLetra:'#DCFCE7', emoji:'📐'},
         'El Piamonte': {letra:'EP', color:'#0284C7', bgLetra:'#E0F2FE', emoji:'🚗'},
         'MobixERP':    {letra:'MX', color:'#7C3AED', bgLetra:'#EDE9FE', emoji:'📱'},
-        'ConeOS':      {letra:'CO', color:'#F59E0B', bgLetra:'#FEF3C7', emoji:'🍦'},
+        'ConeOS':      {letra:'CO', color:'#F59E0B', bgLetra:'#FEF3C7', emoji:'🍦', logoUrl:'https://jcquarleri.vercel.app/coneos-logo.png'},
       };
 
       sis.forEach(function(s) {
@@ -1491,7 +1491,7 @@ function vClientes() {
             var row = el('div', {style:'display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap'});
             var left = el('div', {style:'display:flex;align-items:center;gap:8px'});
             left.appendChild(el('div', {style:'width:8px;height:8px;border-radius:50%;background:'+col+';flex-shrink:0'}));
-            var SIS_EMOJI = {'Cortelab':'📐','El Piamonte':'🚗','MobixERP':'📱','ConeOS':'🍦'};
+            var SIS_EMOJI = {'Cortelab':'📐','El Piamonte':'🚗','MobixERP':'📱','ConeOS':'<img src="https://jcquarleri.vercel.app/coneos-logo.png" style="width:20px;height:20px;object-fit:contain;border-radius:4px;vertical-align:middle">'};
             var sisEmoji = SIS_EMOJI[s.nombre];
             if (sisEmoji) left.appendChild(el('span', {style:'font-size:15px;line-height:1'}, sisEmoji));
             left.appendChild(el('span', {style:'font-weight:500'}, s.nombre||'?'));
@@ -2180,7 +2180,7 @@ function vResumenCliente(a, cl, s) {
   var btnBack = el('button', {class:'btn'}, '← Clientes');
   btnBack.onclick = function(){ go('clientes'); };
   sh.appendChild(btnBack);
-  var SIS_EMOJI = {'Cortelab':'📐','El Piamonte':'🚗','MobixERP':'📱','ConeOS':'🍦'};
+  var SIS_EMOJI = {'Cortelab':'📐','El Piamonte':'🚗','MobixERP':'📱','ConeOS':'<img src="https://jcquarleri.vercel.app/coneos-logo.png" style="width:20px;height:20px;object-fit:contain;border-radius:4px;vertical-align:middle">'};
   sh.appendChild(el('span', {class:'st', style:'margin-left:12px'}, (SIS_EMOJI[s.nombre]||'💻')+' '+cl.nombre+' — '+s.nombre));
   wrap.appendChild(sh);
 
@@ -5432,7 +5432,7 @@ function vConeos() {
   var btnSisCone = el('button', { class: 'btn' }, '← Sistemas');
   btnSisCone.onclick = function() { go('sistemas'); };
   sh.appendChild(btnSisCone);
-  sh.appendChild(el('span', { class: 'st' }, '🍦 ConeOS — Superadmin'));
+  sh.appendChild(el('div', {style:'display:flex;align-items:center;gap:8px'}, [el('img',{src:'https://jcquarleri.vercel.app/coneos-logo.png',style:'width:24px;height:24px;object-fit:contain;border-radius:6px'}), el('span',{class:'st'},'ConeOS — Superadmin')]));
   var btnNew = el('button', { class: 'btn btnp' }, '+ Nueva empresa');
   btnNew.onclick = function() { mNuevaEmpresaConeos(function() { vConeos(); }); };
   sh.appendChild(btnNew);
@@ -5490,7 +5490,7 @@ function vConeosEmpresa(emp) {
   var btnBack = el('button', { class: 'btn' }, 'Empresas');
   btnBack.onclick = function() { vConeos(); };
   sh.appendChild(btnBack);
-  sh.appendChild(el('span', { class: 'st', style: 'margin-left:12px' }, '🍦 ' + emp.nombre));
+  sh.appendChild(el('div', {style:'display:flex;align-items:center;gap:8px;margin-left:12px'}, [el('img',{src:'https://jcquarleri.vercel.app/coneos-logo.png',style:'width:20px;height:20px;object-fit:contain;border-radius:4px'}), el('span',{class:'st'},emp.nombre)]));
   var btnEdit = el('button', { class: 'btn' }, 'Editar');
   btnEdit.onclick = function() { mEditarEmpresaConeos(emp, function(empAct) { vConeosEmpresa(empAct); }); };
   sh.appendChild(btnEdit);
@@ -5769,7 +5769,7 @@ function mEditarFeeConeOS(emp, feeCalc, metricas) {
   var periodoActual = new Date().toISOString().slice(0,7).replace('-','/');
   openM(makeModal('Fee mensual — '+emp.nombre, function(body) {
     var info = el('div', {style:'background:#F8FAFC;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#64748B'});
-    var linEmp = el('div', {}); linEmp.appendChild(document.createTextNode('🍦 Empresa: ')); linEmp.appendChild(el('b', {}, emp.nombre));
+    var linEmp = el('div', {}); linEmp.appendChild(document.createTextNode('Empresa: ')); linEmp.appendChild(el('b', {}, emp.nombre));
     info.appendChild(linEmp);
     info.appendChild(el('div', {}, '📱 Dispositivos: '+(metricas.dispositivos_activos||0)));
     info.appendChild(el('div', {}, '💰 Fee sugerido por dispositivos: '+fmt(feeCalc)));
@@ -5955,7 +5955,7 @@ function mPlanConeOS(emp, asigId) {
       else planActual = 'starter';
     }
 
-    openM(makeModal('🍦 '+emp.nombre+' — Plan', function(body) {
+    openM(makeModal(''+emp.nombre+' — Plan', function(body) {
 
       // Selector de plan con precio USD
       body.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px'},'Plan asignado'));
