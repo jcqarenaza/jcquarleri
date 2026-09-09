@@ -3785,14 +3785,14 @@ function vFinanzas() {
         var dsPend2 = tt.juanDS - transI2;
         var dsPendAbs2 = Math.round(Math.abs(dsPend2)*100)/100;
         // Sueldo depositado
-        var sueldoDep2 = ingresosPF.filter(function(i){ return i.mes_id===m.id && i.categoria==='Alimentos' && (i.concepto||'').toLowerCase().indexOf('sueldo')>=0; }).reduce(function(s,i){ return s+Number(i.monto); },0);
+        var sueldoDep2 = Number(gv('jpf-juan_sueldo')||0);
         if (transI2 > 0 || tt.juanDS > 0) {
           var dsLine2 = el('div',{style:'margin-top:6px;padding-top:6px;border-top:1px solid #E2E8F0;font-size:12px'});
           // Sueldo bruto y depositado
           dsLine2.appendChild(el('div',{style:'display:flex;justify-content:space-between;color:#64748B;margin-bottom:2px'},
             [el('span',{},'Sueldo bruto'), el('span',{style:'font-weight:500'},fmt(tt.totalBruto))]));
           dsLine2.appendChild(el('div',{style:'display:flex;justify-content:space-between;color:#64748B;margin-bottom:6px'},
-            [el('span',{},'Sueldo depositado'), el('span',{style:'font-weight:500;color:#0B9EDA'},fmt(sueldoDep2||gv('jpf-sueldo_depositado')||0))]));
+            [el('span',{},'Sueldo depositado'), el('span',{style:'font-weight:500;color:#0B9EDA'},fmt(sueldoDep2))]));
           // Detalle transferencias internas
           if (transItems2.length > 0) {
             dsLine2.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px'},'Transferencias internas'));
