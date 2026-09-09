@@ -192,6 +192,15 @@ function calcAlertas(asigs, alertasDb) {
 
 // Nav
 var _D = null;
+function getSisIconEl(nombre, size) {
+  size = size || 20;
+  if (nombre === 'ConeOS') {
+    return el('img',{src:'https://jcquarleri.vercel.app/coneos-logo.png',style:'width:'+size+'px;height:'+size+'px;object-fit:contain;border-radius:4px;vertical-align:middle'});
+  }
+  var emojis = {'Cortelab':'📐','El Piamonte':'🚗','MobixERP':'📱'};
+  return el('span',{style:'font-size:'+size+'px'},emojis[nombre]||'💻');
+}
+
 function go(v) {
   document.querySelectorAll('.nb').forEach(function(b){ b.classList.remove('on'); });
   var nb = ge('nb-'+v); if (nb) nb.classList.add('on');
@@ -534,7 +543,15 @@ function abrirDrawerClientes(s) {
 
   // Header
   var dh = el('div', {style:'display:flex;align-items:center;gap:12px;padding:20px 20px 16px;border-bottom:.5px solid #E2E8F0'});
-  dh.appendChild(el('span', {style:'font-size:20px'}, s.nombre==='Cortelab'?'📐':s.nombre==='El Piamonte'?'🚗':s.nombre==='MobixERP'?'📱':s.nombre==='ConeOS'?'<img src="https://jcquarleri.vercel.app/coneos-logo.png" style="width:20px;height:20px;object-fit:contain;border-radius:4px;vertical-align:middle">':'💻'));
+  (function(){
+    var iconEl;
+    if (s.nombre==='ConeOS') {
+      iconEl = el('img',{src:'https://jcquarleri.vercel.app/coneos-logo.png',style:'width:20px;height:20px;object-fit:contain;border-radius:4px;vertical-align:middle'});
+    } else {
+      iconEl = el('span',{style:'font-size:20px'},s.nombre==='Cortelab'?'📐':s.nombre==='El Piamonte'?'🚗':s.nombre==='MobixERP'?'📱':'💻');
+    }
+    dh.appendChild(iconEl);
+  })();
   var dhText = el('div', {style:'flex:1'});
   dhText.appendChild(el('div', {style:'font-size:15px;font-weight:700;color:#1a2e4a'}, s.nombre));
   dhText.appendChild(el('div', {style:'font-size:12px;color:#94a3b8'}, asigsSis.length+' cliente'+(asigsSis.length!==1?'s':'')+' asignado'+(asigsSis.length!==1?'s':'')));
@@ -1491,9 +1508,7 @@ function vClientes() {
             var row = el('div', {style:'display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap'});
             var left = el('div', {style:'display:flex;align-items:center;gap:8px'});
             left.appendChild(el('div', {style:'width:8px;height:8px;border-radius:50%;background:'+col+';flex-shrink:0'}));
-            var SIS_EMOJI = {'Cortelab':'📐','El Piamonte':'🚗','MobixERP':'📱','ConeOS':'<img src="https://jcquarleri.vercel.app/coneos-logo.png" style="width:20px;height:20px;object-fit:contain;border-radius:4px;vertical-align:middle">'};
-            var sisEmoji = SIS_EMOJI[s.nombre];
-            if (sisEmoji) left.appendChild(el('span', {style:'font-size:15px;line-height:1'}, sisEmoji));
+            left.appendChild(getSisIconEl(s.nombre, 18));
             left.appendChild(el('span', {style:'font-weight:500'}, s.nombre||'?'));
             var tc = s.tipo==='multi_empresa'?'cp':s.tipo==='multi_usuario'?'ct':s.tipo==='saas'?'cb':'cgr';
             left.appendChild(chipClass(T_LAB[s.tipo]||'', tc));
@@ -2180,8 +2195,13 @@ function vResumenCliente(a, cl, s) {
   var btnBack = el('button', {class:'btn'}, '← Clientes');
   btnBack.onclick = function(){ go('clientes'); };
   sh.appendChild(btnBack);
-  var SIS_EMOJI = {'Cortelab':'📐','El Piamonte':'🚗','MobixERP':'📱','ConeOS':'<img src="https://jcquarleri.vercel.app/coneos-logo.png" style="width:20px;height:20px;object-fit:contain;border-radius:4px;vertical-align:middle">'};
-  sh.appendChild(el('span', {class:'st', style:'margin-left:12px'}, (SIS_EMOJI[s.nombre]||'💻')+' '+cl.nombre+' — '+s.nombre));
+  var SIS_EMOJI = {'Cortelab':'📐','El Piamonte':'🚗','MobixERP':'📱','ConeOS':'🍦'};
+  (function(){
+    var hdr = el('div',{style:'display:flex;align-items:center;gap:6px;margin-left:12px'});
+    hdr.appendChild(getSisIconEl(s.nombre,18));
+    hdr.appendChild(el('span',{class:'st'},cl.nombre+' — '+s.nombre));
+    sh.appendChild(hdr);
+  })();
   wrap.appendChild(sh);
 
   // Saldos
