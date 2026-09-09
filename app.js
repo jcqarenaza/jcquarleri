@@ -3779,16 +3779,35 @@ function vFinanzas() {
         jTot.appendChild(el('div',{},'Subtotal conceptos '+fmt(tt.totalConceptos)+(tt.esAguinaldo?' · Aguinaldo '+fmt(tt.aguinaldo):'')));
         jTot.appendChild(el('div',{style:'font-weight:700;color:#0B9EDA;margin-top:4px'},'Total bruto '+fmt(tt.totalBruto)));
         jTot.appendChild(el('div',{style:'font-weight:700;color:'+(tt.juanDS>=0?'#3D8A32':'#A32D2D')},'Juan DS (a favor de la empresa) '+fmt(tt.juanDS)));
-        // DS pendiente: descontar transferencias internas
-        var transI2 = ingresosPF.filter(function(i){ return i.mes_id===m.id && i.categoria==='Transferencia interna'; }).reduce(function(s,i){ return s+Number(i.monto); },0);
+        // DS pendiente: descontar transferencias internas — detalle por transferencia
+        var transItems2 = ingresosPF.filter(function(i){ return i.mes_id===m.id && i.categoria==='Transferencia interna'; });
+        var transI2 = transItems2.reduce(function(s,i){ return s+Number(i.monto); },0);
         var dsPend2 = tt.juanDS - transI2;
         var dsPendAbs2 = Math.round(Math.abs(dsPend2)*100)/100;
+        // Sueldo depositado
+        var sueldoDep2 = ingresosPF.filter(function(i){ return i.mes_id===m.id && i.categoria==='Alimentos' && (i.concepto||'').toLowerCase().indexOf('sueldo')>=0; }).reduce(function(s,i){ return s+Number(i.monto); },0);
         if (transI2 > 0 || tt.juanDS > 0) {
-          var dsLine2 = el('div',{style:'margin-top:6px;padding-top:6px;border-top:1px solid #E2E8F0;font-size:12px;color:#64748B'});
-          dsLine2.appendChild(el('span',{},'Transferido: '+fmt(transI2)));
+          var dsLine2 = el('div',{style:'margin-top:6px;padding-top:6px;border-top:1px solid #E2E8F0;font-size:12px'});
+          // Sueldo bruto y depositado
+          dsLine2.appendChild(el('div',{style:'display:flex;justify-content:space-between;color:#64748B;margin-bottom:2px'},
+            [el('span',{},'Sueldo bruto'), el('span',{style:'font-weight:500'},fmt(tt.totalBruto))]));
+          dsLine2.appendChild(el('div',{style:'display:flex;justify-content:space-between;color:#64748B;margin-bottom:6px'},
+            [el('span',{},'Sueldo depositado'), el('span',{style:'font-weight:500;color:#0B9EDA'},fmt(sueldoDep2||gv('jpf-sueldo_depositado')||0))]));
+          // Detalle transferencias internas
+          if (transItems2.length > 0) {
+            dsLine2.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px'},'Transferencias internas'));
+            transItems2.forEach(function(ti) {
+              dsLine2.appendChild(el('div',{style:'display:flex;justify-content:space-between;color:#64748B;margin-bottom:2px'},
+                [el('span',{},ti.concepto||'Transferencia'), el('span',{style:'font-weight:500;color:#E53E3E'},fmt(Number(ti.monto)))]));
+            });
+            dsLine2.appendChild(el('div',{style:'display:flex;justify-content:space-between;color:#64748B;margin-top:4px;padding-top:4px;border-top:.5px solid #E2E8F0'},
+              [el('span',{style:'font-weight:600'},'Total transferido'), el('span',{style:'font-weight:700;color:#E53E3E'},fmt(transI2))]));
+          }
+          // Saldo final
           if (dsPendAbs2 > 0) {
-            dsLine2.appendChild(el('span',{},' · '));
-            dsLine2.appendChild(el('span',{style:'font-weight:700;color:'+(dsPend2>0?'#3D8A32':'#E53E3E')},fmt(dsPend2)+(dsPend2>0?' a cobrar':' a favor empresa')));
+            dsLine2.appendChild(el('div',{style:'display:flex;justify-content:space-between;margin-top:6px;padding-top:6px;border-top:1px solid #E2E8F0'},
+              [el('span',{style:'font-weight:600;font-size:13px'},'Saldo'),
+               el('span',{style:'font-weight:700;font-size:13px;color:'+(dsPend2>0?'#3D8A32':'#E53E3E')},fmt(dsPend2)+(dsPend2>0?' a cobrar':' a favor empresa'))]));
           }
           jTot.appendChild(dsLine2);
         }
