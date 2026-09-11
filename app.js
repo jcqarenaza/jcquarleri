@@ -5955,9 +5955,9 @@ function calcImplConeos(modulos) {
 
 // PLANES CONEOS ── reemplaza mModulosConeOS
 var PLANES_CONEOS = {
-  starter: { label: 'STARTER', color: '#3D8A32', modulos: { kiosk:true, caja:true, preparacion:true, display:true, beneficios:true, mesas:false, delivery:false, facturacion:false, mercadopago:false } },
-  pro:     { label: 'PRO',     color: '#0B9EDA', modulos: { kiosk:true, caja:true, preparacion:true, display:true, beneficios:true, mesas:true,  delivery:true,  facturacion:false, mercadopago:false } },
-  full:    { label: 'FULL',    color: '#7C3AED', modulos: { kiosk:true, caja:true, preparacion:true, display:true, beneficios:true, mesas:true,  delivery:true,  facturacion:true,  mercadopago:false } }
+  starter: { label: 'STARTER', color: '#3D8A32', modulos: { kiosk:true, caja:true, preparacion:true, display:true, beneficios:true, mesas:false, delivery:false, takeaway:false, facturacion:false, mercadopago:false } },
+  pro:     { label: 'PRO',     color: '#0B9EDA', modulos: { kiosk:true, caja:true, preparacion:true, display:true, beneficios:true, mesas:true,  delivery:true,  takeaway:true,  facturacion:false, mercadopago:false } },
+  full:    { label: 'FULL',    color: '#7C3AED', modulos: { kiosk:true, caja:true, preparacion:true, display:true, beneficios:true, mesas:true,  delivery:true,  takeaway:true,  facturacion:true,  mercadopago:false } }
 };
 
 var MODULOS_INFO = [
@@ -5968,6 +5968,7 @@ var MODULOS_INFO = [
   { key:'beneficios',  label:'Programa de Beneficios',  desc:'Los clientes acumulan puntos al comprar' },
   { key:'mesas',       label:'Mesas',                   desc:'Gestión de mesas y pedidos en salón' },
   { key:'delivery',    label:'Delivery',                desc:'Pedidos a domicilio' },
+  { key:'takeaway',    label:'Take Away 🥡',            desc:'Pedidos desde el celular para retirar en el local' },
   { key:'facturacion', label:'Facturación',             desc:'Emisión de facturas electrónicas ARCA' },
   { key:'mercadopago', label:'MercadoPago',             desc:'Cobros con MercadoPago integrado' }
 ];
