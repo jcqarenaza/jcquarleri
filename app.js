@@ -1901,12 +1901,51 @@ function mEditCliente(cl) {
     mkRow2(body, mkFg('Email', mkInput('ecm','email',cl.email||'')), mkFg('Telefono', mkInput('ect','text',cl.telefono||'')));
     var ta = el('textarea', {class:'fi', id:'ecno'}); ta.textContent = cl.notas||'';
     addFg(body, 'Notas', ta);
+    // Estado del cliente
+    var estadoRow=el('div',{style:'display:flex;align-items:center;gap:8px;margin-top:8px'});
+    if (cl.es_demo) {
+      var demoChk=el('input',{type:'checkbox',id:'ec-demo',class:'tgl'}); demoChk.checked=true;
+      estadoRow.appendChild(demoChk);
+      estadoRow.appendChild(el('label',{for:'ec-demo',class:'tgl-lbl'}));
+      estadoRow.appendChild(el('span',{style:'font-size:12px;color:#94a3b8'},'Demo — destildá para activar como cliente real (no reversible)'));
+    } else {
+      var actChk=el('input',{type:'checkbox',id:'ec-activo',class:'tgl'}); if(!cl.pausado) actChk.checked=true;
+      estadoRow.appendChild(actChk);
+      estadoRow.appendChild(el('label',{for:'ec-activo',class:'tgl-lbl'}));
+      var actLbl=el('span',{style:'font-size:13px;color:#64748b'},actChk.checked?'Activo':'Pausado');
+      actChk.onchange=function(){ actLbl.textContent=actChk.checked?'Activo':'Pausado'; };
+      estadoRow.appendChild(actLbl);
+    }
+    body.appendChild(estadoRow);
   }, function(foot) {
     foot.appendChild(cancelBtn());
     var ok = el('button', {class:'btn btnp'}, 'Guardar');
     ok.onclick = function() {
-      dbUpd('panel_clientes', cl.id, {nombre:gv('ecn'), empresa:gv('ece')||null, email:gv('ecm')||null, telefono:gv('ect')||null, notas:gv('ecno')||null})
-      .then(function(){ closeM(); vClientes(); });
+      var eraDemo = !!cl.es_demo;
+      var esDemo  = eraDemo ? !!(ge('ec-demo')&&ge('ec-demo').checked) : false;
+      var pausado = !eraDemo ? !(ge('ec-activo')&&ge('ec-activo').checked) : false;
+      dbUpd('panel_clientes', cl.id, {nombre:gv('ecn'), empresa:gv('ece')||null, email:gv('ecm')||null, telefono:gv('ect')||null, notas:gv('ecno')||null, es_demo:esDemo, pausado:pausado})
+      .then(function(){
+        closeM();
+        if (eraDemo && !esDemo) {
+          // Salió de demo — toast para asignar plan
+          var asigConeos = (_D&&_D.asigs||[]).filter(function(a){ return a.cliente_id===cl.id && a.coneos_empresa_id; })[0];
+          if (asigConeos) {
+            var toast=el('div',{style:'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1a2e4a;color:#fff;border-radius:12px;padding:12px 20px;display:flex;align-items:center;gap:12px;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.2);font-size:13px'});
+            toast.appendChild(el('span',{},'¿Asignar plan ahora?'));
+            var btnP=el('button',{style:'background:#0B9EDA;color:#fff;border:none;border-radius:8px;padding:6px 14px;cursor:pointer;font-weight:600'},'Elegir plan');
+            btnP.onclick=function(){ document.body.removeChild(toast); mPlanConeOS({id:asigConeos.coneos_empresa_id,nombre:cl.nombre,_dispActivos:0},asigConeos.id); };
+            toast.appendChild(btnP);
+            var btnX=el('button',{style:'background:none;border:none;color:#94a3b8;cursor:pointer;font-size:16px'},'✕');
+            btnX.onclick=function(){ document.body.removeChild(toast); vClientes(); };
+            toast.appendChild(btnX);
+            document.body.appendChild(toast);
+            setTimeout(function(){ if(document.body.contains(toast)){ document.body.removeChild(toast); vClientes(); } },6000);
+            return;
+          }
+        }
+        vClientes();
+      });
     };
     foot.appendChild(ok);
   }));
