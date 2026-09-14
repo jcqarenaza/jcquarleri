@@ -5790,10 +5790,15 @@ function vConeosEmpresa(emp) {
       // Checklist colapsable
       var chkToggle = el('div',{style:'cursor:pointer;font-size:12px;color:#0B9EDA;margin-top:10px'},'📋 Ver checklist para el contador ▾');
       var chkBody = el('div',{style:'display:none;background:#F8FAFC;border-radius:8px;padding:10px 14px;margin-top:4px;font-size:12px;color:#1a2e4a;line-height:1.6'});
+      var condFiscal = (cfg && cfg.condicion_fiscal) || 'monotributo';
+      var esRI = condFiscal === 'ri';
+      var tipoPV = esRI ? 'Factura Electrónica - Responsable Inscripto - Web Services' : 'Factura Electrónica - Monotributo - Web Services';
+      var tipoFact = esRI ? 'Factura <b>A</b> (a otros RI con CUIT) y <b>B</b> (a consumidores finales)' : 'Factura <b>C</b> (monotributo)';
       chkBody.innerHTML = '<b>El contador de este alcance debe hacer en ARCA:</b><br><br>'
         +'<b>1.</b> ARCA → Administración de Certificados Digitales → crear alias → subir CSR o mandarnos el .crt + .key.<br>'
-        +'<b>2.</b> ARCA → Administrador de Relaciones de Clave Fiscal → nueva relación → servicio "wsfe" → autorizar certificado.<br>'
-        +'<b>3.</b> ARCA → Comprobantes en línea → Administración de puntos de venta → nuevo PV "Factura Electrónica - Monotributo - Web Services". Anotar número.<br>'
+        +'<b>2.</b> ARCA → Administrador de Relaciones de Clave Fiscal → nueva relación → servicio <b>"wsfe"</b> → autorizar certificado.<br>'
+        +'<b>3.</b> ARCA → Comprobantes en línea → Administración de puntos de venta → nuevo PV <b>"'+tipoPV+'"</b>. Anotar número.<br>'
+        +(esRI ? '<b>⚠ RI:</b> Este PV emite '+tipoFact+'. Si necesita ambos tipos, crear un PV por cada tipo.<br>' : '')
         +'<b>4.</b> Pasarnos: CUIT, razón social, condición fiscal, N° PV, archivos .crt y .key.';
       chkToggle.onclick = function(){ var o=chkBody.style.display!=='none'; chkBody.style.display=o?'none':'block'; chkToggle.textContent=o?'📋 Ver checklist para el contador ▾':'📋 Ver checklist para el contador ▴'; };
       alcanceContent.appendChild(chkToggle);
@@ -6233,9 +6238,46 @@ function mConfigPreciosConeos(cb) {
 
 
 function mEditarEmpresaConeos(emp, cb) {
-  openM(makeModal('Editar: ' + emp.nombre, function(body) {
+  // Cargar módulos para calcular precio de referencia
+  coneosCall('get_modulos', { empresa_id: emp.id }).then(function(modulos) {
+    var implCalc = calcImplConeos(modulos);
+    var feeCalc  = calcFeeConeos(emp._dispActivos || 1, emp.slug);
+
+    openM(makeModal('Editar: ' + emp.nombre, function(body) {
       addFg(body, 'Nombre', mkInput('ee-nombre', 'text', emp.nombre||''));
       addFg(body, 'Slug',   mkInput('ee-slug',   'text', emp.slug||''));
+
+      // Referencia calculada por módulos
+      var refBox = el('div', {style:'background:#F0F9FF;border:.5px solid #BAE6FD;border-radius:8px;padding:10px 14px;margin-bottom:14px'});
+      refBox.appendChild(el('div', {style:'font-size:11px;font-weight:600;color:#0369A1;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px'}, '💡 Precio calculado por módulos'));
+      var refRow1 = el('div', {style:'display:flex;justify-content:space-between;font-size:12px;padding:2px 0'});
+      refRow1.appendChild(el('span', {style:'color:#64748B'}, 'Implementación sugerida'));
+      refRow1.appendChild(el('span', {style:'font-weight:600;color:#1a2e4a'}, fmt(implCalc)));
+      refBox.appendChild(refRow1);
+      var refRow2 = el('div', {style:'display:flex;justify-content:space-between;font-size:12px;padding:2px 0'});
+      refRow2.appendChild(el('span', {style:'color:#64748B'}, 'Fee sugerido'));
+      refRow2.appendChild(el('span', {style:'font-weight:600;color:#F59E0B'}, fmt(feeCalc)+'/mes'));
+      refBox.appendChild(refRow2);
+      var refHint = el('div', {style:'font-size:11px;color:#0369A1;margin-top:6px;border-top:.5px solid #BAE6FD;padding-top:6px'});
+      refHint.appendChild(document.createTextNode('Podés ajustar manualmente si acordaste otro precio con el cliente.'));
+      refBox.appendChild(refHint);
+      body.appendChild(refBox);
+
+      // Campos editables con valor precargado (calculado o el que ya tenía)
+      var implVal = emp.costo_implementacion || implCalc;
+      var feeVal  = emp.fee_mensual || feeCalc;
+      mkRow2(body,
+        mkFg('Implementación ($)', mkInput('ee-impl', 'number', implVal)),
+        mkFg('Fee mensual ($)',    mkInput('ee-fee',  'number', feeVal))
+      );
+
+      // Botón para resetear al calculado
+      var resetBtn = el('button', {class:'btn btnsm', style:'margin-bottom:14px;font-size:11px;color:#0369A1;border-color:#BAE6FD'}, '↺ Usar precio calculado');
+      resetBtn.onclick = function() {
+        document.getElementById('ee-impl').value = implCalc;
+        document.getElementById('ee-fee').value  = feeCalc;
+      };
+      body.appendChild(resetBtn);
 
       mkRow2(body,
         mkFg('Color primario',    mkInput('ee-color1', 'color', emp.primary_color||'#6366F1')),
@@ -6251,10 +6293,6 @@ function mEditarEmpresaConeos(emp, cb) {
       body.appendChild(togWrap);
 
     }, function(foot) {
-      // Botón Plan
-      var btnPlan = el('button', {class:'btn btnsm', style:'margin-right:auto'}, '🍦 Plan');
-      btnPlan.onclick = function(){ closeM(); mPlanConeOS(emp, null); };
-      foot.appendChild(btnPlan);
       foot.appendChild(cancelBtn());
       var ok = el('button', { class: 'btn btnp' }, 'Guardar');
       ok.onclick = function() {
@@ -6262,6 +6300,8 @@ function mEditarEmpresaConeos(emp, cb) {
           nombre: gv('ee-nombre'),
           slug:   gv('ee-slug'),
           activo: document.getElementById('ee-activo').checked,
+          costo_implementacion: Number(gv('ee-impl')||0),
+          fee_mensual: Number(gv('ee-fee')||75000)
         };
         ok.textContent = 'Guardando...'; ok.disabled = true;
         coneosCall('editar_empresa', { empresa_id: emp.id, datos: datos }).then(function(r) {
@@ -6272,6 +6312,47 @@ function mEditarEmpresaConeos(emp, cb) {
       };
       foot.appendChild(ok);
     }));
+  }).catch(function() {
+    // Si falla la carga de módulos, abre el modal igual sin referencia
+    openM(makeModal('Editar: ' + emp.nombre, function(body) {
+      addFg(body, 'Nombre', mkInput('ee-nombre', 'text', emp.nombre||''));
+      addFg(body, 'Slug',   mkInput('ee-slug',   'text', emp.slug||''));
+      mkRow2(body,
+        mkFg('Implementación ($)', mkInput('ee-impl', 'number', emp.costo_implementacion||500000)),
+        mkFg('Fee mensual ($)',    mkInput('ee-fee',  'number', emp.fee_mensual||75000))
+      );
+      mkRow2(body,
+        mkFg('Color primario',   mkInput('ee-color1', 'color', emp.primary_color||'#6366F1')),
+        mkFg('Color secundario', mkInput('ee-color2', 'color', emp.secondary_color||'#4F46E5'))
+      );
+      var togWrap = el('div', {style:'display:flex;align-items:center;gap:8px;margin-top:8px'});
+      var togLbl = el('label', {class:'tog'});
+      var togInp = el('input', {type:'checkbox', id:'ee-activo'}); if(emp.activo) togInp.checked=true;
+      togLbl.appendChild(togInp); togLbl.appendChild(el('span',{class:'sl'}));
+      togWrap.appendChild(togLbl);
+      togWrap.appendChild(el('span',{style:'font-size:13px;color:#64748B'},'Activo'));
+      body.appendChild(togWrap);
+    }, function(foot) {
+      foot.appendChild(cancelBtn());
+      var ok = el('button', { class: 'btn btnp' }, 'Guardar');
+      ok.onclick = function() {
+        var datos = {
+          nombre: gv('ee-nombre'),
+          slug:   gv('ee-slug'),
+          activo: document.getElementById('ee-activo').checked,
+          costo_implementacion: Number(gv('ee-impl')||0),
+          fee_mensual: Number(gv('ee-fee')||75000)
+        };
+        ok.textContent = 'Guardando...'; ok.disabled = true;
+        coneosCall('editar_empresa', { empresa_id: emp.id, datos: datos }).then(function(r) {
+          if (r.error) { alert('Error: ' + r.error); ok.textContent = 'Guardar'; ok.disabled = false; return; }
+          closeM();
+          cb(Object.assign({}, emp, datos));
+        });
+      };
+      foot.appendChild(ok);
+    }));
+  });
 }
 
 function mNuevaEmpresaConeos(cb) {
