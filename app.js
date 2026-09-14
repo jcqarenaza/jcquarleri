@@ -1465,10 +1465,14 @@ function vClientes() {
     sh.appendChild(btnN);
     wrap.appendChild(sh);
 
+    var clsReales = D.cls.filter(function(cl){ return !cl.es_demo; });
+    var clsDemo   = D.cls.filter(function(cl){ return !!cl.es_demo; });
+
     if (!D.cls.length) {
       wrap.appendChild(el('div', {class:'card'}, [el('div', {class:'emp'}, 'No hay clientes todavia')]));
     } else {
-      D.cls.forEach(function(cl) {
+      sh.querySelector('.st').textContent = 'Clientes (' + clsReales.length + ')';
+      clsReales.forEach(function(cl) {
         try {
         var mas = D.asigs.filter(function(a){ return a.cliente_id===cl.id; });
         var cc = el('div', {class:'cc'}); cc.dataset.clienteId = cl.id;
