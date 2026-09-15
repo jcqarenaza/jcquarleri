@@ -659,8 +659,8 @@ function vSistemas() {
         var card = el('div', {class:'card', style:'margin-bottom:14px;padding:0'});
 
         // Header igual a ConeOS: dos filas, toggle+editar a la derecha
-        var hdr = el('div', {style:'padding:14px 16px 10px'});
-        var topRow = el('div', {style:'display:flex;align-items:center;gap:8px;margin-bottom:4px'});
+        var hdr = el('div', {style:'padding:12px 14px 8px'});
+        var topRow = el('div', {style:'display:flex;align-items:center;gap:6px;margin-bottom:2px;flex-wrap:nowrap'});
         // Ícono: emoji si tiene, si no letra
         var icono = cfg.logoUrl
           ? el('img', {src:cfg.logoUrl, style:'width:28px;height:28px;object-fit:contain;border-radius:6px;flex-shrink:0'})
@@ -668,7 +668,7 @@ function vSistemas() {
             ? el('span', {style:'font-size:22px;line-height:1'}, cfg.emoji)
             : el('span', {style:'width:28px;height:28px;border-radius:50%;background:'+cfg.bgLetra+';color:'+cfg.color+';font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0'}, cfg.letra);
         topRow.appendChild(icono);
-        topRow.appendChild(el('span', {style:'font-size:15px;font-weight:700;color:'+cfg.color}, s.nombre));
+        topRow.appendChild(el('span', {style:'font-size:14px;font-weight:700;color:'+cfg.color}, s.nombre));
         var tc = s.tipo==='multi_empresa'?'cp':s.tipo==='multi_usuario'?'ct':s.tipo==='saas'?'cb':'cgr';
         topRow.appendChild(chipClass(T_LAB[s.tipo]||s.tipo, tc));
         topRow.appendChild(chipClass(P_LAB[s.plataforma]||s.plataforma, 'cb'));
@@ -689,7 +689,7 @@ function vSistemas() {
         hdr.appendChild(topRow);
         if (s.url_produccion) hdr.appendChild(el('div', {style:'font-size:12px;color:#94a3b8;margin-bottom:2px'}, s.url_produccion));
         // KPIs comerciales del sistema (suma de todas las asignaciones)
-        var kpiLine = el('div', {style:'font-size:12px;color:#64748B;display:flex;gap:12px;flex-wrap:wrap;margin-top:2px'});
+        var kpiLine = el('div', {style:'font-size:11px;color:#64748B;display:flex;gap:6px 12px;flex-wrap:wrap;margin-top:4px;align-items:center'});
         var asigsSis = (_D && _D.asigs ? _D.asigs : []).filter(function(a){ return a.sistema_id === s.id; });
         var totImplSis = asigsSis.reduce(function(sum,a){ return sum + totalFases(a); }, 0);
         var pagImplSis = asigsSis.reduce(function(sum,a){ return sum + pagadoImplementacion(a); }, 0);
@@ -698,7 +698,7 @@ function vSistemas() {
         kpiLine.appendChild(el('span', {}, 'Impl. '+fmt(totImplSis)));
         var saldoChip = el('span', {style:'color:'+(saldoImplSis>0?'#A32D2D':'#3B6D11')+';font-weight:500'}, saldoImplSis>0?' (saldo '+fmt(saldoImplSis)+')':' ✓ saldada');
         kpiLine.appendChild(saldoChip);
-        kpiLine.appendChild(el('span', {style:'color:#64748B'}, '│'));
+        kpiLine.appendChild(el('span', {style:'color:#E2E8F0;font-size:10px'}, '·'));
         kpiLine.appendChild(el('span', {}, 'Fee total: '+fmt(feeSis)+'/mes'));
         hdr.appendChild(kpiLine);
         card.appendChild(hdr);
