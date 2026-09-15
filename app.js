@@ -771,11 +771,11 @@ function vSistemas() {
           function renderKPIs(data, col) {
             col.innerHTML = '';
             col.style.display = 'grid';
-            col.style.gridTemplateColumns = '1fr 1fr 1fr 1fr';
+            col.style.gridTemplateColumns = 'repeat(auto-fit,minmax(90px,1fr))';
             data.forEach(function(m) {
-              var cell = el('div', {style:'padding:12px 16px;text-align:center;border-right:.5px solid #E2E8F0'});
-              cell.appendChild(el('div', {style:'font-size:'+(m.big?'20':'16')+'px;font-weight:500;color:'+m.col}, m.val));
-              cell.appendChild(el('div', {style:'font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-top:2px'}, m.label));
+              var cell = el('div', {style:'padding:8px 6px;text-align:center;border-right:.5px solid #E2E8F0;min-width:0'});
+              cell.appendChild(el('div', {style:'font-size:'+(m.big?'16':'13')+'px;font-weight:600;color:'+m.col+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap'}, m.val));
+              cell.appendChild(el('div', {style:'font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-top:2px'}, m.label));
               col.appendChild(cell);
             });
           }
@@ -6801,7 +6801,7 @@ function vLiquidacionPartner(rev, clientes, asigs, tc) {
         var feeMay  = a.mayorista_pct_fee ? feeBase * a.mayorista_pct_fee / 100 : 0;
         var planLabel = a.coneos_plan ? a.coneos_plan.toUpperCase() : '—';
 
-        var det = el('div',{style:'padding:8px 12px;border-top:.5px solid #f1f5f9;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;font-size:12px'});
+        var det = el('div',{style:'padding:8px 12px;border-top:.5px solid #f1f5f9;display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:4px;font-size:12px'});
 
         function col(label, val, color) {
           var d = el('div',{});
