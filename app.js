@@ -942,7 +942,7 @@ function vSistemas() {
 
           } else {
             metRow.style.display = 'grid';
-            metRow.style.gridTemplateColumns = '1fr 1fr 1fr 1fr';
+            metRow.style.gridTemplateColumns = 'repeat(auto-fit,minmax(100px,1fr))';
             cargarMetricasSis(s, metRow);
           }
         } else {
@@ -1407,9 +1407,9 @@ function cargarMetricasSis(s, row) {
       [fmt(esPiamonte ? (d.month_revenue||d.total_revenue||0) : (d.total_revenue||0)), esPiamonte ? 'Importe facturado' : 'Facturacion', '#EF9F27'],
       [d.last_order ? fdate(d.last_order) : '-', 'Ultima actividad', '#7F77DD']
     ].forEach(function(m) {
-      var cell = el('div', {style:'padding:10px 14px;text-align:center;border-right:.5px solid #f0f0f0'});
-      cell.appendChild(el('div', {style:'font-size:15px;font-weight:700;color:'+m[2]}, String(m[0])));
-      cell.appendChild(el('div', {style:'font-size:10px;color:#94a3b8;margin-top:2px'}, m[1]));
+      var cell = el('div', {style:'padding:8px 6px;text-align:center;border-right:.5px solid #f0f0f0;min-width:0'});
+      cell.appendChild(el('div', {style:'font-size:13px;font-weight:700;color:'+m[2]+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap'}, String(m[0])));
+      cell.appendChild(el('div', {style:'font-size:9px;color:#94a3b8;margin-top:2px;text-transform:uppercase;letter-spacing:.03em'}, m[1]));
       row.appendChild(cell);
     });
   }).catch(function(e) {
