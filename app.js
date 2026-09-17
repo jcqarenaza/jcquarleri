@@ -906,12 +906,18 @@ function vSistemas() {
               var totTot = talleres.reduce(function(s,t){ return s+(t.total_ordenes||0); },0);
               var ultT = talleres.reduce(function(u,t){ return (!u||t.ultima_orden>u)?t.ultima_orden:u; },null);
               var totPend = talleres.reduce(function(s,t){ return s+(t.presupuestos_pendientes||0); },0);
-              renderKPIs([
-                {label:'Pedidos este mes', val:String(talleres.reduce(function(s,t){return s+(t.ordenes_mes||0);},0)), col:'#0B9EDA', big:true},
-                {label:'Facturado mes', val:fmt(talleres.reduce(function(s,t){return s+Number(t.facturacion_mes||0);},0)), col:'#3D8A32', big:true},
-                {label:'Presup. pendientes', val:String(totPend), col:'#F59E0B'},
-                {label:'Ultima actividad', val:ultT?fdate(ultT):'-', col:'#6366F1'}
-              ], metRow);
+              // Cargar conteos por estado desde orders directamente
+              fetch(cortUrl+'/rest/v1/orders?select=status',{headers:{apikey:cortKey,Authorization:'Bearer '+cortKey}}).then(function(r){return r.json();}).then(function(allOrders){
+                var ingresados = (allOrders||[]).length;
+                var enProd = (allOrders||[]).filter(function(o){ return o.status==='en_produccion'; }).length;
+                var entregados = (allOrders||[]).filter(function(o){ return o.status==='entregado'; }).length;
+                renderKPIs([
+                  {label:'Ingresados', val:String(ingresados), col:'#0B9EDA', big:true},
+                  {label:'En producción', val:String(enProd), col:'#F59E0B', big:true},
+                  {label:'Entregados', val:String(entregados), col:'#3D8A32', big:true},
+                  {label:'Ultima actividad', val:ultT?fdate(ultT):'-', col:'#6366F1'}
+                ], metRow);
+              }).catch(function(){ renderKPIs([{label:'Ingresados',val:'?',col:'#94a3b8',big:true},{label:'En producción',val:'?',col:'#94a3b8',big:true},{label:'Entregados',val:'?',col:'#94a3b8',big:true},{label:'Ultima actividad',val:ultT?fdate(ultT):'-',col:'#6366F1'}],metRow); });
               var hintT = el('div',{style:'font-size:10px;color:#94a3b8;text-align:center;padding:4px;cursor:pointer;border-top:.5px solid #F1F5F9'},'Doble click para ver por taller');
               metRow.appendChild(hintT);
               var detT = false;
