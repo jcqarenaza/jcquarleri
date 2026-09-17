@@ -863,8 +863,8 @@ function vSistemas() {
                   feeLoad.innerHTML = '';
                   var feeTotal = results.reduce(function(s,r){ return s+r.fee; },0);
                   results.forEach(function(r){
-                    var fRow=el('div',{style:'display:flex;justify-content:space-between;padding:4px 0;font-size:13px'});
-                    var lft=el('div',{}); lft.appendChild(el('span',{style:'font-weight:500'},r.emp.nombre)); lft.appendChild(el('span',{style:'font-size:11px;color:#94a3b8;margin-left:8px'},r.disp+' disp.'+(r.disp>3?' ⚠':'')));
+                    var fRow=el('div',{style:'display:flex;justify-content:space-between;padding:3px 0;font-size:12px'});
+                    var lft=el('div',{}); lft.appendChild(el('span',{style:'font-weight:500'},r.emp.nombre)); lft.appendChild(el('span',{style:'font-size:10px;color:#94a3b8;margin-left:6px'},r.disp+' disp.'+(r.disp>3?' ⚠':'')));
                     fRow.appendChild(lft); fRow.appendChild(el('span',{style:'font-weight:500;color:'+(r.disp>3?'#854F0B':'#3D8A32')},fmt(r.fee)+'/mes'));
                     feeLoad.appendChild(fRow);
                   });
@@ -872,7 +872,8 @@ function vSistemas() {
                   totRow.appendChild(el('span',{},'Total fee mensual')); totRow.appendChild(el('span',{style:'color:#F59E0B'},fmt(feeTotal)+'/mes'));
                   feeLoad.appendChild(totRow);
                 });
-                var tblC=el('table',{class:'tbl'});
+                var tblWrap=el('div',{style:'overflow-x:auto;-webkit-overflow-scrolling:touch'});
+                var tblC=el('table',{class:'tbl',style:'min-width:400px'});
                 tblC.appendChild(elH('thead',{},'<tr><th>Empresa</th><th style="text-align:center">Pedidos hoy</th><th style="text-align:right">Facturado hoy</th><th style="text-align:center">Estado</th><th></th></tr>'));
                 var tbC=el('tbody',{});
                 empresas.forEach(function(emp){
@@ -889,7 +890,7 @@ function vSistemas() {
                   tr.appendChild(el('td',{},[btnVc]));
                   tbC.appendChild(tr);
                 });
-                tblC.appendChild(tbC); detCEl2.appendChild(tblC);
+                tblC.appendChild(tbC); tblWrap.appendChild(tblC); detCEl2.appendChild(tblWrap);
               }
               metRow.ondblclick = toggleC; hintC.ondblclick = toggleC;
             }).catch(function(){ metRow.innerHTML='<div style="padding:10px 14px;color:#94a3b8;font-size:12px">Error ConeOS</div>'; });
@@ -2168,7 +2169,7 @@ function mEditAsig(a) {
 }
 
 // SUB ENTIDAD
-function mVincularEmpresaConeos(a) {
+function mVincularEmpresaConeos(a, cb) {
   coneosCall('listar_empresas').then(function(empresas) {
     if (!Array.isArray(empresas)) { alert('Error al cargar empresas ConeOS'); return; }
     openM(makeModal('Vincular empresa ConeOS', function(body) {
@@ -2199,7 +2200,7 @@ function mVincularEmpresaConeos(a) {
         dbUpd('panel_asignaciones', a.id, {coneos_empresa_id: empId}).then(function() {
           a.coneos_empresa_id = empId;
           closeM();
-          vClientes();
+          if (cb) cb(); else vClientes();
         }).catch(function(e) {
           ok.textContent = 'Vincular'; ok.disabled = false;
           alert('Error: ' + e.message);
@@ -6675,27 +6676,7 @@ function mAsignacionesPartner(cl,asigs,sisDisp,cb) {
             if (asig.coneos_empresa_id) {
               closeM(); mPlanConeOS({id:asig.coneos_empresa_id, nombre:cnombre}, asig.id);
             } else {
-              coneosCall('listar_empresas',{}).then(function(emps){
-                var sel=el('select',{class:'fi',id:'_cemp'});
-                sel.appendChild(el('option',{value:''},'— Seleccionar empresa —'));
-                (emps||[]).forEach(function(e){ sel.appendChild(el('option',{value:e.id},e.nombre)); });
-                openM(makeModal('Vincular empresa ConeOS — '+cnombre, function(b){
-                  b.appendChild(el('div',{style:'font-size:12px;color:#64748b;margin-bottom:8px'},'Seleccioná la empresa en ConeOS que corresponde a este cliente'));
-                  b.appendChild(sel);
-                }, function(f){
-                  f.appendChild(cancelBtn());
-                  var btnV=el('button',{class:'btn btnp'},'Vincular');
-                  btnV.onclick=function(){
-                    var empId=sel.value;
-                    if (!empId) return;
-                    dbUpd('panel_asignaciones',asig.id,{coneos_empresa_id:empId}).then(function(){
-                      asig.coneos_empresa_id=empId; closeM();
-                      mPlanConeOS({id:empId,nombre:cnombre}, asig.id);
-                    });
-                  };
-                  f.appendChild(btnV);
-                }));
-              });
+              closeM(); mVincularEmpresaConeos(asig, function(){ mPlanConeOS({id:asig.coneos_empresa_id,nombre:cnombre},asig.id); });
             }
           }; })(a,cl.nombre);
           row.appendChild(btnMod);
