@@ -96,6 +96,7 @@ textarea.fi{resize:vertical;min-height:64px}
   .top{padding:0 8px;min-height:52px}
   .logo{height:30px;max-width:70px}
 }
+body.qp-loading #app { visibility: hidden; }
 </style>
 </head>
 <body>
@@ -188,9 +189,8 @@ async function doLogin() {
       if (data.token && data.usuario) {
         _authToken = data.token;
         _currentUser = data.usuario;
-        // Ocultar hasta que app.js cargue y llame go()
-        var appEl = document.getElementById('app');
-        if (appEl) appEl.style.visibility = 'hidden';
+        // Ocultar hasta que app.js resuelva el rol
+        document.body.classList.add('qp-loading');
         // _onAuthReady se llama desde unlockPanel (login) o desde go() (sesión guardada)
         window._onAuthReady = function(usuario) {
           var esPartner2 = usuario && usuario.rol === 'partner';
@@ -200,8 +200,7 @@ async function doLogin() {
           });
           var btnP = document.getElementById('nb-partners');
           if (btnP) btnP.style.display = (esSuperAdmin2 || esPartner2) ? '' : 'none';
-          var appEl2 = document.getElementById('app');
-          if (appEl2) appEl2.style.visibility = '';
+          document.body.classList.remove('qp-loading');
         };
         return; // sesion valida, app.js toma el control
       }

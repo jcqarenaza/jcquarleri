@@ -6366,10 +6366,8 @@ function mNuevoAdminConeos(emp, cb) {
 
 (function(){
   var u=window._currentUser;
-  // Primero ocultar para evitar flash, luego ir a la vista correcta
   if (window._onAuthReady && u) window._onAuthReady(u);
-  else { var ae=document.getElementById('app'); if(ae) ae.style.visibility=''; }
-  // Ir a la vista según rol — partners va directo sin pasar por dash
+  else document.body.classList.remove('qp-loading');
   if (u && u.rol==='partner') go('partners');
   else go('dash');
 })();
@@ -6616,7 +6614,11 @@ function vClientesPartner(rev,sistemas) {
         ch.appendChild(info);
         var btnA=el('button',{class:'btn btnsm'+(misAsigs.length?'':' btnp')},misAsigs.length?'Sistemas ('+misAsigs.length+')':'+ Asignar sistema');
         btnA.onclick=(function(c,aa){ return function(){ mAsignacionesPartner(c,aa,sisDisp,function(){ vClientesPartner(rev,sistemas); }); }; })(cl,misAsigs);
-        ch.appendChild(btnA); card.appendChild(ch);
+        ch.appendChild(btnA);
+        var btnE=el('button',{class:'btn btnsm',style:'margin-left:4px'},'Editar');
+        btnE.onclick=(function(c){ return function(){ mEditarClientePartner(c,rev,sistemas,function(){ vClientesPartner(rev,sistemas); }); }; })(cl);
+        ch.appendChild(btnE);
+        card.appendChild(ch);
         if (misAsigs.length) {
           var body=el('div',{style:'padding:6px 12px 10px;display:flex;flex-wrap:wrap;gap:6px'});
           misAsigs.forEach(function(a){ body.appendChild(chipClass(a.activo?'Activo':'Inactivo',a.activo?'ct':'cgr')); });
@@ -6827,4 +6829,36 @@ function vLiquidacionPartner(rev, clientes, asigs, tc) {
   }
 
   setApp(wrap);
+}
+
+function mEditarClientePartner(cl, rev, sistemas, cb) {
+  var err;
+  openM(makeModal('Editar cliente', function(body) {
+    addFg(body,'Nombre',mkInput('epc-nombre','text',cl.nombre||''));
+    addFg(body,'Empresa',mkInput('epc-empresa','text',cl.empresa||''));
+    addFg(body,'Email',mkInput('epc-email','email',cl.email||''));
+    addFg(body,'Telefono',mkInput('epc-tel','text',cl.telefono||''));
+    var estadoRow=el('div',{style:'display:flex;align-items:center;gap:8px;margin-top:8px'});
+    var actChk=el('input',{type:'checkbox',id:'epc-activo',class:'tgl'}); if(!cl.pausado) actChk.checked=true;
+    estadoRow.appendChild(actChk);
+    estadoRow.appendChild(el('label',{for:'epc-activo',class:'tgl-lbl'}));
+    var actLbl=el('span',{style:'font-size:13px;color:#64748b'},actChk.checked?'Activo':'Pausado');
+    actChk.onchange=function(){ actLbl.textContent=actChk.checked?'Activo':'Pausado'; };
+    estadoRow.appendChild(actLbl);
+    body.appendChild(estadoRow);
+    err=el('div',{style:'color:#c0392b;font-size:12px;display:none;margin-top:4px'}); body.appendChild(err);
+  }, function(foot) {
+    foot.appendChild(cancelBtn());
+    var btnG=el('button',{class:'btn btnp'},'Guardar');
+    btnG.onclick=function() {
+      var nombre=gv('epc-nombre').trim();
+      if (!nombre){ err.textContent='Ingresa el nombre'; err.style.display=''; return; }
+      btnG.disabled=true; btnG.textContent='Guardando...';
+      var pausado=!(ge('epc-activo')&&ge('epc-activo').checked);
+      dbUpd('panel_clientes',cl.id,{nombre:nombre,empresa:gv('epc-empresa').trim()||null,email:gv('epc-email').trim()||null,telefono:gv('epc-tel').trim()||null,pausado:pausado})
+      .then(function(){ closeM(); cb(); })
+      .catch(function(e){ err.textContent='Error: '+e.message; err.style.display=''; btnG.disabled=false; btnG.textContent='Guardar'; });
+    };
+    foot.appendChild(btnG);
+  }));
 }
