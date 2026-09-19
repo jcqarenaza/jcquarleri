@@ -636,7 +636,7 @@ function vSistemas() {
   var sisPromise = sbFetch('panel_sistemas?select=*&order=orden.asc,nombre.asc');
   var dataPromise = _D ? Promise.resolve(_D) : cargar().then(function(D){ _D=D; return D; });
   Promise.all([sisPromise, dataPromise]).then(function(rs) {
-    var sis = rs[0];
+    var sis = rs[0].filter(function(s){ return s.id !== '45d2d4de-e938-4a95-827d-f29f575eff10'; });
     var wrap = el('div', {});
     var sh = el('div', {class:'sh'});
     sh.appendChild(el('span', {class:'st'}, 'Sistemas (' + sis.length + ')'));
@@ -1731,14 +1731,13 @@ function filtrar(f) {
     });
     (function(cid){ sel.onchange = function(){ cambiaEstado(cid, this.value); }; })(c.id);
     tr.appendChild(el('td', {}, [sel]));
-    var btnE2 = el('button', {class:'btn btnsm'}, 'Editar');
-    (function(cob){ btnE2.onclick = function(){ mEditarCobro(cob); }; })(c);
+    (function(cob){ tr.ondblclick = function(){ mEditarCobro(cob); }; tr.style.cursor='default'; })(c);
     var btnR = el('button', {class:'btn btnsm'}, 'Recibo');
     (function(cob){ btnR.onclick = function(){ verRecibo(cob); }; })(c);
     var btnDel = el('button', {class:'btn btnsm', style:'background:#FCEBEB;border-color:#FCEBEB;color:#A32D2D'}, 'X');
     (function(cob){ btnDel.onclick = function(){ eliminarCobroObj(cob); }; })(c);
     var tdAcc = el('td', {style:'white-space:nowrap'});
-    [btnE2, btnR, btnDel].forEach(function(b, i){ if(i>0) tdAcc.appendChild(document.createTextNode(' ')); tdAcc.appendChild(b); });
+    [btnR, btnDel].forEach(function(b, i){ if(i>0) tdAcc.appendChild(document.createTextNode(' ')); tdAcc.appendChild(b); });
     tr.appendChild(tdAcc);
     tb.appendChild(tr);
   });
@@ -4203,9 +4202,17 @@ function vFinanzas() {
       var tb=el('tbody',{});
 
       var trN = el('tr',{style:'background:#F8FAFC'});
-      trN.appendChild(el('td',{style:'font-weight:500'},'🏢 QP C&IA (cobrado real del negocio)'));
+      trN.appendChild(el('td',{style:'font-weight:500'},'🏢 QP C&IA'));
       trN.appendChild(el('td',{},[chipClass('Negocio','cb')]));
-      trN.appendChild(el('td',{style:'font-weight:500;color:#0B9EDA'},'$'+Math.round(cobradoReal).toLocaleString('es-AR')));
+      var tdQP = el('td',{style:'font-weight:500;color:#0B9EDA'});
+      tdQP.appendChild(document.createTextNode('$'+Math.round(cobradoReal).toLocaleString('es-AR')));
+      var aCobrarNeg = cobrosPendientes.reduce(function(s,c){ return s+Number(c.monto); },0);
+      if (aCobrarNeg > 0) {
+        var subAC = el('div',{style:'font-size:11px;color:#EF9F27;margin-top:2px;font-weight:400'});
+        subAC.textContent = '+ $'+Math.round(aCobrarNeg).toLocaleString('es-AR')+' por cobrar';
+        tdQP.appendChild(subAC);
+      }
+      trN.appendChild(tdQP);
       trN.appendChild(el('td',{style:'font-size:10px;color:#94a3b8'},'Se modifica desde Negocio → Cobros'));
       tb.appendChild(trN);
 
