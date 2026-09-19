@@ -1478,12 +1478,13 @@ function vClientes() {
 
     var clsReales = D.cls.filter(function(cl){ return !cl.es_demo && !cl.revendedor_id; });
     var clsDemo   = D.cls.filter(function(cl){ return !!cl.es_demo && !cl.revendedor_id; });
+    var clsPropios = clsReales.concat(clsDemo);
 
     if (!D.cls.length) {
       wrap.appendChild(el('div', {class:'card'}, [el('div', {class:'emp'}, 'No hay clientes todavia')]));
     } else {
       sh.querySelector('.st').textContent = 'Clientes (' + clsReales.length + ')';
-      clsReales.forEach(function(cl) {
+      clsPropios.forEach(function(cl) {
         try {
         var mas = D.asigs.filter(function(a){ return a.cliente_id===cl.id; });
         var cc = el('div', {class:'cc'}); cc.dataset.clienteId = cl.id;
@@ -1491,9 +1492,11 @@ function vClientes() {
         var nomCl = String(cl.nombre || '?');
         var iniciales = nomCl.split(' ').map(function(x){ return x[0]||''; }).slice(0,2).join('');
         var av = el('div', {class:'av'}, iniciales);
+        if (cl.es_demo) av.style.background = '#94a3b8';
         ch.appendChild(av);
         var info = el('div', {style:'flex:1'});
         var nm = el('div', {style:'font-weight:500;font-size:14px'}, nomCl);
+        if (cl.es_demo) nm.appendChild(chipClass('demo', 'cgr'));
         if (mas.length > 1) nm.appendChild(chipClass(mas.length + ' sistemas', 'cp'));
         info.appendChild(nm);
         var subInfo = [cl.empresa, cl.email, cl.telefono].filter(function(x){ return x && String(x).trim(); }).join(' - ');
@@ -1563,6 +1566,44 @@ function vClientes() {
           wrap.appendChild(errDiv);
         }
       });
+
+      // ── Sección Partners ──────────────────────────────────────
+      sbFetch('revendedores?select=*&order=nombre.asc').then(function(revs) {
+        if (!revs || !revs.length) return;
+        wrap.appendChild(el('div', {class:'sh', style:'margin-top:16px'}, [el('span', {class:'st'}, 'Partners (' + revs.length + ')')]));
+        revs.forEach(function(rev) {
+          var clisDel = D.cls.filter(function(c){ return c.revendedor_id === rev.id; });
+          var card = el('div', {class:'cc'});
+          var ch2 = el('div', {class:'ch'});
+          var ini = rev.nombre.split(' ').map(function(x){ return x[0]||''; }).slice(0,2).join('');
+          var av2 = el('div', {class:'av', style:'background:#7F77DD'}, ini);
+          ch2.appendChild(av2);
+          var info2 = el('div', {style:'flex:1'});
+          info2.appendChild(el('div', {style:'font-weight:500;font-size:14px'}, rev.nombre));
+          info2.appendChild(el('div', {style:'font-size:12px;color:#94a3b8'}, clisDel.length + ' cliente' + (clisDel.length!==1?'s':'')));
+          ch2.appendChild(info2);
+          card.appendChild(ch2);
+          if (clisDel.length) {
+            var body2 = el('div', {class:'cb2'});
+            clisDel.forEach(function(cl) {
+              var row2 = el('div', {style:'display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:.5px solid #f1f5f9'});
+              var nm2 = String(cl.nombre||'?');
+              var ini2 = nm2.split(' ').map(function(x){ return x[0]||''; }).slice(0,2).join('');
+              row2.appendChild(el('div', {class:'av', style:'width:24px;height:24px;font-size:10px;flex-shrink:0'}, ini2));
+              var clInfo = el('div', {style:'flex:1'});
+              clInfo.appendChild(el('div', {style:'font-size:13px;font-weight:500'}, nm2));
+              if (cl.empresa) clInfo.appendChild(el('div', {style:'font-size:11px;color:#94a3b8'}, cl.empresa));
+              row2.appendChild(clInfo);
+              if (cl.es_demo) row2.appendChild(chipClass('demo', 'cgr'));
+              body2.appendChild(row2);
+            });
+            card.appendChild(body2);
+          } else {
+            card.appendChild(el('div', {style:'padding:6px 12px 10px;font-size:12px;color:#94a3b8'}, 'Sin clientes'));
+          }
+          wrap.appendChild(card);
+        });
+      }).catch(function(){});
     }
     setApp(wrap);
   }).catch(function(e) {
