@@ -1601,6 +1601,9 @@ function vCobros() {
     var btnN = el('button', {class:'btn btnp'}, '+ Registrar cobro');
     btnN.onclick = function() { mCobrarRapido(); };
     sh.appendChild(btnN);
+    var btnRR = el('button', {class:'btn', style:'margin-left:6px'}, '+ Recibo puntual');
+    btnRR.onclick = function() { mReciboRapido(); };
+    sh.appendChild(btnRR);
     wrap.appendChild(sh);
     // Tabs
     var tabs = el('div', {class:'tabs'});
@@ -1730,6 +1733,124 @@ function verRecibo(c) {
     }
   }
   mRecibo(d);
+}
+
+// ── RECIBO PUNTUAL ──────────────────────────────────────────────
+function mReciboRapido() {
+  var cls = (_D && _D.cls) ? _D.cls : [];
+  openM(makeModal('Nuevo recibo puntual', function(body) {
+    var fgCli = el('div', {class:'fg'});
+    fgCli.appendChild(el('label', {class:'fl'}, 'Cliente'));
+    var selCli = el('select', {class:'fi', id:'rr-sel'});
+    selCli.appendChild(el('option', {value:'__libre__'}, '✏️ Escribir a mano...'));
+    cls.forEach(function(cl) {
+      var op = el('option', {value: cl.nombre + (cl.empresa ? ' (' + cl.empresa + ')' : '')});
+      op.textContent = cl.nombre + (cl.empresa ? ' — ' + cl.empresa : '');
+      selCli.appendChild(op);
+    });
+    fgCli.appendChild(selCli);
+    body.appendChild(fgCli);
+    var fgLibre = el('div', {class:'fg', id:'rr-libre-fg', style:'display:none'});
+    fgLibre.appendChild(el('label', {class:'fl'}, 'Nombre del cliente'));
+    fgLibre.appendChild(el('input', {class:'fi', id:'rr-libre', type:'text', placeholder:'Ej: Juan García'}));
+    body.appendChild(fgLibre);
+    selCli.onchange = function() {
+      ge('rr-libre-fg').style.display = this.value === '__libre__' ? '' : 'none';
+    };
+    addFg(body, 'Concepto', mkInput('rr-desc', 'text', '', 'Ej: Desarrollo módulo facturación'));
+    addFg(body, 'Monto ($)', mkInput('rr-monto', 'number', ''));
+    var fgTog = el('div', {class:'fg', style:'display:flex;align-items:center;gap:10px'});
+    var chk = el('input', {type:'checkbox', id:'rr-logo'});
+    chk.checked = true;
+    var lbl = el('label', {for:'rr-logo', style:'font-size:13px;color:#64748b;cursor:pointer'}, 'Mostrar logo y datos de QP C&IA');
+    fgTog.appendChild(chk);
+    fgTog.appendChild(lbl);
+    body.appendChild(fgTog);
+  }, function(foot) {
+    foot.appendChild(cancelBtn());
+    var ok = el('button', {class:'btn btnp'}, 'Ver recibo');
+    ok.onclick = function() {
+      var cli = gv('rr-sel') === '__libre__' ? (ge('rr-libre') ? ge('rr-libre').value.trim() : '') : gv('rr-sel');
+      var desc = gv('rr-desc').trim();
+      var monto = Number(gv('rr-monto')||0);
+      if (!cli) { alert('Ingresá el nombre del cliente'); return; }
+      if (!desc) { alert('Ingresá el concepto'); return; }
+      if (!monto) { alert('Ingresá el monto'); return; }
+      var conLogo = ge('rr-logo').checked;
+      closeM();
+      mostrarReciboModal({cli:cli, desc:desc, monto:monto, conLogo:conLogo});
+    };
+    foot.appendChild(ok);
+  }));
+}
+
+function mostrarReciboModal(d) {
+  var hoy = new Date();
+  var fechaStr = hoy.toLocaleDateString('es-AR', {day:'2-digit', month:'2-digit', year:'numeric'});
+  var montoStr = fmt(d.monto);
+  var logoSrc = ge('logo') ? ge('logo').src : '';
+
+  var css = [
+    '*{box-sizing:border-box;margin:0;padding:0}',
+    'body{font-family:"DM Sans",sans-serif;background:#F0F5FA;padding:32px 16px;color:#1a2e4a}',
+    '.wrap{max-width:620px;margin:0 auto}',
+    '.card{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.09)}',
+    '.stripe{height:5px;background:linear-gradient(90deg,#0B9EDA,#5BBD4E)}',
+    '.body{padding:32px}',
+    '.head{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;padding-bottom:22px;border-bottom:2px solid #E6F6FD}',
+    '.logo{height:52px;object-fit:contain}',
+    '.rec-title{font-size:20px;font-weight:700;color:#0B9EDA;text-align:right}',
+    '.rec-num{font-size:13px;color:#64748B;text-align:right;margin-top:3px}',
+    '.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:22px}',
+    '.lb{font-size:10px;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}',
+    '.vl{font-size:14px;font-weight:500}',
+    '.desc-box{background:#F8FAFC;border-radius:8px;padding:14px 16px;margin-bottom:20px}',
+    '.tot{background:linear-gradient(135deg,#E6F6FD,#EDF7EA);border-radius:10px;padding:18px 20px;display:flex;justify-content:space-between;align-items:center;margin-bottom:22px}',
+    '.tot-val{font-size:28px;font-weight:700;color:#0B9EDA}',
+    '.ft{text-align:center;font-size:11px;color:#94A3B8;padding-top:16px;border-top:1px solid #F1F5F9;line-height:1.7}'
+  ].join('');
+
+  var headHtml = d.conLogo
+    ? '<div class="head"><img src="' + logoSrc + '" class="logo" alt="QP"><div><div class="rec-title">Recibo de Pago</div><div class="rec-num">' + fechaStr + '</div></div></div>'
+    : '<div class="head" style="justify-content:flex-end"><div><div class="rec-title">Recibo de Pago</div><div class="rec-num">' + fechaStr + '</div></div></div>';
+
+  var footHtml = d.conLogo
+    ? '<div class="ft">QP Cloud &amp; Inteligencia Artificial<br>General Pico, La Pampa &bull; jcquarleri.vercel.app</div>'
+    : '';
+
+  var innerHtml = '<html><head><meta charset="UTF-8">'
+    + '<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">'
+    + '<style>' + css + '</style></head><body>'
+    + '<div class="wrap"><div class="card"><div class="stripe"></div><div class="body">'
+    + headHtml
+    + '<div class="grid">'
+    + '<div><div class="lb">Cliente</div><div class="vl">' + d.cli + '</div></div>'
+    + '<div><div class="lb">Fecha</div><div class="vl">' + fechaStr + '</div></div>'
+    + '</div>'
+    + '<div class="desc-box"><div class="lb">Concepto</div><div class="vl" style="margin-top:4px">' + d.desc + '</div></div>'
+    + '<div class="tot"><span style="font-size:13px;font-weight:600;color:#0C6FA3">Total</span><span class="tot-val">' + montoStr + '</span></div>'
+    + footHtml
+    + '</div></div></div>'
+    + '</body></html>';
+
+  var ov = el('div', {class:'ov'});
+  ov.onclick = function(e){ if (e.target===ov) ge('mroot').innerHTML=''; };
+  var mod = el('div', {class:'mod', style:'max-width:680px;width:95%'});
+  var hd = el('div', {class:'mhd'});
+  hd.appendChild(el('span', {class:'mtt'}, 'Recibo puntual'));
+  var x = el('button', {class:'btn btnsm'}, 'X'); x.onclick = function(){ ge('mroot').innerHTML=''; };
+  hd.appendChild(x);
+  mod.appendChild(hd);
+  var mbd = el('div', {class:'mbd', style:'padding:0'});
+  var iframe = el('iframe', {style:'width:100%;height:520px;border:none;border-radius:0 0 8px 8px'});
+  mbd.appendChild(iframe);
+  mod.appendChild(mbd);
+  ov.appendChild(mod);
+  ge('mroot').innerHTML='';
+  ge('mroot').appendChild(ov);
+  iframe.contentWindow.document.open();
+  iframe.contentWindow.document.write(innerHtml);
+  iframe.contentWindow.document.close();
 }
 
 // ── MODALES ────────────────────────────────────────────────────
