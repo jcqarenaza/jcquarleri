@@ -341,8 +341,9 @@ function vDash() {
       var f = new Date(c.fecha_pago);
       return f.getMonth()+1 === mesActual && f.getFullYear() === anioActual;
     }).reduce(function(s,c){ return s+Number(c.monto); }, 0);
-    var clsConAsig = D.cls.filter(function(cl){ return D.asigs.some(function(a){ return a.cliente_id===cl.id; }); });
-    var clsSinSis = D.cls.filter(function(cl){ return !D.asigs.some(function(a){ return a.cliente_id===cl.id; }); });
+    var clsPropios = D.cls.filter(function(cl){ return !cl.revendedor_id; });
+    var clsConAsig = clsPropios.filter(function(cl){ return D.asigs.some(function(a){ return a.cliente_id===cl.id; }); });
+    var clsSinSis = clsPropios.filter(function(cl){ return !D.asigs.some(function(a){ return a.cliente_id===cl.id; }); });
     var clsConDeuda = D.asigs.filter(function(a){ return totalFases(a) - pagadoImplementacion(a) > 0; }).map(function(a){ return a.cliente_id; });
     var clsDeuda = D.cls.filter(function(cl){ return clsConDeuda.indexOf(cl.id) >= 0; });
     var clsAlDia = clsConAsig.filter(function(cl){ return clsConDeuda.indexOf(cl.id) < 0; });
@@ -1472,8 +1473,8 @@ function vClientes() {
     sh.appendChild(btnN);
     wrap.appendChild(sh);
 
-    var clsReales = D.cls.filter(function(cl){ return !cl.es_demo; });
-    var clsDemo   = D.cls.filter(function(cl){ return !!cl.es_demo; });
+    var clsReales = D.cls.filter(function(cl){ return !cl.es_demo && !cl.revendedor_id; });
+    var clsDemo   = D.cls.filter(function(cl){ return !!cl.es_demo && !cl.revendedor_id; });
 
     if (!D.cls.length) {
       wrap.appendChild(el('div', {class:'card'}, [el('div', {class:'emp'}, 'No hay clientes todavia')]));
@@ -1739,14 +1740,15 @@ function verRecibo(c) {
 
 // ── RECIBO PUNTUAL ──────────────────────────────────────────────
 function mReciboRapido() {
+  var QP_A_MEDIDA_ID = '45d2d4de-e938-4a95-827d-f29f575eff10';
   var cls = (_D && _D.cls) ? _D.cls : [];
   openM(makeModal('Nuevo recibo puntual', function(body) {
     var fgCli = el('div', {class:'fg'});
     fgCli.appendChild(el('label', {class:'fl'}, 'Cliente'));
     var selCli = el('select', {class:'fi', id:'rr-sel'});
-    selCli.appendChild(el('option', {value:'__libre__'}, '✏️ Escribir a mano...'));
+    selCli.appendChild(el('option', {value:'__libre__'}, 'Escribir a mano...'));
     cls.forEach(function(cl) {
-      var op = el('option', {value: cl.nombre + (cl.empresa ? ' (' + cl.empresa + ')' : '')});
+      var op = el('option', {value: cl.id});
       op.textContent = cl.nombre + (cl.empresa ? ' — ' + cl.empresa : '');
       selCli.appendChild(op);
     });
@@ -1754,12 +1756,12 @@ function mReciboRapido() {
     body.appendChild(fgCli);
     var fgLibre = el('div', {class:'fg', id:'rr-libre-fg', style:'display:none'});
     fgLibre.appendChild(el('label', {class:'fl'}, 'Nombre del cliente'));
-    fgLibre.appendChild(el('input', {class:'fi', id:'rr-libre', type:'text', placeholder:'Ej: Juan García'}));
+    fgLibre.appendChild(el('input', {class:'fi', id:'rr-libre', type:'text', placeholder:'Ej: Juan Garcia'}));
     body.appendChild(fgLibre);
     selCli.onchange = function() {
       ge('rr-libre-fg').style.display = this.value === '__libre__' ? '' : 'none';
     };
-    addFg(body, 'Concepto', mkInput('rr-desc', 'text', '', 'Ej: Desarrollo módulo facturación'));
+    addFg(body, 'Concepto', mkInput('rr-desc', 'text', '', 'Ej: Desarrollo modulo facturacion'));
     addFg(body, 'Monto ($)', mkInput('rr-monto', 'number', ''));
     var fgTog = el('div', {class:'fg', style:'display:flex;align-items:center;gap:10px'});
     var chk = el('input', {type:'checkbox', id:'rr-logo'});
@@ -1770,17 +1772,56 @@ function mReciboRapido() {
     body.appendChild(fgTog);
   }, function(foot) {
     foot.appendChild(cancelBtn());
-    var ok = el('button', {class:'btn btnp'}, 'Ver recibo');
+    var ok = el('button', {class:'btn btnp'}, 'Guardar y ver recibo');
     ok.onclick = function() {
-      var cli = gv('rr-sel') === '__libre__' ? (ge('rr-libre') ? ge('rr-libre').value.trim() : '') : gv('rr-sel');
+      var selVal = gv('rr-sel');
       var desc = gv('rr-desc').trim();
       var monto = Number(gv('rr-monto')||0);
-      if (!cli) { alert('Ingresá el nombre del cliente'); return; }
-      if (!desc) { alert('Ingresá el concepto'); return; }
-      if (!monto) { alert('Ingresá el monto'); return; }
       var conLogo = ge('rr-logo').checked;
-      closeM();
-      mostrarReciboModal({cli:cli, desc:desc, monto:monto, conLogo:conLogo});
+      var nombreLibre = ge('rr-libre') ? ge('rr-libre').value.trim() : '';
+      if (selVal === '__libre__' && !nombreLibre) { alert('Ingresa el nombre del cliente'); return; }
+      if (!desc) { alert('Ingresa el concepto'); return; }
+      if (!monto) { alert('Ingresa el monto'); return; }
+      ok.disabled = true; ok.textContent = 'Guardando...';
+      var hoy = new Date().toISOString().slice(0,10);
+      // 1. Resolver cliente
+      var pCli;
+      if (selVal !== '__libre__') {
+        var clExist = (_D.cls||[]).find(function(c){ return c.id === selVal; });
+        pCli = Promise.resolve({id: selVal, nombre: clExist ? clExist.nombre + (clExist.empresa ? ' (' + clExist.empresa + ')' : '') : ''});
+      } else {
+        pCli = dbIns('panel_clientes', {nombre: nombreLibre, activo: true}).then(function(rows){
+          if (_D) _D.cls.push(rows[0]);
+          return {id: rows[0].id, nombre: nombreLibre};
+        });
+      }
+      // 2. Crear asignacion con QP A Medida si no existe
+      pCli.then(function(cli) {
+        var asigExist = (_D.asigs||[]).find(function(a){ return a.cliente_id === cli.id && a.sistema_id === QP_A_MEDIDA_ID; });
+        var pAsig = asigExist
+          ? Promise.resolve(asigExist)
+          : dbIns('panel_asignaciones', {cliente_id: cli.id, sistema_id: QP_A_MEDIDA_ID, fee_mensual: 0, dia_cobro: 1, activo: true}).then(function(rows){ return rows[0]; });
+        return pAsig.then(function(asig) {
+          // 3. Crear cobro
+          return dbIns('panel_cobros', {
+            asignacion_id: asig.id,
+            tipo_cobro: 'puntual',
+            descripcion: desc,
+            monto: monto,
+            estado: 'pagado',
+            fecha_pago: hoy,
+            fecha_vencimiento: hoy,
+            metodo: 'transferencia'
+          }).then(function(rows) {
+            closeM();
+            mostrarReciboModal({cli: cli.nombre, desc: desc, monto: monto, conLogo: conLogo, cobro_id: rows[0].id});
+            if (_D) _D.cobs.push(rows[0]);
+          });
+        });
+      }).catch(function(e){
+        ok.disabled = false; ok.textContent = 'Guardar y ver recibo';
+        alert('Error: ' + e.message);
+      });
     };
     foot.appendChild(ok);
   }));
