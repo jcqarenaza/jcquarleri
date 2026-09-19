@@ -1602,9 +1602,7 @@ function vCobros() {
     var btnN = el('button', {class:'btn btnp'}, '+ Registrar cobro');
     btnN.onclick = function() { mCobrarRapido(); };
     sh.appendChild(btnN);
-    var btnRR = el('button', {class:'btn', style:'margin-left:6px'}, '+ Recibo puntual');
-    btnRR.onclick = function() { mReciboRapido(); };
-    sh.appendChild(btnRR);
+
     wrap.appendChild(sh);
     // Tabs
     var tabs = el('div', {class:'tabs'});
@@ -1617,7 +1615,7 @@ function vCobros() {
     wrap.appendChild(tabs);
     var card = el('div', {class:'card', style:'overflow-x:auto'});
     var tbl = el('table', {class:'tbl', style:'min-width:750px'});
-    tbl.appendChild(elH('thead', {}, '<tr><th>Cliente</th><th>Sistema</th><th>Tipo</th><th>Descripcion</th><th>Monto</th><th>Vence</th><th>Estado</th><th></th></tr>'));
+    tbl.appendChild(elH('thead', {}, '<tr><th>Cliente</th><th>Sistema</th><th>Tipo</th><th>Descripcion</th><th>Monto</th><th>Fecha</th><th>Estado</th><th></th></tr>'));
     tbl.appendChild(el('tbody', {id:'ctbody'}));
     card.appendChild(tbl); wrap.appendChild(card);
     setApp(wrap);
@@ -1646,7 +1644,15 @@ function filtrar(f) {
     tr.appendChild(el('td', {style:'color:#94a3b8;font-size:12px'}, c.descripcion||'-'));
     tr.appendChild(el('td', {style:'font-weight:500'}, fmt(c.monto)));
     // metodo column removed
-    tr.appendChild(el('td', {}, fdate(c.fecha_vencimiento)));
+    var fechaTd = el('td', {});
+    if (c.estado === 'pagado' && c.fecha_pago) {
+      fechaTd.appendChild(el('div', {style:'font-size:11px;color:#94a3b8'}, 'Cobrado'));
+      fechaTd.appendChild(el('div', {}, fdate(c.fecha_pago)));
+    } else {
+      fechaTd.appendChild(el('div', {style:'font-size:11px;color:#94a3b8'}, 'Vence'));
+      fechaTd.appendChild(el('div', {}, fdate(c.fecha_vencimiento)));
+    }
+    tr.appendChild(fechaTd);
     // Estado select
     var sel = el('select', {class:'fi', style:'width:auto;padding:4px 8px;font-size:11px'});
     ['pendiente','pagado','vencido','cancelado'].forEach(function(e2) {
@@ -1720,7 +1726,7 @@ function cambiaEstado(id, estado) {
   dbUpd('panel_cobros', id, b).then(function(){ vCobros(); });
 }
 function verRecibo(c) {
-  var d = {cli:c._cli.nombre, sis:c._sis.nombre, desc:c.descripcion, monto:c.monto, met:c.metodo, fecha:c.fecha_pago||c.fecha_vencimiento||'', estado:c.estado, num:c.id.slice(-4), cobro_id:c.id};
+  var d = {cli:c._cli.nombre, sis:c._sis.nombre, desc:c.descripcion, monto:c.monto, met:c.metodo, fecha:c.fecha_pago||c.fecha_vencimiento||'', estado:c.estado, cobro_id:c.id};
   if (c._asig) {
     var totI = totalFases(c._asig);
     var pagI = pagadoImplementacion(c._asig);
@@ -1735,7 +1741,7 @@ function verRecibo(c) {
       }
     }
   }
-  mRecibo(d);
+  mostrarReciboModal(d);
 }
 
 // ── RECIBO PUNTUAL ──────────────────────────────────────────────
@@ -1828,71 +1834,84 @@ function mReciboRapido() {
 }
 
 function mostrarReciboModal(d) {
-  var hoy = new Date();
-  var fechaStr = hoy.toLocaleDateString('es-AR', {day:'2-digit', month:'2-digit', year:'numeric'});
-  var montoStr = fmt(d.monto);
   var logoSrc = ge('logo') ? ge('logo').src : '';
+  var M_LAB = {transferencia:'Transferencia',efectivo:'Efectivo',mercadopago:'MercadoPago',otro:'Otro'};
 
-  var css = [
-    '*{box-sizing:border-box;margin:0;padding:0}',
-    'body{font-family:"DM Sans",sans-serif;background:#F0F5FA;padding:32px 16px;color:#1a2e4a}',
-    '.wrap{max-width:620px;margin:0 auto}',
-    '.card{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.09)}',
-    '.stripe{height:5px;background:linear-gradient(90deg,#0B9EDA,#5BBD4E)}',
-    '.body{padding:32px}',
-    '.head{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;padding-bottom:22px;border-bottom:2px solid #E6F6FD}',
-    '.logo{height:52px;object-fit:contain}',
-    '.rec-title{font-size:20px;font-weight:700;color:#0B9EDA;text-align:right}',
-    '.rec-num{font-size:13px;color:#64748B;text-align:right;margin-top:3px}',
-    '.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:22px}',
-    '.lb{font-size:10px;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}',
-    '.vl{font-size:14px;font-weight:500}',
-    '.desc-box{background:#F8FAFC;border-radius:8px;padding:14px 16px;margin-bottom:20px}',
-    '.tot{background:linear-gradient(135deg,#E6F6FD,#EDF7EA);border-radius:10px;padding:18px 20px;display:flex;justify-content:space-between;align-items:center;margin-bottom:22px}',
-    '.tot-val{font-size:28px;font-weight:700;color:#0B9EDA}',
-    '.ft{text-align:center;font-size:11px;color:#94A3B8;padding-top:16px;border-top:1px solid #F1F5F9;line-height:1.7}'
-  ].join('');
-
-  var headHtml = d.conLogo
-    ? '<div class="head"><img src="' + logoSrc + '" class="logo" alt="QP"><div><div class="rec-title">Recibo de Pago</div><div class="rec-num">' + fechaStr + '</div></div></div>'
-    : '<div class="head" style="justify-content:flex-end"><div><div class="rec-title">Recibo de Pago</div><div class="rec-num">' + fechaStr + '</div></div></div>';
-
-  var footHtml = d.conLogo
-    ? '<div class="ft">QP Cloud &amp; Inteligencia Artificial<br>General Pico, La Pampa &bull; jcquarleri.vercel.app</div>'
-    : '';
-
-  var innerHtml = '<html><head><meta charset="UTF-8">'
-    + '<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">'
-    + '<style>' + css + '</style></head><body>'
-    + '<div class="wrap"><div class="card"><div class="stripe"></div><div class="body">'
-    + headHtml
-    + '<div class="grid">'
-    + '<div><div class="lb">Cliente</div><div class="vl">' + d.cli + '</div></div>'
-    + '<div><div class="lb">Fecha</div><div class="vl">' + fechaStr + '</div></div>'
-    + '</div>'
-    + '<div class="desc-box"><div class="lb">Concepto</div><div class="vl" style="margin-top:4px">' + d.desc + '</div></div>'
-    + '<div class="tot"><span style="font-size:13px;font-weight:600;color:#0C6FA3">Total</span><span class="tot-val">' + montoStr + '</span></div>'
-    + footHtml
-    + '</div></div></div>'
-    + '</body></html>';
+  function renderRecibo(conLogo) {
+    var fechaStr = d.fecha
+      ? (function(f){ var p=f.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; })(d.fecha.slice(0,10))
+      : new Date().toLocaleDateString('es-AR', {day:'2-digit', month:'2-digit', year:'numeric'});
+    var montoStr = fmt(d.monto);
+    var metLabel = d.met ? (M_LAB[d.met]||d.met) : null;
+    var css = [
+      '*{box-sizing:border-box;margin:0;padding:0}',
+      'body{font-family:"DM Sans",sans-serif;background:#F0F5FA;padding:32px 16px;color:#1a2e4a}',
+      '.wrap{max-width:620px;margin:0 auto}',
+      '.card{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.09)}',
+      '.stripe{height:5px;background:linear-gradient(90deg,#0B9EDA,#5BBD4E)}',
+      '.body{padding:32px}',
+      '.head{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;padding-bottom:22px;border-bottom:2px solid #E6F6FD}',
+      '.logo{height:52px;object-fit:contain}',
+      '.rec-title{font-size:20px;font-weight:700;color:#0B9EDA;text-align:right}',
+      '.rec-num{font-size:13px;color:#64748B;text-align:right;margin-top:3px}',
+      '.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:22px}',
+      '.lb{font-size:10px;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}',
+      '.vl{font-size:14px;font-weight:500}',
+      '.desc-box{background:#F8FAFC;border-radius:8px;padding:14px 16px;margin-bottom:20px}',
+      '.tot{background:linear-gradient(135deg,#E6F6FD,#EDF7EA);border-radius:10px;padding:18px 20px;display:flex;justify-content:space-between;align-items:center;margin-bottom:22px}',
+      '.tot-val{font-size:28px;font-weight:700;color:#0B9EDA}',
+      '.ft{text-align:center;font-size:11px;color:#94A3B8;padding-top:16px;border-top:1px solid #F1F5F9;line-height:1.7}',
+      '.tog{display:flex;align-items:center;gap:8px;padding:12px 16px;background:#F8FAFC;border-top:1px solid #E2E8F0;font-size:12px;color:#64748b}',
+      '@media print{.tog{display:none}}'
+    ].join('');
+    var headHtml = conLogo
+      ? '<div class="head"><img src="' + logoSrc + '" class="logo" alt="QP"><div><div class="rec-title">Recibo de Pago</div><div class="rec-num">' + fechaStr + '</div></div></div>'
+      : '<div class="head" style="justify-content:flex-end"><div><div class="rec-title">Recibo de Pago</div><div class="rec-num">' + fechaStr + '</div></div></div>';
+    var footHtml = conLogo
+      ? '<div class="ft">QP Cloud &amp; Inteligencia Artificial<br>General Pico, La Pampa &bull; jcquarleri.vercel.app</div>'
+      : '';
+    return '<html><head><meta charset="UTF-8">'
+      + '<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">'
+      + '<style>' + css + '</style></head><body>'
+      + '<div class="wrap"><div class="card"><div class="stripe"></div><div class="body">'
+      + headHtml
+      + '<div class="grid">'
+      + '<div><div class="lb">Cliente</div><div class="vl">' + d.cli + '</div></div>'
+      + '<div><div class="lb">Fecha</div><div class="vl">' + fechaStr + '</div></div>'
+      + (d.sis && d.sis !== 'QP A Medida' ? '<div><div class="lb">Servicio</div><div class="vl">' + d.sis + '</div></div>' : '')
+      + (metLabel ? '<div><div class="lb">Metodo de pago</div><div class="vl">' + metLabel + '</div></div>' : '')
+      + '</div>'
+      + '<div class="desc-box"><div class="lb">Concepto</div><div class="vl" style="margin-top:4px">' + d.desc + '</div></div>'
+      + '<div class="tot"><span style="font-size:13px;font-weight:600;color:#0C6FA3">Total</span><span class="tot-val">' + montoStr + '</span></div>'
+      + (d.saldoImpl != null ? ('<div class="desc-box" style="background:' + (d.saldoImpl > 0 ? '#FAEEDA' : '#EDF7EA') + '"><div class="lb">Implementacion' + (d.faseLabel ? ' &mdash; ' + d.faseLabel : '') + '</div><div style="display:flex;justify-content:space-between;margin-top:6px;font-size:13px"><span>Total acordado: <strong>' + fmt(d.totalImpl) + '</strong></span><span>Pagado: <strong>' + fmt(d.pagadoImpl) + '</strong></span></div><div style="margin-top:8px;font-size:14px;font-weight:700;color:' + (d.saldoImpl > 0 ? '#854F0B' : '#3D8A32') + '">' + (d.saldoImpl > 0 ? 'Saldo pendiente: ' + fmt(d.saldoImpl) : 'Implementacion saldada') + '</div></div>') : '')
+      + footHtml
+      + '</div></div></div>'
+      + '<div class="tog"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="tog-logo"' + (conLogo ? ' checked' : '') + ' onchange="window.parent.__reciboToggleLogo(this.checked)"> Mostrar logo y datos QP C&IA</label></div>'
+      + '</body></html>';
+  }
 
   var ov = el('div', {class:'ov'});
   ov.onclick = function(e){ if (e.target===ov) ge('mroot').innerHTML=''; };
   var mod = el('div', {class:'mod', style:'max-width:680px;width:95%'});
   var hd = el('div', {class:'mhd'});
-  hd.appendChild(el('span', {class:'mtt'}, 'Recibo puntual'));
+  hd.appendChild(el('span', {class:'mtt'}, 'Recibo'));
   var x = el('button', {class:'btn btnsm'}, 'X'); x.onclick = function(){ ge('mroot').innerHTML=''; };
   hd.appendChild(x);
   mod.appendChild(hd);
   var mbd = el('div', {class:'mbd', style:'padding:0'});
-  var iframe = el('iframe', {style:'width:100%;height:520px;border:none;border-radius:0 0 8px 8px'});
+  var iframe = el('iframe', {style:'width:100%;height:560px;border:none;border-radius:0 0 8px 8px'});
   mbd.appendChild(iframe);
   mod.appendChild(mbd);
   ov.appendChild(mod);
   ge('mroot').innerHTML='';
   ge('mroot').appendChild(ov);
+  window.__reciboToggleLogo = function(val) {
+    iframe.contentWindow.document.open();
+    iframe.contentWindow.document.write(renderRecibo(val));
+    iframe.contentWindow.document.close();
+  };
   iframe.contentWindow.document.open();
-  iframe.contentWindow.document.write(innerHtml);
+  iframe.contentWindow.document.write(renderRecibo(true));
   iframe.contentWindow.document.close();
 }
 
@@ -2649,6 +2668,12 @@ function mCobrarRapido() {
     addFg(body, 'Descripcion', mkInput('rqd','text','Fee mensual '+MESES[new Date().getMonth()]+' '+new Date().getFullYear()));
     mkRow2(body, mkFg('Monto ($)', mkInput('rqm','number',(_D.asigs[0]||{}).fee_mensual||0)), mkFg('Metodo', mkSelect('rqmet',[['transferencia','Transferencia'],['efectivo','Efectivo'],['mercadopago','MercadoPago']],'transferencia')));
     mkRow2(body, mkFg('Vencimiento', mkInput('rqv','date',new Date().toISOString().slice(0,10))), mkFg('Estado', mkSelect('rqe',[['pendiente','Pendiente'],['pagado','Pagado']],'pendiente')));
+    var fgTog = el('div', {class:'fg', style:'display:flex;align-items:center;gap:10px'});
+    var chkLogo = el('input', {type:'checkbox', id:'rq-logo'});
+    chkLogo.checked = true;
+    fgTog.appendChild(chkLogo);
+    fgTog.appendChild(el('label', {for:'rq-logo', style:'font-size:13px;color:#64748b;cursor:pointer'}, 'Mostrar logo y datos de QP C&IA en el recibo'));
+    body.appendChild(fgTog);
   }, function(foot) {
     foot.appendChild(cancelBtn());
     var ok = el('button', {class:'btn btnp'}, 'Registrar');
@@ -2657,10 +2682,14 @@ function mCobrarRapido() {
       var cl = op.textContent.split(' - ')[0], si = op.textContent.split(' - ')[1]||'';
       var estado=gv('rqe'), monto=Number(gv('rqm')||0), fecha=gv('rqv'), tipo=gv('rqt');
       var faseId = (tipo==='implementacion' && ge('rqfase')) ? gv('rqfase') : null;
-      dbIns('panel_cobros', {asignacion_id:sel.value, tipo_cobro:tipo, fase_id:faseId, descripcion:gv('rqd'), monto:monto, metodo:gv('rqmet'), fecha_vencimiento:fecha, fecha_pago:estado==='pagado'?fecha:null, estado:estado})
+      var conLogo = ge('rq-logo') ? ge('rq-logo').checked : true;
+      var desc=gv('rqd'), met=gv('rqmet');
+      dbIns('panel_cobros', {asignacion_id:sel.value, tipo_cobro:tipo, fase_id:faseId, descripcion:desc, monto:monto, metodo:met, fecha_vencimiento:fecha, fecha_pago:estado==='pagado'?fecha:null, estado:estado})
       .then(function(r) {
         closeM();
-        if (estado==='pagado' && confirm('Generar recibo?')) mRecibo({cli:cl, sis:si, desc:gv('rqd'), monto:monto, met:gv('rqmet'), fecha:fecha, estado:estado, num:(r[0]||{}).id?r[0].id.slice(-4):'0001', cobro_id:(r[0]||{}).id});
+        if (estado==='pagado' && confirm('Generar recibo?')) {
+          mostrarReciboModal({cli:cl, sis:si, desc:desc, monto:monto, met:met, fecha:fecha, estado:estado, cobro_id:(r[0]||{}).id});
+        }
         vCobros();
       });
     };
