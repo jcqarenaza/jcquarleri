@@ -114,7 +114,7 @@ function loading() { setApp(el('div', {class:'emp'}, 'Cargando...')); }
 // Load all data
 function cargar() {
   return Promise.all([
-    dbGet('panel_sistemas'), dbGet('panel_clientes'),
+    sbFetch('panel_sistemas?select=*&order=nombre.asc'), dbGet('panel_clientes'),
     dbGet('panel_asignaciones'), dbGet('panel_cobros'), dbGet('panel_sub_entidades'),
     dbGet('panel_implementacion_fases'), dbGet('panel_alertas'),
     sbFetch('panel_fases?select=*&order=orden.asc'),
