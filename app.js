@@ -1837,7 +1837,8 @@ function mostrarReciboModal(d) {
   var logoSrc = ge('logo') ? ge('logo').src : '';
   var M_LAB = {transferencia:'Transferencia',efectivo:'Efectivo',mercadopago:'MercadoPago',otro:'Otro'};
 
-  function renderRecibo(conLogo) {
+  function renderRecibo(conLogo, numRec) {
+    var numStr = numRec ? String(numRec).padStart(4,'0') : '';
     var fechaStr = d.fecha
       ? (function(f){ var p=f.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; })(d.fecha.slice(0,10))
       : new Date().toLocaleDateString('es-AR', {day:'2-digit', month:'2-digit', year:'numeric'});
@@ -1865,8 +1866,8 @@ function mostrarReciboModal(d) {
       '@media print{.tog{display:none}}'
     ].join('');
     var headHtml = conLogo
-      ? '<div class="head"><img src="' + logoSrc + '" class="logo" alt="QP"><div><div class="rec-title">Recibo de Pago</div><div class="rec-num">' + fechaStr + '</div></div></div>'
-      : '<div class="head" style="justify-content:flex-end"><div><div class="rec-title">Recibo de Pago</div><div class="rec-num">' + fechaStr + '</div></div></div>';
+      ? '<div class="head"><img src="' + logoSrc + '" class="logo" alt="QP"><div><div class="rec-title">Recibo de Pago</div><div class="rec-num">' + (numStr ? 'N° ' + numStr + '  ·  ' : '') + fechaStr + '</div></div></div>'
+      : '<div class="head" style="justify-content:flex-end"><div><div class="rec-title">Recibo de Pago</div><div class="rec-num">' + (numStr ? 'N° ' + numStr + '  ·  ' : '') + fechaStr + '</div></div></div>';
     var footHtml = conLogo
       ? '<div class="ft">QP Cloud &amp; Inteligencia Artificial<br>General Pico, La Pampa &bull; jcquarleri.vercel.app</div>'
       : '';
@@ -1899,20 +1900,44 @@ function mostrarReciboModal(d) {
   hd.appendChild(x);
   mod.appendChild(hd);
   var mbd = el('div', {class:'mbd', style:'padding:0'});
-  var iframe = el('iframe', {style:'width:100%;height:560px;border:none;border-radius:0 0 8px 8px'});
+  var iframe = el('iframe', {style:'width:100%;height:480px;border:none;border-radius:0 0 8px 8px'});
   mbd.appendChild(iframe);
   mod.appendChild(mbd);
   ov.appendChild(mod);
   ge('mroot').innerHTML='';
   ge('mroot').appendChild(ov);
-  window.__reciboToggleLogo = function(val) {
+  function escribirRecibo(num, val) {
     iframe.contentWindow.document.open();
-    iframe.contentWindow.document.write(renderRecibo(val));
+    iframe.contentWindow.document.write(renderRecibo(val, num));
     iframe.contentWindow.document.close();
-  };
-  iframe.contentWindow.document.open();
-  iframe.contentWindow.document.write(renderRecibo(true));
-  iframe.contentWindow.document.close();
+  }
+  window.__reciboToggleLogo = function(val) { escribirRecibo(window.__reciboNum||null, val); };
+  // Pedir numero de recibo
+  if (d.cobro_id) {
+    sbFetch('panel_recibos?cobro_id=eq.' + d.cobro_id + '&select=numero&order=numero.desc&limit=1')
+      .then(function(rows) {
+        var num;
+        if (rows && rows.length) {
+          num = rows[0].numero;
+          window.__reciboNum = num;
+          escribirRecibo(num, true);
+        } else {
+          fetch(SB_URL + '/rest/v1/rpc/next_recibo_num', {
+            method: 'POST',
+            headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' },
+            body: '{}'
+          }).then(function(r){ return r.json(); }).then(function(n){
+            num = n;
+            window.__reciboNum = num;
+            dbIns('panel_recibos', { numero: num, cobro_id: d.cobro_id, cliente: d.cli||null, sistema: d.sis||null, monto: d.monto||null, fecha: d.fecha||null }).catch(function(){});
+            escribirRecibo(num, true);
+          }).catch(function(){ window.__reciboNum = null; escribirRecibo(null, true); });
+        }
+      }).catch(function(){ window.__reciboNum = null; escribirRecibo(null, true); });
+  } else {
+    window.__reciboNum = null;
+    escribirRecibo(null, true);
+  }
 }
 
 // ── MODALES ────────────────────────────────────────────────────
