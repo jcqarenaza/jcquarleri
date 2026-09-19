@@ -1906,8 +1906,8 @@ function mostrarReciboModal(d) {
   var x = el('button', {class:'btn btnsm'}, 'X'); x.onclick = function(){ ge('mroot').innerHTML=''; };
   hd.appendChild(x);
   mod.appendChild(hd);
-  var mbd = el('div', {class:'mbd', style:'padding:0'});
-  var iframe = el('iframe', {style:'width:100%;height:480px;border:none;border-radius:0 0 8px 8px'});
+  var mbd = el('div', {class:'mbd', style:'padding:0;max-height:80vh;overflow-y:auto'});
+  var iframe = el('iframe', {style:'width:100%;height:200px;border:none;border-radius:0 0 8px 8px'});
   mbd.appendChild(iframe);
   mod.appendChild(mbd);
   ov.appendChild(mod);
@@ -1917,10 +1917,22 @@ function mostrarReciboModal(d) {
     iframe.contentWindow.document.open();
     iframe.contentWindow.document.write(renderRecibo(val, num));
     iframe.contentWindow.document.close();
+    setTimeout(function() {
+      try {
+        var h = iframe.contentWindow.document.body.scrollHeight;
+        if (h > 100) iframe.style.height = Math.min(h + 20, 700) + 'px';
+      } catch(e){}
+    }, 150);
+  }
+  function escribirLoading() {
+    iframe.contentWindow.document.open();
+    iframe.contentWindow.document.write('<html><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8;font-size:13px">Generando recibo...</body></html>');
+    iframe.contentWindow.document.close();
   }
   window.__reciboToggleLogo = function(val) { escribirRecibo(window.__reciboNum||null, val); };
   // Pedir numero de recibo
   if (d.cobro_id) {
+    escribirLoading();
     sbFetch('panel_recibos?cobro_id=eq.' + d.cobro_id + '&select=numero&order=numero.desc&limit=1')
       .then(function(rows) {
         var num;
