@@ -1627,7 +1627,9 @@ function filtrar(f) {
   if (!_D) return;
   // "Todos" excluye los pagados — lo que importa seguir son pendiente/vencido/cancelado.
   // Para ver los pagados, usar el tab "Pagado" especificamente.
-  var lista = (f==='todos' ? _D.cobs.filter(function(c){ return c.estado!=='pagado'; }) : _D.cobs.filter(function(c){ return c.estado===f; })).slice().sort(function(a,b){ var da=(a.fecha_pago||a.fecha_vencimiento||''); var db=(b.fecha_pago||b.fecha_vencimiento||''); return da<db?1:-1; });
+  // Excluir cobros de clientes de partner (revendedor_id != null)
+  var cobsPropios = _D.cobs.filter(function(c){ return !c._cli.revendedor_id; });
+  var lista = (f==='todos' ? cobsPropios.filter(function(c){ return c.estado!=='pagado'; }) : cobsPropios.filter(function(c){ return c.estado===f; })).slice().sort(function(a,b){ var da=(a.fecha_pago||a.fecha_vencimiento||''); var db=(b.fecha_pago||b.fecha_vencimiento||''); return da<db?1:-1; });
   document.querySelectorAll('.tab').forEach(function(t){ t.classList.toggle('on', t.dataset.tab===f); });
   var tb = ge('ctbody'); if (!tb) return;
   tb.innerHTML = '';
