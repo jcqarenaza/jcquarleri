@@ -1616,9 +1616,26 @@ function vCobros() {
       tabs.appendChild(tab);
     });
     wrap.appendChild(tabs);
+    var sortBar = el('div', {style:'display:flex;gap:6px;margin-bottom:8px;align-items:center'});
+    sortBar.appendChild(el('span', {style:'font-size:11px;color:#94a3b8'}, 'Ordenar:'));
+    var btnSortFecha = el('button', {class:'btn btnsm on', id:'sort-fecha'}, 'Fecha cobro');
+    var btnSortNum = el('button', {class:'btn btnsm', id:'sort-num'}, 'N° Recibo');
+    window._cobroSort = 'fecha';
+    btnSortFecha.onclick = function() {
+      window._cobroSort = 'fecha';
+      btnSortFecha.classList.add('on'); btnSortNum.classList.remove('on');
+      filtrar(document.querySelector('.tab.on') ? document.querySelector('.tab.on').dataset.tab : 'todos');
+    };
+    btnSortNum.onclick = function() {
+      window._cobroSort = 'num';
+      btnSortNum.classList.add('on'); btnSortFecha.classList.remove('on');
+      filtrar(document.querySelector('.tab.on') ? document.querySelector('.tab.on').dataset.tab : 'todos');
+    };
+    sortBar.appendChild(btnSortFecha); sortBar.appendChild(btnSortNum);
+    wrap.appendChild(sortBar);
     var card = el('div', {class:'card', style:'overflow-x:auto'});
-    var tbl = el('table', {class:'tbl', style:'min-width:750px'});
-    tbl.appendChild(elH('thead', {}, '<tr><th>Cliente</th><th>Sistema</th><th>Tipo</th><th>Descripcion</th><th>Monto</th><th>Fecha</th><th>Estado</th><th></th></tr>'));
+    var tbl = el('table', {class:'tbl', style:'min-width:820px'});
+    tbl.appendChild(elH('thead', {}, '<tr><th>N°</th><th>Cliente</th><th>Sistema</th><th>Tipo</th><th>Descripcion</th><th>Monto</th><th>Fecha</th><th>Estado</th><th></th></tr>'));
     tbl.appendChild(el('tbody', {id:'ctbody'}));
     card.appendChild(tbl); wrap.appendChild(card);
     setApp(wrap);
@@ -1631,13 +1648,21 @@ function filtrar(f) {
   // Para ver los pagados, usar el tab "Pagado" especificamente.
   // Excluir cobros de clientes de partner (revendedor_id != null)
   var cobsPropios = _D.cobs.filter(function(c){ return !c._cli.revendedor_id; });
-  var lista = (f==='todos' ? cobsPropios.filter(function(c){ return c.estado!=='pagado'; }) : cobsPropios.filter(function(c){ return c.estado===f; })).slice().sort(function(a,b){ var da=(a.fecha_pago||a.fecha_vencimiento||''); var db=(b.fecha_pago||b.fecha_vencimiento||''); return da<db?1:-1; });
+  var lista = (f==='todos' ? cobsPropios.filter(function(c){ return c.estado!=='pagado'; }) : cobsPropios.filter(function(c){ return c.estado===f; })).slice().sort(function(a,b){
+    if (window._cobroSort === 'num') {
+      var na = a._numRecibo||0, nb = b._numRecibo||0;
+      return nb - na;
+    }
+    var da=(a.fecha_pago||a.fecha_vencimiento||''); var db=(b.fecha_pago||b.fecha_vencimiento||'');
+    return da<db?1:-1;
+  });
   document.querySelectorAll('.tab').forEach(function(t){ t.classList.toggle('on', t.dataset.tab===f); });
   var tb = ge('ctbody'); if (!tb) return;
   tb.innerHTML = '';
   if (!lista.length) { tb.appendChild(elH('tr', {}, '<td colspan="9" class="emp">Sin registros</td>')); return; }
   lista.forEach(function(c) {
     var tr = el('tr', {});
+    tr.appendChild(el('td', {style:'font-size:11px;color:#94a3b8;white-space:nowrap'}, c._numRecibo ? 'N° ' + String(c._numRecibo).padStart(4,'0') : '—'));
     tr.appendChild(el('td', {}, c._cli.nombre||'-'));
     var td = el('td', {}); td.appendChild(chip(c._sis.nombre||'-')); tr.appendChild(td);
     var tdTipo = el('td', {});
