@@ -117,10 +117,11 @@ function cargar() {
     dbGet('panel_sistemas'), dbGet('panel_clientes'),
     dbGet('panel_asignaciones'), dbGet('panel_cobros'), dbGet('panel_sub_entidades'),
     dbGet('panel_implementacion_fases'), dbGet('panel_alertas'),
-    sbFetch('panel_fases?select=*&order=orden.asc')
+    sbFetch('panel_fases?select=*&order=orden.asc'),
+    sbFetch('panel_recibos?select=cobro_id,numero&order=numero.desc')
   ]).then(function(r) {
     console.log('cargar OK:', r[0].length, 'sis,', r[1].length, 'cls,', r[2].length, 'asigs');
-    var sis=r[0], cls=r[1], asigs=r[2], cobs=r[3], subs=r[4], fases=r[5], alertasDb=r[6], fasesEstructura=r[7];
+    var sis=r[0], cls=r[1], asigs=r[2], cobs=r[3], subs=r[4], fases=r[5], alertasDb=r[6], fasesEstructura=r[7], recibos=r[8]||[];
     // Enriquecer fases de asignación con la fase estructural
     asigs.forEach(function(a) {
       a._sis  = sis.find(function(s){ return s.id===a.sistema_id; })||{nombre:'?'};
@@ -136,6 +137,8 @@ function cargar() {
       c._sis = a._sis||{nombre:'-'}; c._cli = a._cli||{nombre:'-'};
       c._asig = a;
       c._fase = (a._fases||[]).find(function(f){ return f.id===c.fase_id; })||null;
+      var rec = recibos.find(function(rec){ return rec.cobro_id===c.id; });
+      c._numRecibo = rec ? rec.numero : null;
     });
     return {sis:sis, cls:cls, asigs:asigs, cobs:cobs, alertasDb:alertasDb, fasesEstructura:fasesEstructura};
   });
@@ -1641,7 +1644,10 @@ function filtrar(f) {
     tdTipo.appendChild(chipClass(c.tipo_cobro||'fee', 'cgr'));
     if (c.tipo_cobro==='implementacion' && c._fase) tdTipo.appendChild(el('div', {style:'font-size:10px;color:#94a3b8;margin-top:3px'}, 'Fase ' + c._fase.numero + ' — ' + c._fase.nombre));
     tr.appendChild(tdTipo);
-    tr.appendChild(el('td', {style:'color:#94a3b8;font-size:12px'}, c.descripcion||'-'));
+    var tdDesc = el('td', {style:'color:#94a3b8;font-size:12px'});
+    tdDesc.appendChild(document.createTextNode(c.descripcion||'-'));
+    if (c._numRecibo) tdDesc.appendChild(el('div', {style:'font-size:10px;color:#b0bac6;margin-top:2px'}, 'Recibo N° ' + String(c._numRecibo).padStart(4,'0')));
+    tr.appendChild(tdDesc);
     tr.appendChild(el('td', {style:'font-weight:500'}, fmt(c.monto)));
     // metodo column removed
     var fechaTd = el('td', {});
@@ -1675,6 +1681,7 @@ function filtrar(f) {
 function mEditarCobro(c) {
   openM(makeModal('Editar cobro', function(body) {
     body.appendChild(el('div', {class:'ibox'}, (c._cli.nombre||'-') + ' — ' + (c._sis.nombre||'-')));
+    if (c._numRecibo) body.appendChild(el('div', {style:'font-size:11px;color:#94a3b8;margin-bottom:8px'}, 'Recibo N° ' + String(c._numRecibo).padStart(4,'0')));
     addFg(body, 'Descripcion', mkInput('ec-desc','text',c.descripcion||''));
     mkRow2(body,
       mkFg('Monto ($)', mkInput('ec-monto','number',c.monto||0)),
