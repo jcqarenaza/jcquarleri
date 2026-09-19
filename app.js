@@ -337,10 +337,10 @@ function vDash() {
     var mesActual = hoy.getMonth() + 1;
     var anioActual = hoy.getFullYear();
     var als = calcAlertas(D.asigs, D.alertasDb);
-    var pen = D.cobs.filter(function(c){ return c.estado==='pendiente'; });
+    var pen = D.cobs.filter(function(c){ return c.estado==='pendiente' && !c._cli.revendedor_id; });
     var totP = pen.reduce(function(s,c){ return s+Number(c.monto); }, 0);
     var cobradoMes = D.cobs.filter(function(c){
-      if (c.estado !== 'pagado' || !c.fecha_pago) return false;
+      if (c.estado !== 'pagado' || !c.fecha_pago || c._cli.revendedor_id) return false;
       var f = new Date(c.fecha_pago);
       return f.getMonth()+1 === mesActual && f.getFullYear() === anioActual;
     }).reduce(function(s,c){ return s+Number(c.monto); }, 0);
@@ -1634,8 +1634,8 @@ function vCobros() {
     sortBar.appendChild(btnSortFecha); sortBar.appendChild(btnSortNum);
     wrap.appendChild(sortBar);
     var card = el('div', {class:'card', style:'overflow-x:auto'});
-    var tbl = el('table', {class:'tbl', style:'min-width:820px'});
-    tbl.appendChild(elH('thead', {}, '<tr><th>N°</th><th>Cliente</th><th>Sistema</th><th>Tipo</th><th>Descripcion</th><th>Monto</th><th>Fecha</th><th>Estado</th><th></th></tr>'));
+    var tbl = el('table', {class:'tbl', style:'min-width:700px'});
+    tbl.appendChild(elH('thead', {}, '<tr><th style="width:52px">N°</th><th>Cliente</th><th>Sistema</th><th>Tipo</th><th>Descripcion</th><th>Monto</th><th>Fecha</th><th>Estado</th><th></th></tr>'));
     tbl.appendChild(el('tbody', {id:'ctbody'}));
     card.appendChild(tbl); wrap.appendChild(card);
     setApp(wrap);
@@ -1662,7 +1662,7 @@ function filtrar(f) {
   if (!lista.length) { tb.appendChild(elH('tr', {}, '<td colspan="9" class="emp">Sin registros</td>')); return; }
   lista.forEach(function(c) {
     var tr = el('tr', {});
-    tr.appendChild(el('td', {style:'font-size:11px;color:#94a3b8;white-space:nowrap'}, c._numRecibo ? 'N° ' + String(c._numRecibo).padStart(4,'0') : '—'));
+    tr.appendChild(el('td', {style:'font-size:11px;color:#94a3b8;white-space:nowrap;width:52px'}, c._numRecibo ? String(c._numRecibo).padStart(4,'0') : '—'));
     tr.appendChild(el('td', {}, c._cli.nombre||'-'));
     var td = el('td', {}); td.appendChild(chip(c._sis.nombre||'-')); tr.appendChild(td);
     var tdTipo = el('td', {});
@@ -1671,7 +1671,6 @@ function filtrar(f) {
     tr.appendChild(tdTipo);
     var tdDesc = el('td', {style:'color:#94a3b8;font-size:12px'});
     tdDesc.appendChild(document.createTextNode(c.descripcion||'-'));
-    if (c._numRecibo) tdDesc.appendChild(el('div', {style:'font-size:10px;color:#b0bac6;margin-top:2px'}, 'Recibo N° ' + String(c._numRecibo).padStart(4,'0')));
     tr.appendChild(tdDesc);
     tr.appendChild(el('td', {style:'font-weight:500'}, fmt(c.monto)));
     // metodo column removed
@@ -2982,6 +2981,7 @@ function vFinanzas() {
 
   Promise.all([
     sbFetch('panel_cobros?estado=eq.pagado&select=monto,fecha_pago,tipo_cobro,descripcion,asignacion_id&order=fecha_pago.desc').catch(function(){ return []; }),
+    sbFetch('panel_cobros?estado=eq.pendiente&select=monto,fecha_vencimiento,tipo_cobro,descripcion,asignacion_id&order=fecha_vencimiento.asc').catch(function(){ return []; }),
     sbFetch('panel_gastos?select=*&order=activo.desc,nombre.asc').catch(function(){ return []; }),
     sbFetch('panel_ingresos?select=*&order=fecha.desc').catch(function(){ return []; }),
     sbFetch('panel_sistemas?select=id,nombre').catch(function(){ return []; }),
@@ -3008,16 +3008,16 @@ function vFinanzas() {
     sbFetch('panel_juntada_pagos?select=*&order=fecha.asc').catch(function(){ return []; }),
     sbFetch('panel_juntada_gastos?select=*&order=fecha.asc').catch(function(){ return []; })
   ]).then(function(r) {
-    var cobros=r[0], gastos=r[1], ingresos=r[2], sistemas=r[3], clientes=r[4];
-    var dolarData=r[5], pagoGastos=r[6], config=r[7]||[];
-    var gastosPers=r[8]||[], pagoGastosPers=r[9]||[];
-    var cuotasPF=r[10]||[];
-    var mesesPF=r[11]||[], gastosPF=r[12]||[], ingresosPF=r[13]||[], juanPF=r[14]||[], daianaPF=r[15]||[], deudasPF=r[16]||[], presupuestoPF=r[17]||[];
-    var prestamosPF=r[18]||[];
-    var prestamosPagosPF=r[19]||[], autoPF=r[20]||[];
-    var deudasMovsPF=r[21]||[];
-    var musicaPF=r[22]||[];
-    var juntadaParticipantes=r[23]||[], juntadaPagos=r[24]||[], juntadaGastos=r[25]||[];
+    var cobros=r[0], cobrosPendientes=r[1], gastos=r[2], ingresos=r[3], sistemas=r[4], clientes=r[5];
+    var dolarData=r[6], pagoGastos=r[7], config=r[8]||[];
+    var gastosPers=r[9]||[], pagoGastosPers=r[10]||[];
+    var cuotasPF=r[11]||[];
+    var mesesPF=r[12]||[], gastosPF=r[13]||[], ingresosPF=r[14]||[], juanPF=r[15]||[], daianaPF=r[16]||[], deudasPF=r[17]||[], presupuestoPF=r[18]||[];
+    var prestamosPF=r[19]||[];
+    var prestamosPagosPF=r[20]||[], autoPF=r[21]||[];
+    var deudasMovsPF=r[22]||[];
+    var musicaPF=r[23]||[];
+    var juntadaParticipantes=r[24]||[], juntadaPagos=r[25]||[], juntadaGastos=r[26]||[];
     var mesActualPF = (mesesPF.find(function(m){ return m.status==='open'; }) || mesesPF[mesesPF.length-1] || {}).id || null;
 
     pagoGastosPers = pagoGastosPers.map(function(p) {
@@ -3233,9 +3233,11 @@ function vFinanzas() {
         : periodo==='trimestre' ? 'Q'+Math.ceil(hM/3)+' '+hA
         : 'Año '+hA;
 
+      var aCobrarTotal = cobrosPendientes.reduce(function(s,c){ return s+Number(c.monto); },0);
       var mets = el('div', {class:'mets'});
       [
-        {label:'Ingresos — '+labelP, val:fmt(ingP), color:'#5BBD4E', sub:'cobros + extras'},
+        {label:'Cobrado — '+labelP, val:fmt(ingP), color:'#5BBD4E', sub:'cobros + extras'},
+        {label:'A cobrar', val:fmt(aCobrarTotal), color:'#EF9F27', sub:cobrosPendientes.length+' pendiente'+(cobrosPendientes.length!==1?'s':'')},
         {label:'Gastos — '+labelP, val:fmt(gasP), color:'#EF4444', sub:'servicios del periodo'},
         {label:'Balance', val:fmt(balP), color:balP>=0?'#0B9EDA':'#A32D2D', sub:balP>=0?'superavit':'deficit'},
         {label:'Total historico', val:fmt(ingTotal), color:'#7F77DD', sub:'todos los tiempos'}
