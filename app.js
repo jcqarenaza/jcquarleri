@@ -2741,7 +2741,7 @@ function mCobrarRapido() {
   if (!_D || !_D.asigs.length) { alert('No hay asignaciones.'); return; }
   openM(makeModal('Registrar cobro', function(body) {
     var sel = el('select', {class:'fi', id:'rqa'});
-    _D.asigs.forEach(function(a) {
+    _D.asigs.filter(function(a){ return !a._cli.revendedor_id && a.sistema_id !== '45d2d4de-e938-4a95-827d-f29f575eff10'; }).forEach(function(a) {
       var op = el('option', {value:a.id}, a._cli.nombre + ' - ' + a._sis.nombre);
       op.dataset.fee = a.fee_mensual||0; sel.appendChild(op);
     });
@@ -2776,12 +2776,7 @@ function mCobrarRapido() {
     addFg(body, 'Descripcion', mkInput('rqd','text','Fee mensual '+MESES[new Date().getMonth()]+' '+new Date().getFullYear()));
     mkRow2(body, mkFg('Monto ($)', mkInput('rqm','number',(_D.asigs[0]||{}).fee_mensual||0)), mkFg('Metodo', mkSelect('rqmet',[['transferencia','Transferencia'],['efectivo','Efectivo'],['mercadopago','MercadoPago']],'transferencia')));
     mkRow2(body, mkFg('Vencimiento', mkInput('rqv','date',new Date().toISOString().slice(0,10))), mkFg('Estado', mkSelect('rqe',[['pendiente','Pendiente'],['pagado','Pagado']],'pendiente')));
-    var fgTog = el('div', {class:'fg', style:'display:flex;align-items:center;gap:10px'});
-    var chkLogo = el('input', {type:'checkbox', id:'rq-logo'});
-    chkLogo.checked = true;
-    fgTog.appendChild(chkLogo);
-    fgTog.appendChild(el('label', {for:'rq-logo', style:'font-size:13px;color:#64748b;cursor:pointer'}, 'Mostrar logo y datos de QP C&IA en el recibo'));
-    body.appendChild(fgTog);
+
   }, function(foot) {
     foot.appendChild(cancelBtn());
     var ok = el('button', {class:'btn btnp'}, 'Registrar');
@@ -2790,7 +2785,6 @@ function mCobrarRapido() {
       var cl = op.textContent.split(' - ')[0], si = op.textContent.split(' - ')[1]||'';
       var estado=gv('rqe'), monto=Number(gv('rqm')||0), fecha=gv('rqv'), tipo=gv('rqt');
       var faseId = (tipo==='implementacion' && ge('rqfase')) ? gv('rqfase') : null;
-      var conLogo = ge('rq-logo') ? ge('rq-logo').checked : true;
       var desc=gv('rqd'), met=gv('rqmet');
       dbIns('panel_cobros', {asignacion_id:sel.value, tipo_cobro:tipo, fase_id:faseId, descripcion:desc, monto:monto, metodo:met, fecha_vencimiento:fecha, fecha_pago:estado==='pagado'?fecha:null, estado:estado})
       .then(function(r) {
