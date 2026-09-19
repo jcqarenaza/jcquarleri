@@ -2741,8 +2741,9 @@ function mCobrarRapido() {
   if (!_D || !_D.asigs.length) { alert('No hay asignaciones.'); return; }
   openM(makeModal('Registrar cobro', function(body) {
     var sel = el('select', {class:'fi', id:'rqa'});
-    _D.asigs.filter(function(a){ return !a._cli.revendedor_id && a.sistema_id !== '45d2d4de-e938-4a95-827d-f29f575eff10'; }).forEach(function(a) {
-      var op = el('option', {value:a.id}, a._cli.nombre + ' - ' + a._sis.nombre);
+    _D.asigs.filter(function(a){ return !a._cli.revendedor_id; }).forEach(function(a) {
+      var sisNombre = a.sistema_id === '45d2d4de-e938-4a95-827d-f29f575eff10' ? 'Trabajo puntual' : a._sis.nombre;
+      var op = el('option', {value:a.id}, a._cli.nombre + ' - ' + sisNombre);
       op.dataset.fee = a.fee_mensual||0; sel.appendChild(op);
     });
     var faseWrap = el('div', {id:'rqfasewrap', style:'display:none'});
