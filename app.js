@@ -166,6 +166,7 @@ function calcAlertas(asigs, alertasDb) {
   var out = [];
   asigs.forEach(function(a) {
     if (!a.activo) return;
+    if (a._cli && a._cli.es_demo) return;
     if (Number(a.fee_mensual||0) > 0) {
       for (var d=0; d<=1; d++) {
         var fd = new Date(hoy.getFullYear(), hoy.getMonth()+d, a.dia_cobro||1);
@@ -6130,15 +6131,8 @@ function vConeosEmpresa(emp) {
         alcanceContent.appendChild(testRes);
       }
 
-      // Botón configurar
-      var btnCfg = el('button',{class:'btn btnsm',style:'margin-top:4px'}, cfg&&cfg.cuit?'Editar configuración':'+ Configurar este alcance');
-      btnCfg.onclick = function(){ mConfigFacturacionConeos(emp, alcanceSel, cfg||{}, function(nuevaCfg){
-        // Actualizar configs local
-        var idx = configs.findIndex(function(c){ return alcanceSel===null?c.sucursal_id===null:c.sucursal_id===alcanceSel; });
-        if (idx>=0) configs[idx] = nuevaCfg; else configs.push(nuevaCfg);
-        renderAlcance();
-      }); };
-      alcanceContent.appendChild(btnCfg);
+      // Botón configurar — oculto por ciclo fiscal activo en ConeOS
+      // Descomentar para rehabilitar: mConfigFacturacionConeos
 
       // Checklist colapsable
       var chkToggle = el('div',{style:'cursor:pointer;font-size:12px;color:#0B9EDA;margin-top:10px'},'📋 Ver checklist para el contador ▾');
@@ -6319,7 +6313,7 @@ function calcImplConeos(modulos) {
 var PLANES_CONEOS = {
   starter: { label: 'STARTER', color: '#3D8A32', modulos: { kiosk:true, caja:true, preparacion:true, display:true, beneficios:true, mesas:false, delivery:false, takeaway:false, facturacion:false, mercadopago:false } },
   pro:     { label: 'PRO',     color: '#0B9EDA', modulos: { kiosk:true, caja:true, preparacion:true, display:true, beneficios:true, mesas:true,  delivery:true,  takeaway:true,  facturacion:false, mercadopago:false } },
-  full:    { label: 'FULL',    color: '#7C3AED', modulos: { kiosk:true, caja:true, preparacion:true, display:true, beneficios:true, mesas:true,  delivery:true,  takeaway:true,  facturacion:true,  mercadopago:false } }
+  full:    { label: 'FULL',    color: '#7C3AED', modulos: { kiosk:true, caja:true, preparacion:true, display:true, beneficios:true, mesas:true,  delivery:true,  takeaway:true,  facturacion:true,  mercadopago:false, reparto:false } }
 };
 
 var MODULOS_INFO = [
@@ -6332,7 +6326,8 @@ var MODULOS_INFO = [
   { key:'delivery',    label:'Delivery',                desc:'Pedidos a domicilio' },
   { key:'takeaway',    label:'Take Away 🥡',            desc:'Pedidos desde el celular para retirar en el local' },
   { key:'facturacion', label:'Facturación',             desc:'Emisión de facturas electrónicas ARCA' },
-  { key:'mercadopago', label:'MercadoPago',             desc:'Cobros con MercadoPago integrado' }
+  { key:'mercadopago', label:'MercadoPago',             desc:'Cobros con MercadoPago integrado' },
+  { key:'reparto',     label:'🛵 Reparto',              desc:'App de cadetes + seguimiento en vivo' }
 ];
 
 function mModulosConeOS(emp) { mPlanConeOS(emp, null); }
@@ -6493,6 +6488,10 @@ function mPlanConeOS(emp, asigId) {
       var ok = el('button',{class:'btn btnp'},'Guardar plan');
       ok.onclick = function() {
         var plan = PLANES_CONEOS[planActual];
+        // Validación suave reparto ↔ delivery
+        if (plan.modulos.reparto && !plan.modulos.delivery) {
+          if (!confirm('Reparto trabaja sobre pedidos de Delivery — este plan no tiene Delivery activo. ¿Prender reparto igual?')) return;
+        }
         ok.textContent = 'Guardando...'; ok.disabled = true;
         var pppVal = Number((document.getElementById('mod-beneficios-ppp')||{}).value || 1000);
         var promesas = [
