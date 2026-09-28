@@ -869,18 +869,21 @@ function vSistemas() {
                 var empresasDemoIds = (_D && _D.asigs || []).filter(function(a){
                   return a.coneos_empresa_id && a._cli && a._cli.es_demo;
                 }).map(function(a){ return a.coneos_empresa_id; });
-                Promise.all(empresas.filter(function(e){ return e.activo && empresasDemoIds.indexOf(e.id) < 0 && String(e.slug||'').indexOf('demo') !== 0; }).map(function(e){
+                Promise.all([cargarConfigPrecios()].concat(empresas.filter(function(e){ return e.activo && empresasDemoIds.indexOf(e.id) < 0 && String(e.slug||'').indexOf('demo') !== 0; }).map(function(e){
                   return coneosCall('metricas_empresa',{empresa_id:e.id}).then(function(m){ return {emp:e, disp:m.dispositivos_activos||0, fee:m.fee_mensual||75000}; }).catch(function(){ return {emp:e, disp:0, fee:75000}; });
-                })).then(function(results){
+                }))).then(function(resultsAll){
+                  var cfgP = resultsAll[0];
+                  var results = resultsAll.slice(1);
+                  var dispInc = (cfgP && cfgP.fee && cfgP.fee.dispositivos_incluidos) || 4;
                   feeLoad.innerHTML = '';
                   var feeTotal = results.reduce(function(s,r){ return s+r.fee; },0);
                   results.forEach(function(r){
                     var fRow=el('div',{style:'display:flex;justify-content:space-between;align-items:center;gap:12px;padding:5px 0;font-size:12px;border-bottom:.5px solid #FEF3C7'});
                     var lft=el('div',{style:'flex:1;min-width:0;display:flex;align-items:baseline;gap:8px'});
                     lft.appendChild(el('span',{style:'font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'},r.emp.nombre));
-                    lft.appendChild(el('span',{style:'font-size:10px;color:#94a3b8;white-space:nowrap'},r.disp+' disp.'+(r.disp>3?' ⚠':'')));
+                    lft.appendChild(el('span',{style:'font-size:10px;color:#94a3b8;white-space:nowrap'},r.disp+' disp.'+(r.disp>dispInc?' ⚠':'')));
                     fRow.appendChild(lft);
-                    fRow.appendChild(el('span',{style:'font-weight:600;white-space:nowrap;color:'+(r.disp>3?'#854F0B':'#3D8A32')},fmt(r.fee)+'/mes'));
+                    fRow.appendChild(el('span',{style:'font-weight:600;white-space:nowrap;color:'+(r.disp>dispInc?'#854F0B':'#3D8A32')},fmt(r.fee)+'/mes'));
                     feeLoad.appendChild(fRow);
                   });
                   var totRow=el('div',{style:'display:flex;justify-content:space-between;padding-top:8px;margin-top:4px;border-top:.5px solid #FEF3C7;font-weight:700;font-size:14px'});
@@ -5917,12 +5920,17 @@ function vConeosEmpresa(emp) {
   metCard.appendChild(metLoad);
   wrap.appendChild(metCard);
 
-  coneosCall('metricas_empresa', { empresa_id: emp.id }).then(function(d) {
+  Promise.all([
+    coneosCall('metricas_empresa', { empresa_id: emp.id }),
+    cargarConfigPrecios()
+  ]).then(function(rsMet) {
+    var d = rsMet[0], cfgPrecios = rsMet[1];
     metLoad.innerHTML = '';
     var dispActivos = d.dispositivos_activos||0;
     emp._dispActivos = dispActivos;
-    var feeActual = calcFeeConeos(dispActivos, emp.slug);
-    var dispAlert = dispActivos > 3;
+    var feeActual = d.fee_mensual || calcFeeConeos(dispActivos, emp.slug);
+    var dispIncluidos = (cfgPrecios && cfgPrecios.fee && cfgPrecios.fee.dispositivos_incluidos) || 4;
+    var dispAlert = dispActivos > dispIncluidos;
 
     // KPIs
     var mets = el('div', { class: 'mets' });
@@ -5943,7 +5951,7 @@ function vConeosEmpresa(emp) {
     // Alerta dispositivos
     if (dispAlert) {
       var alBox = el('div', {style:'background:#FEF3C7;border:.5px solid #F59E0B;border-radius:8px;padding:10px 14px;margin-top:12px;display:flex;justify-content:space-between;align-items:center'});
-      alBox.appendChild(el('span', {style:'font-size:13px;color:#854F0B'}, '⚠ '+dispActivos+' dispositivos activos — el fee base cubre hasta 3'));
+      alBox.appendChild(el('span', {style:'font-size:13px;color:#854F0B'}, '⚠ '+dispActivos+' dispositivos activos — el fee base cubre hasta '+dispIncluidos));
       var btnCobrar = el('button', {class:'btn btnsm', style:'background:#F59E0B;border-color:#F59E0B;color:#fff'}, 'Editar fee');
       btnCobrar.onclick = function() { mEditarFeeConeOS(emp, feeActual, d); };
       alBox.appendChild(btnCobrar);
