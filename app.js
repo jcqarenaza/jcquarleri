@@ -6025,7 +6025,7 @@ function vConeosEmpresa(emp) {
   facCard.appendChild(facLoad);
   wrap.appendChild(facCard);
 
-  // Cargar sucursales + configs en paralelo
+  // Cargar sucursales + configs en paralelo — vista solo lectura, todas las configs juntas
   Promise.all([
     coneosCall('listar_sucursales', { empresa_id: emp.id }),
     coneosCall('get_facturacion_configs', { empresa_id: emp.id })
@@ -6034,98 +6034,41 @@ function vConeosEmpresa(emp) {
     var configs    = Array.isArray(rs[1]) ? rs[1] : [];
     facLoad.innerHTML = '';
 
-    // Alcance seleccionado: null = marca, uuid = sucursal
-    var alcanceSel = null; // null = marca
-
-    // Selector de alcance
-    var alcanceBox = el('div', {style:'display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap'});
-    function mkAlcanceBtn(label, val) {
-      var btn = el('button', {class:'tab'+(alcanceSel===val?' on':'')}, label);
-      btn.onclick = function() {
-        alcanceSel = val;
-        alcanceBox.querySelectorAll('.tab').forEach(function(b){b.classList.remove('on');}); btn.classList.add('on');
-        renderAlcance();
-      };
-      alcanceBox.appendChild(btn);
-    }
-    mkAlcanceBtn('🏢 Marca', null);
-    sucursales.forEach(function(s) { mkAlcanceBtn('🏪 '+s.nombre, s.id); });
-    facLoad.appendChild(alcanceBox);
-
-    var alcanceContent = el('div', {});
-    facLoad.appendChild(alcanceContent);
-
-    function getCfg(sucId) {
-      return configs.find(function(c){
-        return sucId === null ? c.sucursal_id === null : c.sucursal_id === sucId;
-      }) || null;
+    if (!configs.length) {
+      facLoad.appendChild(el('div', {style:'font-size:13px;color:#94a3b8'}, 'Sin configuración ARCA todavía.'));
+      facLoad.appendChild(el('div', {style:'font-size:11px;color:#94a3b8;margin-top:4px'}, 'Solo lectura — la configuración ARCA se gestiona fuera del panel.'));
+      return;
     }
 
-    function renderAlcance() {
-      alcanceContent.innerHTML = '';
-      var cfg = getCfg(alcanceSel);
-      var cfgMarca = alcanceSel !== null ? getCfg(null) : null;
-      var hereda = alcanceSel !== null && !cfg && cfgMarca;
+    configs.forEach(function(cfg) {
+      var suc = cfg.sucursal_id ? sucursales.find(function(s){ return s.id === cfg.sucursal_id; }) : null;
+      var alcanceLabel = cfg.sucursal_id ? ('🏪 ' + (suc ? suc.nombre : 'Sucursal')) : '🏢 Marca (todas las sucursales sin config propia)';
 
-      // Estado
-      var estadoBox = el('div', {style:'border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:13px'});
-      if (hereda) {
-        estadoBox.style.background = '#EEF2FF'; estadoBox.style.color = '#4338CA';
-        estadoBox.textContent = 'ℹ Usa la configuración de la marca — sin config propia para esta sucursal.';
-      } else if (!cfg || !cfg.cuit) {
-        estadoBox.style.background = '#F1F5F9'; estadoBox.style.color = '#64748B';
-        estadoBox.textContent = 'Sin configurar.';
-      } else if (!cfg.activo) {
-        estadoBox.style.background = '#FEF3C7'; estadoBox.style.color = '#854F0B';
-        estadoBox.textContent = '⚠ Configurada — inactiva.';
-      } else {
-        estadoBox.style.background = '#EDF7EA'; estadoBox.style.color = '#3D8A32';
-        estadoBox.textContent = '✓ ACTIVA — pedidos de este alcance emiten Factura C real ante ARCA.';
-      }
-      alcanceContent.appendChild(estadoBox);
+      var box = el('div', {style:'border:.5px solid #E2E8F0;border-radius:10px;padding:12px 14px;margin-bottom:10px'});
+      var head = el('div', {style:'display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap'});
+      head.appendChild(el('div', {style:'font-weight:600;font-size:13px'}, alcanceLabel));
+      var estadoChip = el('span', {style:'font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;background:'+(cfg.activo?'#EDF7EA':'#FEF3C7')+';color:'+(cfg.activo?'#3D8A32':'#854F0B')}, cfg.activo ? '✓ Activa' : '⚠ Inactiva');
+      head.appendChild(estadoChip);
+      box.appendChild(head);
 
-      // Info rápida si tiene config propia
-      if (cfg && cfg.cuit) {
-        var infoRow = el('div', {style:'display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:6px;margin-bottom:10px'});
-        [{label:'CUIT', val:cfg.cuit},
-         {label:'Razón social', val:cfg.razon_social||'-'},
-         {label:'Punto de venta', val:cfg.punto_venta||'-'},
-         {label:'Ambiente', val:cfg.ambiente||'-'},
-         {label:'Certificado', val:cfg.cert_pem?'✓ Cargado':'Sin certificado'},
-        ].forEach(function(f){
-          var box=el('div',{style:'background:#F8FAFC;border-radius:6px;padding:7px 10px'});
-          box.appendChild(el('div',{style:'font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em'},f.label));
-          box.appendChild(el('div',{style:'font-size:12px;font-weight:500;color:#1a2e4a;margin-top:2px'},String(f.val)));
-          infoRow.appendChild(box);
-        });
-        alcanceContent.appendChild(infoRow);
+      var infoRow = el('div', {style:'display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:6px'});
+      [{label:'CUIT', val:cfg.cuit||'-'},
+       {label:'Razón social', val:cfg.razon_social||'-'},
+       {label:'Cond. fiscal', val:cfg.condicion_fiscal==='ri'?'Resp. Inscripto':'Monotributo'},
+       {label:'Punto de venta', val:cfg.punto_venta||'-'},
+       {label:'Ambiente', val:cfg.ambiente||'-'},
+       {label:'Certificado', val:cfg.cert_pem?'✓ Cargado':'Sin certificado'},
+      ].forEach(function(f){
+        var b=el('div',{style:'background:#F8FAFC;border-radius:6px;padding:7px 10px'});
+        b.appendChild(el('div',{style:'font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em'},f.label));
+        b.appendChild(el('div',{style:'font-size:12px;font-weight:500;color:#1a2e4a;margin-top:2px'},String(f.val)));
+        infoRow.appendChild(b);
+      });
+      box.appendChild(infoRow);
+      facLoad.appendChild(box);
+    });
 
-        // Solo visual — la config ARCA no se toca desde el panel
-        alcanceContent.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-bottom:8px'},'Solo lectura — la configuración ARCA se gestiona fuera del panel.'));
-      }
-
-      // Botón configurar — oculto por ciclo fiscal activo en ConeOS
-      // Descomentar para rehabilitar: mConfigFacturacionConeos
-
-      // Checklist colapsable
-      var chkToggle = el('div',{style:'cursor:pointer;font-size:12px;color:#0B9EDA;margin-top:10px'},'📋 Ver checklist para el contador ▾');
-      var chkBody = el('div',{style:'display:none;background:#F8FAFC;border-radius:8px;padding:10px 14px;margin-top:4px;font-size:12px;color:#1a2e4a;line-height:1.6'});
-      var condFiscal = (cfg && cfg.condicion_fiscal) || 'monotributo';
-      var esRI = condFiscal === 'ri';
-      var tipoPV = esRI ? 'Factura Electrónica - Responsable Inscripto - Web Services' : 'Factura Electrónica - Monotributo - Web Services';
-      var tipoFact = esRI ? 'Factura <b>A</b> (a otros RI con CUIT) y <b>B</b> (a consumidores finales)' : 'Factura <b>C</b> (monotributo)';
-      chkBody.innerHTML = '<b>El contador de este alcance debe hacer en ARCA:</b><br><br>'
-        +'<b>1.</b> ARCA → Administración de Certificados Digitales → crear alias → subir CSR o mandarnos el .crt + .key.<br>'
-        +'<b>2.</b> ARCA → Administrador de Relaciones de Clave Fiscal → nueva relación → servicio <b>"wsfe"</b> → autorizar certificado.<br>'
-        +'<b>3.</b> ARCA → Comprobantes en línea → Administración de puntos de venta → nuevo PV <b>"'+tipoPV+'"</b>. Anotar número.<br>'
-        +(esRI ? '<b>⚠ RI:</b> Este PV emite '+tipoFact+'. Si necesita ambos tipos, crear un PV por cada tipo.<br>' : '')
-        +'<b>4.</b> Pasarnos: CUIT, razón social, condición fiscal, N° PV, archivos .crt y .key.';
-      chkToggle.onclick = function(){ var o=chkBody.style.display!=='none'; chkBody.style.display=o?'none':'block'; chkToggle.textContent=o?'📋 Ver checklist para el contador ▾':'📋 Ver checklist para el contador ▴'; };
-      alcanceContent.appendChild(chkToggle);
-      alcanceContent.appendChild(chkBody);
-    }
-
-    renderAlcance();
+    facLoad.appendChild(el('div', {style:'font-size:11px;color:#94a3b8;margin-top:4px'}, 'Solo lectura — la configuración ARCA se gestiona fuera del panel. Las sucursales sin config propia usan la de la marca.'));
   }).catch(function(e){ facLoad.textContent = 'Error: '+e.message; });
 
   setApp(wrap);
