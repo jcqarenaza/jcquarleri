@@ -5295,11 +5295,11 @@ function vFinanzas() {
 
         var ingPrev = ingresosPF.filter(function(i){ return i.mes_id===key && (i.categoria==='Pedrito'||i.categoria==='Alimentos'); });
         var totalIngPrev = ingPrev.reduce(function(s,i){return s+Number(i.monto||0);},0);
-        var diferencia = totalIngPrev - totalMes;
+        var aCargoJuan = Math.max(0, totalMes - totalIngPrev);
         var kpiRow = el('div',{style:'display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px'});
         [{label:'Total gastos',val:fmt(totalMes),color:'#1a2e4a',bg:'#F0F9FF',border:'#BAE6FD'},
-         {label:'Cobrado',val:fmt(totalIngPrev),color:'#3D8A32',bg:'#EDF7EA',border:'#BBF7D0'},
-         {label:'Diferencia',val:fmt(diferencia),color:diferencia>=0?'#3D8A32':'#A32D2D',bg:diferencia>=0?'#EDF7EA':'#FEF2F2',border:diferencia>=0?'#BBF7D0':'#FECACA'},
+         {label:'Aporte Emilse',val:fmt(totalIngPrev),color:'#3D8A32',bg:'#EDF7EA',border:'#BBF7D0'},
+         {label:'A cargo Juan Cruz',val:fmt(aCargoJuan),color:'#0B9EDA',bg:'#F0F9FF',border:'#BAE6FD'},
         ].forEach(function(k){ var box=el('div',{style:'background:'+k.bg+';border:.5px solid '+k.border+';border-radius:10px;padding:14px 16px'}); box.appendChild(el('div',{style:'font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px'},k.label)); box.appendChild(el('div',{style:'font-size:20px;font-weight:700;color:'+k.color},k.val)); kpiRow.appendChild(box); });
         mesContent.appendChild(kpiRow);
 
@@ -5366,14 +5366,14 @@ function vFinanzas() {
         '<div class="header"><h1>\uD83D\uDC76 Gastos de Pedro</h1><p>'+MN[mes]+' '+anio+'</p></div>'+
         '<div class="kpis">'+
           '<div class="kpi"><div class="kpi-label">Total gastos</div><div class="kpi-val" style="color:#1a2e4a">$'+Number(total).toLocaleString('es-AR')+'</div></div>'+
-          '<div class="kpi"><div class="kpi-label">Cobrado</div><div class="kpi-val" style="color:#3D8A32">$'+Number(totalIng).toLocaleString('es-AR')+'</div></div>'+
-          '<div class="kpi"><div class="kpi-label">Diferencia</div><div class="kpi-val" style="color:'+difColor+'">$'+Number(diferencia).toLocaleString('es-AR')+'</div></div>'+
+          '<div class="kpi"><div class="kpi-label">Aporte Emilse</div><div class="kpi-val" style="color:#3D8A32">$'+Number(totalIng).toLocaleString('es-AR')+'</div></div>'+
+          '<div class="kpi"><div class="kpi-label">A cargo Juan Cruz</div><div class="kpi-val" style="color:#0B9EDA">$'+Number(Math.max(0,total-totalIng)).toLocaleString('es-AR')+'</div></div>'+
         '</div>'+
         '<div class="section-title">Gastos del mes</div>'+
         '<table><thead><tr><th>Concepto</th><th style="text-align:right">Monto</th><th style="text-align:center">Estado</th></tr></thead><tbody>'+filas+'</tbody></table>'+
-        '<div class="section-title">Ingresos / Cobrado</div>'+
+        '<div class="section-title">Aportes de Emilse</div>'+
         '<table><thead><tr><th>Concepto</th><th style="text-align:right">Monto</th></tr></thead><tbody>'+filasIng+'</tbody></table>'+
-        '<div class="balance"><span style="font-size:13px;color:#64748B;font-weight:500">Diferencia (cobrado − gastos)</span><span style="font-size:20px;font-weight:800;color:'+difColor+'">$'+Number(diferencia).toLocaleString('es-AR')+'</span></div>'+
+        '<div class="balance"><span style="font-size:13px;color:#64748B;font-weight:500">A cargo Juan Cruz (gastos − aporte Emilse)</span><span style="font-size:20px;font-weight:800;color:#0B9EDA">$'+Number(Math.max(0,total-totalIng)).toLocaleString('es-AR')+'</span></div>'+
         '<div class="footer">Generado por QP C&IA \u00B7 '+new Date().toLocaleDateString('es-AR')+'</div></div></body></html>';
       var w=window.open('','_blank'); w.document.write(html); w.document.close(); setTimeout(function(){w.print();},500);
     }
