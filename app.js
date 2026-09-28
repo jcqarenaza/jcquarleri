@@ -4579,7 +4579,7 @@ function vFinanzas() {
       openM(makeModal('Nuevo gasto', function(body) {
         addFg(body, 'Concepto', mkInput('ngpf-conc','text','','Ej: Visa BNA, Luz, Claude'));
         mkRow2(body,
-          mkFg('Categoria', mkSelect('ngpf-cat', PF_BUDGET_CATS.concat(['Créditos','Personal','Ajuste']).map(function(c){return [c,c];}), 'Varios')),
+          mkFg('Categoria', mkSelect('ngpf-cat', PF_BUDGET_CATS.concat(['Créditos','Personal','Ajuste','Pedrito']).map(function(c){return [c,c];}), 'Varios')),
           mkFg('Tipo', mkSelect('ngpf-tipo',[['fijos','Fijo'],['varios','Varios'],['tarjeta','Tarjeta'],['ajuste','Ajuste']],'varios'))
         );
         body.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#64748B;margin-top:10px;margin-bottom:4px'},'¿De donde sale la plata? Podes repartir el mismo gasto entre las 4 billeteras si corresponde.'));
@@ -4604,7 +4604,7 @@ function vFinanzas() {
       openM(makeModal('Editar: '+g.concepto, function(body) {
         addFg(body, 'Concepto', mkInput('egpf-conc','text',g.concepto));
         mkRow2(body,
-          mkFg('Categoria', mkSelect('egpf-cat', PF_BUDGET_CATS.concat(['Créditos','Personal','Ajuste']).map(function(c){return [c,c];}), g.categoria||'Varios')),
+          mkFg('Categoria', mkSelect('egpf-cat', PF_BUDGET_CATS.concat(['Créditos','Personal','Ajuste','Pedrito']).map(function(c){return [c,c];}), g.categoria||'Varios')),
           mkFg('Tipo', mkSelect('egpf-tipo',[['fijos','Fijo'],['varios','Varios'],['tarjeta','Tarjeta'],['ajuste','Ajuste']],g.tipo||'varios'))
         );
         body.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#64748B;margin-top:10px;margin-bottom:4px'},'¿De donde sale la plata? Podes repartir el mismo gasto entre las 4 billeteras si corresponde.'));
