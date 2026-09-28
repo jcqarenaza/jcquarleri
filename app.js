@@ -769,7 +769,7 @@ function vSistemas() {
               tr2.appendChild(el('td',{},[btnVer2]));
               tb2.appendChild(tr2);
             });
-            tbl2.appendChild(tb2); metRow.appendChild(tbl2);
+            tbl2.appendChild(tb2); tbl2.style.gridColumn = '1 / -1'; metRow.appendChild(tbl2);
           }
 
 
@@ -815,6 +815,7 @@ function vSistemas() {
               });
               // Hint doble click
               var hint = el('div',{style:'font-size:10px;color:#94a3b8;text-align:center;padding:4px;cursor:pointer;border-top:.5px solid #F1F5F9'},'Doble click para ver por negocio');
+              hint.style.gridColumn = '1 / -1';
               metRow.appendChild(hint);
               var detalleOpen = false;
               function toggleDetalle() {
@@ -848,6 +849,7 @@ function vSistemas() {
                 {label:'Ultima actividad', val:ultActC?fdate(ultActC):'-', col:'#6366F1'}
               ], metRow);
               var hintC = el('div',{style:'font-size:10px;color:#94a3b8;text-align:center;padding:4px;cursor:pointer;border-top:.5px solid #F1F5F9'},'Doble click para ver por empresa');
+              hintC.style.gridColumn = '1 / -1';
               metRow.appendChild(hintC);
               var detC = false;
               var detCEl2 = null;
@@ -855,6 +857,7 @@ function vSistemas() {
                 if (detC && detCEl2) { detCEl2.remove(); detCEl2=null; hintC.textContent='Doble click para ver por empresa'; detC=false; return; }
                 hintC.textContent='Doble click para ocultar'; detC=true;
                 detCEl2 = el('div',{style:'border-top:.5px solid #E2E8F0'});
+                detCEl2.style.gridColumn = '1 / -1';
                 metRow.appendChild(detCEl2);
                 // Fee review
                 var feeSection = el('div',{style:'padding:12px 16px;background:#FFFBEB;border-bottom:.5px solid #FEF3C7'});
@@ -862,15 +865,22 @@ function vSistemas() {
                 var feeLoad = el('div',{style:'font-size:12px;color:#94a3b8'},'Calculando...');
                 feeSection.appendChild(feeLoad);
                 detCEl2.appendChild(feeSection);
-                Promise.all(empresas.filter(function(e){ return e.activo; }).map(function(e){
+                // Excluir empresas vinculadas a clientes demo del panel
+                var empresasDemoIds = (_D && _D.asigs || []).filter(function(a){
+                  return a.coneos_empresa_id && a._cli && a._cli.es_demo;
+                }).map(function(a){ return a.coneos_empresa_id; });
+                Promise.all(empresas.filter(function(e){ return e.activo && empresasDemoIds.indexOf(e.id) < 0 && String(e.slug||'').indexOf('demo') !== 0; }).map(function(e){
                   return coneosCall('metricas_empresa',{empresa_id:e.id}).then(function(m){ return {emp:e, disp:m.dispositivos_activos||0, fee:m.fee_mensual||75000}; }).catch(function(){ return {emp:e, disp:0, fee:75000}; });
                 })).then(function(results){
                   feeLoad.innerHTML = '';
                   var feeTotal = results.reduce(function(s,r){ return s+r.fee; },0);
                   results.forEach(function(r){
-                    var fRow=el('div',{style:'display:flex;justify-content:space-between;padding:3px 0;font-size:12px'});
-                    var lft=el('div',{}); lft.appendChild(el('span',{style:'font-weight:500'},r.emp.nombre)); lft.appendChild(el('span',{style:'font-size:10px;color:#94a3b8;margin-left:6px'},r.disp+' disp.'+(r.disp>3?' ⚠':'')));
-                    fRow.appendChild(lft); fRow.appendChild(el('span',{style:'font-weight:500;color:'+(r.disp>3?'#854F0B':'#3D8A32')},fmt(r.fee)+'/mes'));
+                    var fRow=el('div',{style:'display:flex;justify-content:space-between;align-items:center;gap:12px;padding:5px 0;font-size:12px;border-bottom:.5px solid #FEF3C7'});
+                    var lft=el('div',{style:'flex:1;min-width:0;display:flex;align-items:baseline;gap:8px'});
+                    lft.appendChild(el('span',{style:'font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'},r.emp.nombre));
+                    lft.appendChild(el('span',{style:'font-size:10px;color:#94a3b8;white-space:nowrap'},r.disp+' disp.'+(r.disp>3?' ⚠':'')));
+                    fRow.appendChild(lft);
+                    fRow.appendChild(el('span',{style:'font-weight:600;white-space:nowrap;color:'+(r.disp>3?'#854F0B':'#3D8A32')},fmt(r.fee)+'/mes'));
                     feeLoad.appendChild(fRow);
                   });
                   var totRow=el('div',{style:'display:flex;justify-content:space-between;padding-top:8px;margin-top:4px;border-top:.5px solid #FEF3C7;font-weight:700;font-size:14px'});
@@ -925,6 +935,7 @@ function vSistemas() {
                 ], metRow);
               }).catch(function(){ renderKPIs([{label:'Ingresados',val:'?',col:'#94a3b8',big:true},{label:'En producción',val:'?',col:'#94a3b8',big:true},{label:'Entregados',val:'?',col:'#94a3b8',big:true},{label:'Ultima actividad',val:ultT?fdate(ultT):'-',col:'#6366F1'}],metRow); });
               var hintT = el('div',{style:'font-size:10px;color:#94a3b8;text-align:center;padding:4px;cursor:pointer;border-top:.5px solid #F1F5F9'},'Doble click para ver por taller');
+              hintT.style.gridColumn = '1 / -1';
               metRow.appendChild(hintT);
               var detT = false;
               var detTEl = null;
@@ -932,6 +943,7 @@ function vSistemas() {
                 if (detT && detTEl) { detTEl.remove(); detTEl=null; hintT.textContent='Doble click para ver por taller'; detT=false; return; }
                 hintT.textContent='Doble click para ocultar'; detT=true;
                 detTEl = el('div',{style:'border-top:.5px solid #E2E8F0'});
+                detTEl.style.gridColumn = '1 / -1';
                 metRow.appendChild(detTEl);
                 var origMRT = metRow; metRow = detTEl;
                 renderTablaSlug(talleres, [
@@ -6088,47 +6100,8 @@ function vConeosEmpresa(emp) {
         });
         alcanceContent.appendChild(infoRow);
 
-        // Toggle activo
-        var togRow = el('div',{style:'display:flex;align-items:center;gap:10px;margin-bottom:10px'});
-        var togLbl = el('label',{class:'tog'});
-        var togInp = el('input',{type:'checkbox'}); if(cfg.activo) togInp.checked=true;
-        (function(c, eBox){
-          togInp.onchange = function(){
-            var activar = togInp.checked;
-            if (activar && !confirm('Los pedidos cobrados de este alcance emitirán Factura C real ante ARCA según los métodos que el cliente configure. ¿Confirmar?')) {
-              togInp.checked = false; return;
-            }
-            coneosCall('upsert_facturacion_config', { empresa_id: emp.id, sucursal_id: alcanceSel, datos: { activo: activar } }).then(function(r){
-              if (r.error) { alert('Error: '+r.error); togInp.checked = !activar; return; }
-              c.activo = activar;
-              eBox.style.background = activar?'#EDF7EA':'#FEF3C7';
-              eBox.style.color = activar?'#3D8A32':'#854F0B';
-              eBox.textContent = activar?'✓ ACTIVA — pedidos de este alcance emiten Factura C real ante ARCA.':'⚠ Configurada — inactiva.';
-            }).catch(function(e){ alert('Error: '+e.message); togInp.checked = !activar; });
-          };
-        })(cfg, estadoBox);
-        togLbl.appendChild(togInp); togLbl.appendChild(el('span',{class:'sl'}));
-        togRow.appendChild(togLbl);
-        togRow.appendChild(el('span',{style:'font-size:12px;color:#64748B'},cfg.activo?'Activa':'Pausada'));
-        alcanceContent.appendChild(togRow);
-
-        // Probar conexión
-        var btnTest = el('button',{class:'btn btnsm',style:'margin-bottom:8px'},'🔌 Probar conexión ARCA');
-        var testRes = el('div',{style:'font-size:12px;margin-top:4px;display:none'});
-        (function(sucId){
-          btnTest.onclick = function(){
-            btnTest.textContent='Probando...'; btnTest.disabled=true; testRes.style.display='none';
-            var payload = { empresa_id: emp.id };
-            if (sucId !== null) payload.sucursal_id = sucId;
-            coneosCall('test_facturacion', payload).then(function(r){
-              btnTest.textContent='🔌 Probar conexión ARCA'; btnTest.disabled=false; testRes.style.display='block';
-              if (r.ok) { testRes.style.color='#3D8A32'; testRes.textContent='✓ ARCA OK — PV '+r.punto_venta+' | último cbte: '+(r.ultimo_cbte_tipo11||0)+(r.mensaje?' | '+r.mensaje:''); }
-              else { testRes.style.color='#A32D2D'; testRes.textContent='✗ '+(r.error||r.mensaje||'Sin respuesta'); }
-            }).catch(function(e){ btnTest.textContent='🔌 Probar conexión ARCA'; btnTest.disabled=false; testRes.style.display='block'; testRes.style.color='#A32D2D'; testRes.textContent='Error: '+e.message; });
-          };
-        })(alcanceSel);
-        alcanceContent.appendChild(btnTest);
-        alcanceContent.appendChild(testRes);
+        // Solo visual — la config ARCA no se toca desde el panel
+        alcanceContent.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-bottom:8px'},'Solo lectura — la configuración ARCA se gestiona fuera del panel.'));
       }
 
       // Botón configurar — oculto por ciclo fiscal activo en ConeOS
@@ -6353,6 +6326,13 @@ function mPlanConeOS(emp, asigId) {
 
     openM(makeModal(''+emp.nombre+' — Plan', function(body) {
 
+      // Estado actual real de la empresa (empresa_config.modulos hoy) — verificación visual
+      var actualesOn = MODULOS_INFO.filter(function(m){ return !!modActuales[m.key]; }).map(function(m){ return m.label; });
+      var actBox = el('div',{style:'background:#F8FAFC;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#64748B'});
+      actBox.appendChild(el('div',{style:'font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;color:#94a3b8'},'Activos ahora en la empresa'));
+      actBox.appendChild(el('div',{}, actualesOn.length ? actualesOn.join(' · ') : 'Ninguno'));
+      body.appendChild(actBox);
+
       // Selector de plan con precio USD
       body.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px'},'Plan asignado'));
       var planBtns = {};
@@ -6457,10 +6437,31 @@ function mPlanConeOS(emp, asigId) {
       pppWrap.appendChild(mkInput('mod-beneficios-ppp','number',benefConfig.pesos_por_punto||1000,''));
       body.appendChild(pppWrap);
 
+      var repartoOn = !!modActuales.reparto;
       function actualizarModulos() {
         var plan = PLANES_CONEOS[planActual];
         modWrap.innerHTML = '';
         MODULOS_INFO.forEach(function(m) {
+          // Reparto: switch individual (agregado de Delivery, no viene en presets)
+          if (m.key === 'reparto') {
+            var repActivo = repartoOn;
+            var rowR = el('div',{style:'display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;background:'+(repActivo?'#F0FDF4':'#F8FAFC')+';cursor:pointer'});
+            rowR.appendChild(el('span',{style:'font-size:13px'},repActivo?'✅':'⬜'));
+            var txtR = el('div',{style:'flex:1'});
+            txtR.appendChild(el('div',{style:'font-size:13px;font-weight:500;color:'+(repActivo?'#1a2e4a':'#94a3b8')},m.label + ' (cadetes + seguimiento en vivo)'));
+            txtR.appendChild(el('div',{style:'font-size:11px;color:#94a3b8'},'Agregado de Delivery — click para '+(repActivo?'apagar':'prender')));
+            rowR.appendChild(txtR);
+            rowR.onclick = function() {
+              var nuevo = !repartoOn;
+              if (nuevo && !plan.modulos.delivery) {
+                if (!confirm('Reparto trabaja sobre pedidos de Delivery — este comercio no tiene Delivery activo. ¿Prender igual?')) return;
+              }
+              repartoOn = nuevo;
+              actualizarModulos();
+            };
+            modWrap.appendChild(rowR);
+            return;
+          }
           var activo = !!plan.modulos[m.key];
           // MercadoPago: siempre mostrar, pero con nota si está en plan Full
           var esMp = m.key === 'mercadopago';
@@ -6488,14 +6489,17 @@ function mPlanConeOS(emp, asigId) {
       var ok = el('button',{class:'btn btnp'},'Guardar plan');
       ok.onclick = function() {
         var plan = PLANES_CONEOS[planActual];
-        // Validación suave reparto ↔ delivery
-        if (plan.modulos.reparto && !plan.modulos.delivery) {
-          if (!confirm('Reparto trabaja sobre pedidos de Delivery — este plan no tiene Delivery activo. ¿Prender reparto igual?')) return;
+        var modulosFinal = {};
+        Object.keys(plan.modulos).forEach(function(k){ modulosFinal[k] = plan.modulos[k]; });
+        modulosFinal.reparto = repartoOn;
+        // Aviso al apagar delivery con reparto prendido
+        if (repartoOn && !modulosFinal.delivery) {
+          if (!confirm('Reparto quedará activo sin Delivery — trabaja sobre pedidos de Delivery. ¿Guardar igual?')) return;
         }
         ok.textContent = 'Guardando...'; ok.disabled = true;
         var pppVal = Number((document.getElementById('mod-beneficios-ppp')||{}).value || 1000);
         var promesas = [
-          coneosCall('actualizar_modulos', { empresa_id: emp.id, modulos: plan.modulos }),
+          coneosCall('actualizar_modulos', { empresa_id: emp.id, modulos: modulosFinal }),
           coneosCall('upsert_beneficios_config', { empresa_id: emp.id, activo: !!plan.modulos.beneficios, pesos_por_punto: pppVal })
         ];
         if (asigId) {
