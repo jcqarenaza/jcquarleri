@@ -4510,9 +4510,23 @@ function vFinanzas() {
       function tablaGastosPF(lista) {
         var card=el('div',{class:'card',style:'overflow-x:auto'});
         var tbl=el('table',{class:'tbl'});
-        tbl.appendChild(elH('thead',{},'<tr><th>Concepto</th><th>Categoria</th><th>Tipo</th><th>Monto</th><th>Pagado</th><th></th></tr>'));
+        var ordenPF = _finUIState.ordenGastosPF || 'monto';
+        var thFecha = '<th style="cursor:pointer" id="th-gpf-fecha">Fecha'+(ordenPF==='fecha'?' ▾':'')+'</th>';
+        var thMonto = '<th style="cursor:pointer" id="th-gpf-monto">Monto'+(ordenPF==='monto'?' ▾':'')+'</th>';
+        tbl.appendChild(elH('thead',{},'<tr><th>Concepto</th><th>Categoria</th><th>Tipo</th>'+thMonto+thFecha+'<th>Pagado</th><th></th></tr>'));
+        var thM = tbl.querySelector('#th-gpf-monto'), thF = tbl.querySelector('#th-gpf-fecha');
+        if (thM) thM.onclick = function(){ _finUIState.ordenGastosPF='monto'; renderAll(); };
+        if (thF) thF.onclick = function(){ _finUIState.ordenGastosPF='fecha'; renderAll(); };
         var tb=el('tbody',{});
-        lista.sort(function(a,b){ return Number(b.monto)-Number(a.monto); }).forEach(function(g){
+        var listaOrd = lista.slice().sort(function(a,b){
+          if (ordenPF === 'fecha') {
+            var fa=a.fecha||'', fb=b.fecha||'';
+            if (fa===fb) return Number(b.monto)-Number(a.monto);
+            return fa<fb?-1:1;
+          }
+          return Number(b.monto)-Number(a.monto);
+        });
+        listaOrd.forEach(function(g){
           var tr=el('tr',{});
           var tieneNegocio = Number(g.monto_negocio)>0 || Number(g.monto_usd_negocio)>0;
           tr.appendChild(el('td',{style:'font-weight:500'},(PF_CAT_ICON[g.categoria]||'')+' '+g.concepto+(tieneNegocio?' 🏢':'')));
@@ -4530,6 +4544,7 @@ function vFinanzas() {
             tdMonto.appendChild(el('div',{style:'font-size:10px;color:#854F0B;font-weight:500'},'🏢 '+partesNeg.join(' + ')+' negocio'));
           }
           tr.appendChild(tdMonto);
+          tr.appendChild(el('td',{style:'font-size:12px;color:#64748B;white-space:nowrap'}, g.fecha ? fdate(g.fecha) : '—'));
           var tog=el('label',{class:'tog'});
           var inp=el('input',{type:'checkbox'}); if (g.pagado) inp.checked=true;
           (function(gg){ inp.onchange=function(){ var checked=this.checked; dbUpd('panel_pf_gastos',gg.id,{pagado:checked}).then(function(){ gg.pagado=checked; }); }; })(g);
