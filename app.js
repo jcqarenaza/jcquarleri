@@ -6411,20 +6411,21 @@ function mPlanConeOS(emp, asigId) {
           // Reparto: switch individual (agregado de Delivery, no viene en presets)
           if (m.key === 'reparto') {
             var repActivo = repartoOn;
-            var rowR = el('div',{style:'display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;background:'+(repActivo?'#F0FDF4':'#F8FAFC')+';cursor:pointer'});
+            var deliveryOn = !!plan.modulos.delivery;
+            // Regla CTO: solo puede ACTIVARSE con delivery activo; desactivar siempre se permite
+            var bloqueado = !repActivo && !deliveryOn;
+            var rowR = el('div',{style:'display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;background:'+(repActivo?'#F0FDF4':'#F8FAFC')+';cursor:'+(bloqueado?'not-allowed':'pointer')+(bloqueado?';opacity:.55':'')});
             rowR.appendChild(el('span',{style:'font-size:13px'},repActivo?'✅':'⬜'));
             var txtR = el('div',{style:'flex:1'});
             txtR.appendChild(el('div',{style:'font-size:13px;font-weight:500;color:'+(repActivo?'#1a2e4a':'#94a3b8')},m.label + ' (cadetes + seguimiento en vivo)'));
-            txtR.appendChild(el('div',{style:'font-size:11px;color:#94a3b8'},'Agregado de Delivery — click para '+(repActivo?'apagar':'prender')));
+            txtR.appendChild(el('div',{style:'font-size:11px;color:'+(bloqueado?'#A32D2D':'#94a3b8')}, bloqueado ? 'Requiere el módulo Delivery activo' : ('Agregado de Delivery — click para '+(repActivo?'apagar':'prender'))));
             rowR.appendChild(txtR);
-            rowR.onclick = function() {
-              var nuevo = !repartoOn;
-              if (nuevo && !plan.modulos.delivery) {
-                if (!confirm('Reparto trabaja sobre pedidos de Delivery — este comercio no tiene Delivery activo. ¿Prender igual?')) return;
-              }
-              repartoOn = nuevo;
-              actualizarModulos();
-            };
+            if (!bloqueado) {
+              rowR.onclick = function() {
+                repartoOn = !repartoOn;
+                actualizarModulos();
+              };
+            }
             modWrap.appendChild(rowR);
             return;
           }
@@ -6458,10 +6459,6 @@ function mPlanConeOS(emp, asigId) {
         var modulosFinal = {};
         Object.keys(plan.modulos).forEach(function(k){ modulosFinal[k] = plan.modulos[k]; });
         modulosFinal.reparto = repartoOn;
-        // Aviso al apagar delivery con reparto prendido
-        if (repartoOn && !modulosFinal.delivery) {
-          if (!confirm('Reparto quedará activo sin Delivery — trabaja sobre pedidos de Delivery. ¿Guardar igual?')) return;
-        }
         ok.textContent = 'Guardando...'; ok.disabled = true;
         var pppVal = Number((document.getElementById('mod-beneficios-ppp')||{}).value || 1000);
         var promesas = [
