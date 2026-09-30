@@ -1521,6 +1521,11 @@ function vClientes() {
         var btnE = el('button', {class:'btn btnsm', style:'margin-left:4px'}, 'Editar');
         (function(c){ btnE.onclick = function(){ mEditCliente(c); }; })(cl);
         ch.appendChild(btnE);
+        if (isSuperAdmin()) {
+          var btnDelC = el('button', {class:'btn btnsm', style:'margin-left:4px;background:#FCEBEB;border-color:#FCEBEB;color:#A32D2D'}, 'X');
+          (function(c){ btnDelC.onclick = function(){ eliminarClienteCompleto(c); }; })(cl);
+          ch.appendChild(btnDelC);
+        }
         cc.appendChild(ch);
 
         if (mas.length) {
@@ -1591,8 +1596,13 @@ function vClientes() {
           var clisDel = D.cls.filter(function(c){ return c.revendedor_id === rev.id; });
           var card = el('div', {class:'cc'});
           var ch2 = el('div', {class:'ch'});
-          var ini = rev.nombre.split(' ').map(function(x){ return x[0]||''; }).slice(0,2).join('');
-          var av2 = el('div', {class:'av', style:'background:#7F77DD'}, ini);
+          var av2;
+          if (rev.logo_b64) {
+            av2 = el('img', {src:rev.logo_b64, style:'width:36px;height:36px;object-fit:contain;border-radius:8px;border:.5px solid #E2E8F0;background:#fff'});
+          } else {
+            var ini = rev.nombre.split(' ').map(function(x){ return x[0]||''; }).slice(0,2).join('');
+            av2 = el('div', {class:'av', style:'background:#7F77DD'}, ini);
+          }
           ch2.appendChild(av2);
           var info2 = el('div', {style:'flex:1'});
           info2.appendChild(el('div', {style:'font-weight:500;font-size:14px'}, rev.nombre));
@@ -2206,6 +2216,25 @@ function mNuevoCliente() {
       foot.appendChild(ok);
     }));
   });
+}
+
+function eliminarClienteCompleto(cl) {
+  var asigsCli = (_D && _D.asigs || []).filter(function(a){ return a.cliente_id === cl.id; });
+  var nCobros = asigsCli.reduce(function(s,a){ return s + (a._cobs||[]).length; }, 0);
+  var detalle = asigsCli.length + ' asignacion(es) y ' + nCobros + ' cobro(s) con sus recibos';
+  if (!confirm('Eliminar a "' + cl.nombre + '"?\n\nSe borra TODO: ' + detalle + '. No se puede deshacer.')) return;
+  if (!confirm('Segunda confirmación: eliminar DEFINITIVAMENTE a "' + cl.nombre + '" y todo su historial?')) return;
+  var asigIds = asigsCli.map(function(a){ return a.id; });
+  var borrarPorAsig = asigIds.length ? Promise.all([
+    sbFetch('panel_sub_entidades?asignacion_id=in.(' + asigIds.join(',') + ')', {method:'DELETE', prefer:'return=minimal'}).catch(function(){}),
+    sbFetch('panel_implementacion_fases?asignacion_id=in.(' + asigIds.join(',') + ')', {method:'DELETE', prefer:'return=minimal'}).catch(function(){}),
+    sbFetch('panel_cobros?asignacion_id=in.(' + asigIds.join(',') + ')', {method:'DELETE', prefer:'return=minimal'}).catch(function(){})
+  ]) : Promise.resolve();
+  borrarPorAsig
+    .then(function(){ return asigIds.length ? sbFetch('panel_asignaciones?cliente_id=eq.' + cl.id, {method:'DELETE', prefer:'return=minimal'}) : null; })
+    .then(function(){ return sbFetch('panel_clientes?id=eq.' + cl.id, {method:'DELETE', prefer:'return=minimal'}); })
+    .then(function(){ _D = null; vClientes(); })
+    .catch(function(e){ alert('Error al eliminar: ' + e.message); });
 }
 
 function mEditCliente(cl) {
@@ -6811,8 +6840,12 @@ function vPartners() {
         var saldoTotalUSD = saldoImplUSD + saldoFeeUSD;
 
         var card=el('div',{class:'cc'}); var ch=el('div',{class:'ch'});
-        var ini=rev.nombre.split(' ').map(function(x){ return x[0]||''; }).slice(0,2).join('');
-        ch.appendChild(el('div',{class:'av'},ini));
+        if (rev.logo_b64) {
+          ch.appendChild(el('img',{src:rev.logo_b64,style:'width:36px;height:36px;object-fit:contain;border-radius:8px;border:.5px solid #E2E8F0;background:#fff'}));
+        } else {
+          var ini=rev.nombre.split(' ').map(function(x){ return x[0]||''; }).slice(0,2).join('');
+          ch.appendChild(el('div',{class:'av'},ini));
+        }
         var info=el('div',{style:'flex:1'});
         info.appendChild(el('div',{style:'font-weight:500;font-size:14px'},rev.nombre));
         info.appendChild(el('div',{style:'font-size:12px;color:#94a3b8'},[rev.email,cliCount+' cliente'+(cliCount!==1?'s':'')].filter(Boolean).join(' · ')));
@@ -6834,7 +6867,17 @@ function vPartners() {
         btnV.onclick=(function(rv){ return function(){ vClientesPartner(rv,sistemas); }; })(rev);
         var btnL=el('button',{class:'btn btnsm',style:'margin-left:4px'},'Liquidación');
         btnL.onclick=(function(rv,cds,asg,t){ return function(){ vLiquidacionPartner(rv,cds,asg,t); }; })(rev,clisDel,asigs,tc);
-        ch.appendChild(btnV); ch.appendChild(btnL); card.appendChild(ch);
+        var btnRP=el('button',{class:'btn btnsm',style:'margin-left:4px'},'Resetear pass');
+        btnRP.onclick=(function(rv){ return function(){
+          var np = prompt('Nueva contraseña para el usuario del panel de "'+rv.nombre+'" (mín. 6):');
+          if (!np) return;
+          if (np.length < 6) { alert('Mínimo 6 caracteres'); return; }
+          coneosCall('resetear_password_panel', {revendedor_id: rv.id, nueva_password: np}).then(function(r){
+            if (r.error) { alert('Error: '+r.error); return; }
+            alert('Contraseña actualizada para '+(r.email||'el usuario del partner'));
+          }).catch(function(e){ alert('Error: '+e.message); });
+        }; })(rev);
+        ch.appendChild(btnV); ch.appendChild(btnL); ch.appendChild(btnRP); card.appendChild(ch);
         if (sisList.length) {
           var body=el('div',{style:'padding:8px 12px 10px;display:flex;flex-wrap:wrap;gap:6px'});
           sisList.forEach(function(s){ body.appendChild(chip(s.nombre)); });
