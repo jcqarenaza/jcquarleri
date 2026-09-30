@@ -7015,6 +7015,83 @@ function mEditarPartner(rev,sisList,sistemas,cb) {
   }));
 }
 
+function mCrearEmpresaClienteOnb(cl, cb) {
+  openM(makeModal('Crear empresa ConeOS para ' + cl.nombre, function(body) {
+    addFg(body, 'Nombre de la empresa', mkInput('oce-nombre','text',cl.empresa||cl.nombre||''));
+    addFg(body, 'Slug (URL)', mkInput('oce-slug','text','','ej: heladeria-centro'));
+    mkRow2(body, mkFg('Color primario', mkInput('oce-c1','color','#6366F1')), mkFg('Color secundario', mkInput('oce-c2','color','#4F46E5')));
+  }, function(foot) {
+    foot.appendChild(cancelBtn());
+    var ok = el('button',{class:'btn btnp'},'Crear empresa');
+    ok.onclick = function() {
+      var nombre = gv('oce-nombre').trim(), slug = gv('oce-slug').trim();
+      if (!nombre || !slug) { alert('Nombre y slug son requeridos'); return; }
+      ok.disabled = true; ok.textContent = 'Creando...';
+      coneosCall('crear_empresa_cliente', {cliente_id: cl.id, nombre: nombre, slug: slug, primary_color: gv('oce-c1'), secondary_color: gv('oce-c2')})
+      .then(function(r){
+        if (r.error) { alert('Error: ' + r.error + (r.detalle ? '\n' + r.detalle : '')); ok.disabled=false; ok.textContent='Crear empresa'; return; }
+        closeM(); cb();
+      }).catch(function(e){ alert('Error: '+e.message); ok.disabled=false; ok.textContent='Crear empresa'; });
+    };
+    foot.appendChild(ok);
+  }));
+}
+
+function mMostrarLinkInvitacion(r, datosReenvio) {
+  var link = 'https://coneos.com.ar/auth/callback?token_hash=' + r.token_hash + '&tipo=' + (r.verificacion === 'invite' ? 'invite' : 'email');
+  openM(makeModal('Invitación generada', function(body) {
+    body.appendChild(el('div',{style:'font-size:13px;color:#64748b;margin-bottom:8px'},'Pasale este link a ' + (r.email||'el cliente') + ' para que elija su contraseña y entre a ' + (r.empresa||'su sistema') + '. Expira en 10 minutos — si se vence, Reenviar genera uno nuevo.'));
+    var inp = el('input',{class:'fi',id:'inv-link',readonly:'readonly',value:link,style:'font-size:11px'});
+    body.appendChild(inp);
+  }, function(foot) {
+    var btnRe = el('button',{class:'btn'},'Reenviar');
+    btnRe.onclick = function() {
+      btnRe.disabled = true; btnRe.textContent = 'Generando...';
+      coneosCall('reenviar_invitacion', datosReenvio).then(function(r2){
+        if (r2.error) { alert('Error: ' + (r2.error==='EN_CURSO'?'Esperá unos segundos y reintentá':r2.error)); btnRe.disabled=false; btnRe.textContent='Reenviar'; return; }
+        var nuevo = 'https://coneos.com.ar/auth/callback?token_hash=' + r2.token_hash + '&tipo=' + (r2.verificacion === 'invite' ? 'invite' : 'email');
+        var inp = ge('inv-link'); if (inp) inp.value = nuevo;
+        btnRe.disabled = false; btnRe.textContent = 'Reenviar';
+      });
+    };
+    foot.appendChild(btnRe);
+    var btnC = el('button',{class:'btn btnp'},'Copiar link');
+    btnC.onclick = function() {
+      var inp = ge('inv-link'); inp.select();
+      try { navigator.clipboard.writeText(inp.value); btnC.textContent = 'Copiado ✓'; } catch(e){ document.execCommand('copy'); btnC.textContent = 'Copiado ✓'; }
+      setTimeout(function(){ btnC.textContent = 'Copiar link'; }, 1500);
+    };
+    foot.appendChild(btnC);
+    var btnOk = el('button',{class:'btn'},'Cerrar');
+    btnOk.onclick = function(){ closeM(); };
+    foot.appendChild(btnOk);
+  }));
+}
+
+function mInvitarAdminOnb(empresaId, cb) {
+  openM(makeModal('Invitar administrador', function(body) {
+    body.appendChild(el('div',{style:'font-size:12px;color:#94a3b8;margin-bottom:8px'},'Se crea el usuario SIN contraseña: el cliente la elige al abrir el link. Nadie mas la conoce.'));
+    addFg(body, 'Nombre', mkInput('inv-nombre','text','','Nombre del administrador'));
+    addFg(body, 'Email', mkInput('inv-email','email','','email@delcliente.com'));
+  }, function(foot) {
+    foot.appendChild(cancelBtn());
+    var ok = el('button',{class:'btn btnp'},'Generar invitación');
+    ok.onclick = function() {
+      var nombre = gv('inv-nombre').trim(), email = gv('inv-email').trim();
+      if (!nombre || !email) { alert('Nombre y email son requeridos'); return; }
+      ok.disabled = true; ok.textContent = 'Generando...';
+      var datos = {empresa_id: empresaId, email: email, nombre: nombre};
+      coneosCall('invitar_admin', datos).then(function(r){
+        if (r.error) { alert('Error: ' + (r.error==='EN_CURSO'?'Esperá unos segundos y reintentá':r.error)); ok.disabled=false; ok.textContent='Generar invitación'; return; }
+        closeM();
+        mMostrarLinkInvitacion(r, datos);
+        if (cb) cb();
+      }).catch(function(e){ alert('Error: '+e.message); ok.disabled=false; ok.textContent='Generar invitación'; });
+    };
+    foot.appendChild(ok);
+  }));
+}
+
 function vClientesPartner(rev,sistemas) {
   loading();
   Promise.all([
@@ -7062,6 +7139,19 @@ function vClientesPartner(rev,sistemas) {
         if (misAsigs.length) {
           var body=el('div',{style:'padding:6px 12px 10px;display:flex;flex-wrap:wrap;gap:6px'});
           misAsigs.forEach(function(a){ body.appendChild(chipClass(a.activo?'Activo':'Inactivo',a.activo?'ct':'cgr')); });
+          // Onboarding ConeOS: crear empresa / invitar admin
+          var sisConeos = (Array.isArray(sistemas)?sistemas:[]).find(function(s){ return s.nombre === 'ConeOS'; });
+          var asigConeSis = sisConeos ? misAsigs.find(function(a){ return a.sistema_id === sisConeos.id; }) : null;
+          if (asigConeSis && !asigConeSis.coneos_empresa_id) {
+            var btnCE = el('button',{class:'btn btnsm btnp'},'Crear empresa ConeOS');
+            btnCE.onclick = (function(c){ return function(){ mCrearEmpresaClienteOnb(c, function(){ vClientesPartner(rev,sistemas); }); }; })(cl);
+            body.appendChild(btnCE);
+          }
+          if (asigConeSis && asigConeSis.coneos_empresa_id) {
+            var btnInv = el('button',{class:'btn btnsm'},'Invitar admin');
+            btnInv.onclick = (function(eid){ return function(){ mInvitarAdminOnb(eid, null); }; })(asigConeSis.coneos_empresa_id);
+            body.appendChild(btnInv);
+          }
           card.appendChild(body);
           // Estado ConeOS del cliente (visible también para el partner, scopeado server-side)
           var asigConeos = misAsigs.find(function(a){ return a.coneos_empresa_id; });
@@ -7109,7 +7199,8 @@ function mNuevoClientePartner(rev,sisDisp,cb) {
       var nombre=gv('pcnombre').trim();
       if (!nombre){ err.textContent='Ingresá el nombre'; err.style.display=''; return; }
       btnG.disabled=true; btnG.textContent='Creando...';
-      dbIns('panel_clientes',{nombre:nombre,empresa:gv('pcempresa').trim()||null,email:gv('pcemail').trim()||null,telefono:gv('pctelefono').trim()||null,revendedor_id:rev.id})
+      coneosCall('crear_cliente',{nombre:nombre,empresa:gv('pcempresa').trim()||null,email:gv('pcemail').trim()||null,telefono:gv('pctelefono').trim()||null})
+      .then(function(r){ if (r.error) throw new Error(r.error==='CLIENTE_EXISTENTE'?'Ya existe un cliente con ese nombre':r.error); return r; })
       .then(function(){ closeM(); cb(); })
       .catch(function(e){ err.textContent='Error: '+e.message; err.style.display=''; btnG.disabled=false; btnG.textContent='Crear cliente'; });
     };
