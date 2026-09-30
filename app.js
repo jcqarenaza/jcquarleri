@@ -3030,45 +3030,49 @@ var MESES_CORTOS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct',
 function vFinanzas() {
   loading();
 
-  Promise.all([
-    sbFetch('panel_cobros?estado=eq.pagado&select=monto,fecha_pago,tipo_cobro,descripcion,asignacion_id&order=fecha_pago.desc').catch(function(){ return []; }),
-    sbFetch('panel_cobros?estado=eq.pendiente&select=monto,fecha_vencimiento,tipo_cobro,descripcion,asignacion_id&order=fecha_vencimiento.asc').catch(function(){ return []; }),
-    sbFetch('panel_gastos?select=*&order=activo.desc,nombre.asc').catch(function(){ return []; }),
-    sbFetch('panel_ingresos?select=*&order=fecha.desc').catch(function(){ return []; }),
-    sbFetch('panel_sistemas?select=id,nombre').catch(function(){ return []; }),
-    sbFetch('panel_clientes?select=id,nombre').catch(function(){ return []; }),
-    fetch('https://dolarapi.com/v1/dolares/oficial').then(function(r){ return r.json(); }).catch(function(){ return null; }),
-    sbFetch('panel_gastos_pagos?select=*&order=fecha.desc').catch(function(){ return []; }),
-    sbFetch('panel_config?select=clave,valor').catch(function(){ return []; }),
-    sbFetch('panel_gastos_personales?select=*&order=activo.desc,nombre.asc').catch(function(){ return []; }),
-    sbFetch('panel_gastos_personales_pagos?select=*&order=fecha.desc').catch(function(){ return []; }),
-    sbFetch('panel_pf_cuotas?select=*&order=activa.desc,inicio_year.asc,inicio_month.asc').catch(function(){ return []; }),
-    sbFetch('panel_pf_meses?select=*&order=year.asc,month.asc').catch(function(){ return []; }),
-    sbFetch('panel_pf_gastos?select=*&order=fecha.asc').catch(function(){ return []; }),
-    sbFetch('panel_pf_ingresos?select=*&order=fecha.asc').catch(function(){ return []; }),
-    sbFetch('panel_pf_liquidacion_juan?select=*').catch(function(){ return []; }),
-    sbFetch('panel_pf_daiana?select=*').catch(function(){ return []; }),
-    sbFetch('panel_pf_deudas?select=*&order=fecha.desc').catch(function(){ return []; }),
-    sbFetch('panel_pf_presupuesto?select=*').catch(function(){ return []; }),
-    sbFetch('panel_pf_prestamos?select=*&order=activo.desc,fecha.desc').catch(function(){ return []; }),
-    sbFetch('panel_pf_prestamos_pagos?select=*&order=fecha.asc').catch(function(){ return []; }),
-    sbFetch('panel_pf_auto_registros?select=*&order=kms.desc.nullslast,fecha.desc.nullslast').catch(function(){ return []; }),
-    sbFetch('panel_pf_deudas_movimientos?select=*&order=fecha.asc').catch(function(){ return []; }),
-    sbFetch('panel_pf_musica?select=*&order=fecha.asc').catch(function(){ return []; }),
-    sbFetch('panel_juntada_participantes?select=*&order=created_at.asc').catch(function(){ return []; }),
-    sbFetch('panel_juntada_pagos?select=*&order=fecha.asc').catch(function(){ return []; }),
-    sbFetch('panel_juntada_gastos?select=*&order=fecha.asc').catch(function(){ return []; })
-  ]).then(function(r) {
-    var cobros=r[0], cobrosPendientes=r[1], gastos=r[2], ingresos=r[3], sistemas=r[4], clientes=r[5];
-    var dolarData=r[6], pagoGastos=r[7], config=r[8]||[];
-    var gastosPers=r[9]||[], pagoGastosPers=r[10]||[];
-    var cuotasPF=r[11]||[];
-    var mesesPF=r[12]||[], gastosPF=r[13]||[], ingresosPF=r[14]||[], juanPF=r[15]||[], daianaPF=r[16]||[], deudasPF=r[17]||[], presupuestoPF=r[18]||[];
-    var prestamosPF=r[19]||[];
-    var prestamosPagosPF=r[20]||[], autoPF=r[21]||[];
-    var deudasMovsPF=r[22]||[];
-    var musicaPF=r[23]||[];
-    var juntadaParticipantes=r[24]||[], juntadaPagos=r[25]||[], juntadaGastos=r[26]||[];
+  // Fetches con NOMBRE — agregar uno nuevo es agregar una línea acá, sin correr índices
+  var FIN_Q = {
+    cobros:             sbFetch('panel_cobros?estado=eq.pagado&select=monto,fecha_pago,tipo_cobro,descripcion,asignacion_id&order=fecha_pago.desc').catch(function(){ return []; }),
+    cobrosPendientes:   sbFetch('panel_cobros?estado=eq.pendiente&select=monto,fecha_vencimiento,tipo_cobro,descripcion,asignacion_id&order=fecha_vencimiento.asc').catch(function(){ return []; }),
+    gastos:             sbFetch('panel_gastos?select=*&order=activo.desc,nombre.asc').catch(function(){ return []; }),
+    ingresos:           sbFetch('panel_ingresos?select=*&order=fecha.desc').catch(function(){ return []; }),
+    sistemas:           sbFetch('panel_sistemas?select=id,nombre').catch(function(){ return []; }),
+    clientes:           sbFetch('panel_clientes?select=id,nombre').catch(function(){ return []; }),
+    dolarData:          fetch('https://dolarapi.com/v1/dolares/oficial').then(function(r){ return r.json(); }).catch(function(){ return null; }),
+    pagoGastos:         sbFetch('panel_gastos_pagos?select=*&order=fecha.desc').catch(function(){ return []; }),
+    config:             sbFetch('panel_config?select=clave,valor').catch(function(){ return []; }),
+    gastosPers:         sbFetch('panel_gastos_personales?select=*&order=activo.desc,nombre.asc').catch(function(){ return []; }),
+    pagoGastosPers:     sbFetch('panel_gastos_personales_pagos?select=*&order=fecha.desc').catch(function(){ return []; }),
+    cuotasPF:           sbFetch('panel_pf_cuotas?select=*&order=activa.desc,inicio_year.asc,inicio_month.asc').catch(function(){ return []; }),
+    mesesPF:            sbFetch('panel_pf_meses?select=*&order=year.asc,month.asc').catch(function(){ return []; }),
+    gastosPF:           sbFetch('panel_pf_gastos?select=*&order=fecha.asc').catch(function(){ return []; }),
+    ingresosPF:         sbFetch('panel_pf_ingresos?select=*&order=fecha.asc').catch(function(){ return []; }),
+    juanPF:             sbFetch('panel_pf_liquidacion_juan?select=*').catch(function(){ return []; }),
+    daianaPF:           sbFetch('panel_pf_daiana?select=*').catch(function(){ return []; }),
+    deudasPF:           sbFetch('panel_pf_deudas?select=*&order=fecha.desc').catch(function(){ return []; }),
+    presupuestoPF:      sbFetch('panel_pf_presupuesto?select=*').catch(function(){ return []; }),
+    prestamosPF:        sbFetch('panel_pf_prestamos?select=*&order=activo.desc,fecha.desc').catch(function(){ return []; }),
+    prestamosPagosPF:   sbFetch('panel_pf_prestamos_pagos?select=*&order=fecha.asc').catch(function(){ return []; }),
+    autoPF:             sbFetch('panel_pf_auto_registros?select=*&order=kms.desc.nullslast,fecha.desc.nullslast').catch(function(){ return []; }),
+    deudasMovsPF:       sbFetch('panel_pf_deudas_movimientos?select=*&order=fecha.asc').catch(function(){ return []; }),
+    musicaPF:           sbFetch('panel_pf_musica?select=*&order=fecha.asc').catch(function(){ return []; }),
+    juntadaParticipantes: sbFetch('panel_juntada_participantes?select=*&order=created_at.asc').catch(function(){ return []; }),
+    juntadaPagos:       sbFetch('panel_juntada_pagos?select=*&order=fecha.asc').catch(function(){ return []; }),
+    juntadaGastos:      sbFetch('panel_juntada_gastos?select=*&order=fecha.asc').catch(function(){ return []; })
+  };
+  var FIN_KEYS = Object.keys(FIN_Q);
+  Promise.all(FIN_KEYS.map(function(k){ return FIN_Q[k]; })).then(function(rArr) {
+    var R = {}; FIN_KEYS.forEach(function(k, i){ R[k] = rArr[i]; });
+    var cobros=R.cobros, cobrosPendientes=R.cobrosPendientes, gastos=R.gastos, ingresos=R.ingresos, sistemas=R.sistemas, clientes=R.clientes;
+    var dolarData=R.dolarData, pagoGastos=R.pagoGastos, config=R.config||[];
+    var gastosPers=R.gastosPers||[], pagoGastosPers=R.pagoGastosPers||[];
+    var cuotasPF=R.cuotasPF||[];
+    var mesesPF=R.mesesPF||[], gastosPF=R.gastosPF||[], ingresosPF=R.ingresosPF||[], juanPF=R.juanPF||[], daianaPF=R.daianaPF||[], deudasPF=R.deudasPF||[], presupuestoPF=R.presupuestoPF||[];
+    var prestamosPF=R.prestamosPF||[];
+    var prestamosPagosPF=R.prestamosPagosPF||[], autoPF=R.autoPF||[];
+    var deudasMovsPF=R.deudasMovsPF||[];
+    var musicaPF=R.musicaPF||[];
+    var juntadaParticipantes=R.juntadaParticipantes||[], juntadaPagos=R.juntadaPagos||[], juntadaGastos=R.juntadaGastos||[];
     var mesActualPF = (mesesPF.find(function(m){ return m.status==='open'; }) || mesesPF[mesesPF.length-1] || {}).id || null;
 
     pagoGastosPers = pagoGastosPers.map(function(p) {
@@ -3086,6 +3090,19 @@ function vFinanzas() {
     var empresaInicio = configMap.empresa_inicio ? new Date(configMap.empresa_inicio) : new Date('2026-05-01');
 
     var tcUSD = dolarData && dolarData.venta ? Number(dolarData.venta) : 1200;
+    // Cotización por mes: si el mes está cerrado usa su TC congelado, si no el del día
+    function tcDeMes(mesObj) { return (mesObj && mesObj.tc_usd) ? Number(mesObj.tc_usd) : tcUSD; }
+    // Agrupa una lista de gastos PF por GASTO_GRUPOS_PF (cada gasto cae en el primer grupo que matchea)
+    function agruparGastosPF(lista) {
+      var restantes = lista.slice();
+      return GASTO_GRUPOS_PF.map(function(grupo) {
+        var items = restantes.filter(grupo.match);
+        restantes = restantes.filter(function(g){ return !grupo.match(g); });
+        return { nombre: grupo.nombre, grupo: grupo, items: items,
+                 tot: items.reduce(function(s,g){ return s+Number(g.monto||0); }, 0),
+                 totUSD: items.reduce(function(s,g){ return s+Number(g.monto_usd||0); }, 0) };
+      });
+    }
     var tcFecha = dolarData && dolarData.fechaActualizacion || null;
     var tcActual = tcUSD;
 
@@ -3985,6 +4002,33 @@ function vFinanzas() {
       });
       content.appendChild(mets);
 
+      // ── Flujo próximos 30 días: cobros pendientes (entra) vs gastos sin pagar (sale) ──
+      var hoyF = new Date(); var en30 = new Date(hoyF.getTime() + 30*24*60*60*1000);
+      var hoyStr = hoyF.toISOString().slice(0,10), en30Str = en30.toISOString().slice(0,10);
+      var entra30 = cobrosPendientes.filter(function(c){
+        return c.fecha_vencimiento && c.fecha_vencimiento <= en30Str;
+      }).reduce(function(s,c){ return s+Number(c.monto); }, 0);
+      var gastosSinPagar = gastosPF.filter(function(g){
+        return g.mes_id===m.id && !g.pagado && (Number(g.monto)>0 || Number(g.monto_usd)>0);
+      });
+      var sale30 = gastosSinPagar.reduce(function(s,g){ return s + Number(g.monto||0) + Number(g.monto_usd||0)*tcUSD; }, 0);
+      var neto30 = entra30 - sale30;
+      var flujoCard = el('div',{class:'card',style:'padding:16px;margin-top:14px'});
+      flujoCard.appendChild(el('div',{class:'st',style:'margin-bottom:10px'},'Flujo próximos 30 días'));
+      var flujoRow = el('div',{style:'display:grid;grid-template-columns:repeat(3,1fr);gap:10px'});
+      [{label:'Entra (cobros pendientes)', val:fmt(entra30), color:'#3D8A32', bg:'#EDF7EA'},
+       {label:'Sale (gastos sin pagar)', val:fmt(sale30), color:'#A32D2D', bg:'#FEF2F2', sub:gastosSinPagar.length+' gasto'+(gastosSinPagar.length!==1?'s':'')},
+       {label:'Neto', val:fmt(neto30), color:neto30>=0?'#0B9EDA':'#A32D2D', bg:neto30>=0?'#F0F9FF':'#FEF2F2'}
+      ].forEach(function(k){
+        var kb = el('div',{style:'background:'+k.bg+';border-radius:10px;padding:12px 14px'});
+        kb.appendChild(el('div',{style:'font-size:10px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.05em'},k.label));
+        kb.appendChild(el('div',{style:'font-size:18px;font-weight:700;color:'+k.color+';margin-top:3px'},k.val));
+        if (k.sub) kb.appendChild(el('div',{style:'font-size:10px;color:#94a3b8;margin-top:2px'},k.sub));
+        flujoRow.appendChild(kb);
+      });
+      flujoCard.appendChild(flujoRow);
+      content.appendChild(flujoCard);
+
       var ultimos = mesesPF.slice(-6);
       var chartCard = el('div',{class:'card',style:'padding:16px;margin-top:14px'});
       chartCard.appendChild(el('div',{class:'st',style:'margin-bottom:14px'},'Evolucion (ultimos '+ultimos.length+' meses)'));
@@ -4049,7 +4093,7 @@ function vFinanzas() {
       var colGas=el('div',{});
       colGas.appendChild(el('div',{style:'font-size:11px;font-weight:500;color:#64748B;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;padding-bottom:6px;border-bottom:.5px solid #E2E8F0'},'Gastos'));
       var restG=gastosPF.filter(function(g){ return g.mes_id===m.id; }).slice();
-      GASTO_GRUPOS_PF.forEach(function(grp){ var dG=restG.filter(grp.match); restG=restG.filter(function(g){ return !grp.match(g); }); var tot=dG.reduce(function(s,g){ return s+Number(g.monto||0); },0); if(tot>0) colGas.appendChild(cruceRow(grp.nombre,fmt(tot),'#A32D2D')); });
+      agruparGastosPF(restG).forEach(function(gr){ if(gr.tot>0) colGas.appendChild(cruceRow(gr.nombre,fmt(gr.tot),'#A32D2D')); });
       if(gNeg2.ars>0) colGas.appendChild(cruceRow('🏢 Gastos negocio',fmt(gNeg2.ars)+(gNeg2.usd>0?' + USD'+gNeg2.usd.toFixed(2):''),'#854F0B'));
       var totGR=el('div',{style:'display:flex;justify-content:space-between;padding:8px 0 0;margin-top:4px;border-top:.5px solid #CBD5E1;font-size:13px'}); totGR.appendChild(el('span',{style:'font-weight:500'},'Total')); totGR.appendChild(el('span',{style:'font-weight:500;color:#A32D2D'},fmt(totalGas))); colGas.appendChild(totGR);
       cruceCols.appendChild(colIng); cruceCols.appendChild(colGas); cruceCard.appendChild(cruceCols);
@@ -4344,14 +4388,11 @@ function vFinanzas() {
     // GASTO_GRUPOS_PF movido arriba
     // Total (ARS) de un modulo en un mes dado, asignando cada gasto al PRIMER grupo que matchee (igual que al listar)
     function totalesModulosPF(mesId) {
-      var gMes = gastosPF.filter(function(g){ return g.mes_id===mesId; });
-      var restantes = gMes.slice();
+      var mesObj = mesesPF.find(function(mm){ return mm.id===mesId; });
+      var tcMes = tcDeMes(mesObj);
+      var grupos = agruparGastosPF(gastosPF.filter(function(g){ return g.mes_id===mesId; }));
       var out = {};
-      GASTO_GRUPOS_PF.forEach(function(grupo) {
-        var deEsteGrupo = restantes.filter(grupo.match);
-        restantes = restantes.filter(function(g){ return !grupo.match(g); });
-        out[grupo.nombre] = deEsteGrupo.reduce(function(s,g){ return s + Number(g.monto||0) + Number(g.monto_usd||0) * tcUSD; }, 0);
-      });
+      grupos.forEach(function(gr){ out[gr.nombre] = gr.items.reduce(function(s,g){ return s + Number(g.monto||0) + Number(g.monto_usd||0) * tcMes; }, 0); });
       return out;
     }
 
@@ -4377,6 +4418,25 @@ function vFinanzas() {
         rc3.appendChild(el('div',{style:'font-size:18px;font-weight:700;color:#854F0B'},rc3v.join(' + ')));
         resCard.appendChild(rc3);
       }
+      // Cierre de mes: congela la cotización USD del mes
+      var rcCierre = el('div',{style:'margin-left:auto;align-self:center'});
+      if (m.cerrado) {
+        rcCierre.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#3D8A32;background:#EDF7EA;border-radius:20px;padding:5px 12px'},'🔒 Mes cerrado — TC $'+Math.round(Number(m.tc_usd||0)).toLocaleString('es-AR')));
+        var btnReabrir = el('button',{class:'btn btnsm',style:'margin-top:4px;display:block;margin-left:auto'},'Reabrir');
+        btnReabrir.onclick = function(){
+          if (!confirm('Reabrir '+MESES_CORTOS[m.month-1]+' '+m.year+'? La cotización volverá a ser la del día.')) return;
+          dbUpd('panel_pf_meses', m.id, {cerrado:false, tc_usd:null}).then(function(){ m.cerrado=false; m.tc_usd=null; renderAll(); });
+        };
+        rcCierre.appendChild(btnReabrir);
+      } else {
+        var btnCerrar = el('button',{class:'btn btnsm'},'🔒 Cerrar mes (TC $'+Math.round(tcUSD).toLocaleString('es-AR')+')');
+        btnCerrar.onclick = function(){
+          if (!confirm('Cerrar '+MESES_CORTOS[m.month-1]+' '+m.year+'? Se congela la cotización USD en $'+Math.round(tcUSD).toLocaleString('es-AR')+' para este mes.')) return;
+          dbUpd('panel_pf_meses', m.id, {cerrado:true, tc_usd:tcUSD}).then(function(){ m.cerrado=true; m.tc_usd=tcUSD; renderAll(); });
+        };
+        rcCierre.appendChild(btnCerrar);
+      }
+      resCard.appendChild(rcCierre);
       content.appendChild(resCard);
 
       // Evolucion por modulo (ultimos 6 meses), con flecha de avance/retroceso vs mes anterior
@@ -5104,7 +5164,7 @@ function vFinanzas() {
       else if(dsP<0) sug.push({emoji:'🏢',titulo:'DS saldado',detalle:'Ya cobraste todo. Te adelantaron '+fmt(Math.abs(dsP))+'.'});
       cuotasTerm.forEach(function(c){ var num=numeroCuotaPF(c,m.year,m.month); var q=c.total_cuotas-num; sug.push({emoji:'🎉',titulo:'Cuota por terminar: '+c.nombre,detalle:(q===0?'Última cuota.':c.nombre+' termina en '+q+' cuota'+(q!==1?'s':'')+' más.')+' Liberás '+fmt(Number(c.monto))+'/mes.'}); });
       var gMax=null,gMaxV=0,rG=gastosPF.filter(function(g){ return g.mes_id===m.id; }).slice();
-      GASTO_GRUPOS_PF.forEach(function(grp){ var dG=rG.filter(grp.match); rG=rG.filter(function(g){ return !grp.match(g); }); var tot=dG.reduce(function(s,g){ return s+Number(g.monto||0); },0); if(tot>gMaxV){ gMaxV=tot; gMax=grp.nombre; } });
+      agruparGastosPF(rG).forEach(function(gr){ if(gr.tot>gMaxV){ gMaxV=gr.tot; gMax=gr.nombre; } });
       if(gMax&&gMaxV>0){ var pG=totalGas>0?Math.round(gMaxV/totalGas*100):0; sug.push({emoji:'📊',titulo:'Mayor gasto: '+gMax,detalle:gMax+' representa el '+pG+'% de tus gastos con '+fmt(gMaxV)+'.'}); }
       if(cuotasA.length>0) sug.push({emoji:'📋',titulo:cuotasA.length+' cuotas activas',detalle:'Tenés '+cuotasA.length+' cuotas corriendo en paralelo.'});
       if(deudaP>0) sug.push({emoji:'👤',titulo:'Deuda pendiente a cobrar',detalle:'Tenés '+fmt(deudaP)+' en deudas pendientes.'});
