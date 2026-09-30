@@ -6104,11 +6104,13 @@ function vConeosEmpresa(emp) {
         }; })(a);
         var btnImp = el('button', {class:'btn btnsm', style:'margin-left:4px;background:#E6F6FD;border-color:#E6F6FD;color:#0C6FA3'}, 'Entrar como →');
         (function(admin){ btnImp.onclick = function() {
+          if (btnImp.disabled) return; // anti doble click (la Edge además deduplica server-side)
           btnImp.textContent = 'Generando...'; btnImp.disabled = true;
-          coneosCall('impersonar_admin', {user_id: admin.id, slug: emp.slug}).then(function(r){
+          coneosCall('impersonar_admin', {user_id: admin.id}).then(function(r){
             btnImp.textContent = 'Entrar como →'; btnImp.disabled = false;
-            if (r.error || !r.link) { alert('Error: '+(r.error||'no se pudo generar el link')); return; }
-            window.open(r.link, '_blank');
+            if (r.error === 'EN_CURSO') { alert('Ya hay una impersonación en curso para este usuario — esperá unos segundos.'); return; }
+            if (r.error || !r.token_hash) { alert('Error: '+(r.error||'no se pudo generar el acceso')); return; }
+            window.open('https://coneos.com.ar/auth/callback?token_hash=' + encodeURIComponent(r.token_hash), '_blank');
           }).catch(function(e){ btnImp.textContent = 'Entrar como →'; btnImp.disabled = false; alert('Error: '+e.message); });
         }; })(a);
         tr.appendChild(el('td', {}, [btnReset, btnImp]));
