@@ -123,8 +123,6 @@ function unlockPanel(token, usuario) {
   _authToken = token;
   _currentUser = usuario;
   sessionStorage.setItem('qp_auth', JSON.stringify({ token: token, usuario: usuario, ts: Date.now() }));
-  document.getElementById('login-screen').style.display = 'none';
-  document.body.style.overflow = '';
   var esPartner = usuario && usuario.rol === 'partner';
   var esSuperAdmin = !usuario || usuario.rol === 'superadmin';
   // Tabs solo para superadmin
@@ -134,7 +132,10 @@ function unlockPanel(token, usuario) {
   // Tab partners: superadmin y partner
   var btnP = document.getElementById('nb-partners');
   if (btnP) btnP.style.display = (esSuperAdmin || esPartner) ? '' : 'none';
-  if (esPartner) setTimeout(function(){ go('partners'); }, 100);
+  // Renderizar la vista del rol ANTES de destapar — evita el flash del dashboard
+  if (esPartner) go('partners'); else go('dash');
+  document.getElementById('login-screen').style.display = 'none';
+  document.body.style.overflow = '';
   if (window._onAuthReady) window._onAuthReady(usuario);
 }
 
