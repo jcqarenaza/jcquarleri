@@ -6794,7 +6794,8 @@ function mNuevoAdminConeos(emp, cb) {
   if (window._onAuthReady && u) window._onAuthReady(u);
   else document.body.classList.remove('qp-loading');
   if (u && u.rol==='partner') go('partners');
-  else go('dash');
+  else if (u) go('dash');
+  // Sin sesión: la pantalla de login está visible — no se renderiza ni carga nada
 })();
 // ── PARTNERS ────────────────────────────────────────────────────
 
@@ -6873,7 +6874,7 @@ function vPartners() {
           if (!np) return;
           if (np.length < 6) { alert('Mínimo 6 caracteres'); return; }
           coneosCall('resetear_password_panel', {revendedor_id: rv.id, nueva_password: np}).then(function(r){
-            if (r.error) { alert('Error: '+r.error); return; }
+            if (r.error) { alert('Error: '+r.error+(r.detalle?'\n'+r.detalle:'')); return; }
             alert('Contraseña actualizada para '+(r.email||'el usuario del partner'));
           }).catch(function(e){ alert('Error: '+e.message); });
         }; })(rev);
@@ -7057,11 +7058,54 @@ function vClientesPartner(rev,sistemas) {
         var btnE=el('button',{class:'btn btnsm',style:'margin-left:4px'},'Editar');
         btnE.onclick=(function(c){ return function(){ mEditarClientePartner(c,rev,sistemas,function(){ vClientesPartner(rev,sistemas); }); }; })(cl);
         ch.appendChild(btnE);
+        if (isSuperAdmin()) {
+          var btnDelP=el('button',{class:'btn btnsm',style:'margin-left:4px;background:#FCEBEB;border-color:#FCEBEB;color:#A32D2D'},'X');
+          btnDelP.onclick=(function(c){ return function(){
+            var asigsC = asigs.filter(function(a){ return a.cliente_id===c.id; });
+            if (!confirm('Eliminar a "'+c.nombre+'"?\n\nSe borra TODO: '+asigsC.length+' asignacion(es) con sus cobros y recibos. No se puede deshacer.')) return;
+            if (!confirm('Segunda confirmación: eliminar DEFINITIVAMENTE a "'+c.nombre+'"?')) return;
+            var ids = asigsC.map(function(a){ return a.id; });
+            var porAsig = ids.length ? Promise.all([
+              sbFetch('panel_sub_entidades?asignacion_id=in.('+ids.join(',')+')',{method:'DELETE',prefer:'return=minimal'}).catch(function(){}),
+              sbFetch('panel_implementacion_fases?asignacion_id=in.('+ids.join(',')+')',{method:'DELETE',prefer:'return=minimal'}).catch(function(){}),
+              sbFetch('panel_cobros?asignacion_id=in.('+ids.join(',')+')',{method:'DELETE',prefer:'return=minimal'}).catch(function(){})
+            ]) : Promise.resolve();
+            porAsig
+              .then(function(){ return ids.length ? sbFetch('panel_asignaciones?cliente_id=eq.'+c.id,{method:'DELETE',prefer:'return=minimal'}) : null; })
+              .then(function(){ return sbFetch('panel_clientes?id=eq.'+c.id,{method:'DELETE',prefer:'return=minimal'}); })
+              .then(function(){ _D=null; vClientesPartner(rev,sistemas); })
+              .catch(function(e){ alert('Error al eliminar: '+e.message); });
+          }; })(cl);
+          ch.appendChild(btnDelP);
+        }
         card.appendChild(ch);
         if (misAsigs.length) {
           var body=el('div',{style:'padding:6px 12px 10px;display:flex;flex-wrap:wrap;gap:6px'});
           misAsigs.forEach(function(a){ body.appendChild(chipClass(a.activo?'Activo':'Inactivo',a.activo?'ct':'cgr')); });
           card.appendChild(body);
+          // Estado ConeOS del cliente (visible también para el partner, scopeado server-side)
+          var asigConeos = misAsigs.find(function(a){ return a.coneos_empresa_id; });
+          if (asigConeos) {
+            var metBox = el('div',{style:'padding:0 12px 12px'});
+            var metInner = el('div',{style:'background:#F8FAFC;border-radius:10px;padding:10px 12px;font-size:12px;color:#94a3b8'},'Cargando estado del sistema...');
+            metBox.appendChild(metInner); card.appendChild(metBox);
+            coneosCall('metricas_empresa',{empresa_id:asigConeos.coneos_empresa_id}).then(function(m){
+              if (m.error) { metInner.textContent = 'Sin acceso al estado ('+m.error+')'; return; }
+              metInner.innerHTML = '';
+              metInner.style.display='grid'; metInner.style.gridTemplateColumns='repeat(auto-fit,minmax(110px,1fr))'; metInner.style.gap='8px';
+              [{l:'Pedidos hoy',v:String(m.pedidos_hoy||0),c:'#0B9EDA'},
+               {l:'Facturado hoy',v:'$'+Math.round(m.total_hoy||0).toLocaleString('es-AR'),c:'#3D8A32'},
+               {l:'Total pedidos',v:String(m.total_pedidos||0),c:'#7C3AED'},
+               {l:'Dispositivos',v:String(m.dispositivos_activos||0),c:'#854F0B'},
+               {l:'Operadores',v:String((m.operadores||[]).length),c:'#64748B'}
+              ].forEach(function(k){
+                var kb=el('div',{});
+                kb.appendChild(el('div',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8'},k.l));
+                kb.appendChild(el('div',{style:'font-size:15px;font-weight:700;color:'+k.c},k.v));
+                metInner.appendChild(kb);
+              });
+            }).catch(function(){ metInner.textContent='No se pudo cargar el estado'; });
+          }
         }
         wrap.appendChild(card);
       });
