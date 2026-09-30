@@ -338,14 +338,14 @@ function vDash() {
     var mesActual = hoy.getMonth() + 1;
     var anioActual = hoy.getFullYear();
     var als = calcAlertas(D.asigs, D.alertasDb);
-    var pen = D.cobs.filter(function(c){ return c.estado==='pendiente' && !c._cli.revendedor_id; });
+    var pen = D.cobs.filter(function(c){ return c.estado==='pendiente' && !c._cli.revendedor_id && !c._cli.eliminado; });
     var totP = pen.reduce(function(s,c){ return s+Number(c.monto); }, 0);
     var cobradoMes = D.cobs.filter(function(c){
-      if (c.estado !== 'pagado' || !c.fecha_pago || c._cli.revendedor_id) return false;
+      if (c.estado !== 'pagado' || !c.fecha_pago || c._cli.revendedor_id || c._cli.eliminado) return false;
       var f = new Date(c.fecha_pago);
       return f.getMonth()+1 === mesActual && f.getFullYear() === anioActual;
     }).reduce(function(s,c){ return s+Number(c.monto); }, 0);
-    var clsPropios = D.cls.filter(function(cl){ return !cl.revendedor_id; });
+    var clsPropios = D.cls.filter(function(cl){ return !cl.revendedor_id && !cl.eliminado; });
     var clsConAsig = clsPropios.filter(function(cl){ return D.asigs.some(function(a){ return a.cliente_id===cl.id; }); });
     var clsSinSis = clsPropios.filter(function(cl){ return !D.asigs.some(function(a){ return a.cliente_id===cl.id; }); });
     var clsConDeuda = D.asigs.filter(function(a){ return totalFases(a) - pagadoImplementacion(a) > 0; }).map(function(a){ return a.cliente_id; });
@@ -1492,8 +1492,8 @@ function vClientes() {
     sh.appendChild(btnN);
     wrap.appendChild(sh);
 
-    var clsReales = D.cls.filter(function(cl){ return !cl.es_demo && !cl.revendedor_id; });
-    var clsDemo   = D.cls.filter(function(cl){ return !!cl.es_demo && !cl.revendedor_id; });
+    var clsReales = D.cls.filter(function(cl){ return !cl.es_demo && !cl.revendedor_id && !cl.eliminado; });
+    var clsDemo   = D.cls.filter(function(cl){ return !!cl.es_demo && !cl.revendedor_id && !cl.eliminado; });
     var clsPropios = clsReales.concat(clsDemo);
 
     if (!D.cls.length) {
@@ -1593,7 +1593,7 @@ function vClientes() {
         if (!revs || !revs.length) return;
         wrap.appendChild(el('div', {class:'sh', style:'margin-top:16px'}, [el('span', {class:'st'}, 'Partners (' + revs.length + ')')]));
         revs.forEach(function(rev) {
-          var clisDel = D.cls.filter(function(c){ return c.revendedor_id === rev.id; });
+          var clisDel = D.cls.filter(function(c){ return c.revendedor_id === rev.id && !c.eliminado; });
           var card = el('div', {class:'cc'});
           var ch2 = el('div', {class:'ch'});
           var av2;
@@ -1714,7 +1714,7 @@ function filtrar(f) {
   // "Todos" excluye los pagados — lo que importa seguir son pendiente/vencido/cancelado.
   // Para ver los pagados, usar el tab "Pagado" especificamente.
   // Excluir cobros de clientes de partner (revendedor_id != null)
-  var cobsPropios = _D.cobs.filter(function(c){ return !c._cli.revendedor_id; });
+  var cobsPropios = _D.cobs.filter(function(c){ return !c._cli.revendedor_id && !c._cli.eliminado; });
   var lista = (f==='todos' ? cobsPropios.filter(function(c){ return c.estado!=='pagado'; }) : cobsPropios.filter(function(c){ return c.estado===f; })).slice().sort(function(a,b){
     if (window._cobroSort === 'num') {
       var na = a._numRecibo||0, nb = b._numRecibo||0;
@@ -2218,22 +2218,12 @@ function mNuevoCliente() {
   });
 }
 
-function eliminarClienteCompleto(cl) {
-  var asigsCli = (_D && _D.asigs || []).filter(function(a){ return a.cliente_id === cl.id; });
-  var nCobros = asigsCli.reduce(function(s,a){ return s + (a._cobs||[]).length; }, 0);
-  var detalle = asigsCli.length + ' asignacion(es) y ' + nCobros + ' cobro(s) con sus recibos';
-  if (!confirm('Eliminar a "' + cl.nombre + '"?\n\nSe borra TODO: ' + detalle + '. No se puede deshacer.')) return;
-  if (!confirm('Segunda confirmación: eliminar DEFINITIVAMENTE a "' + cl.nombre + '" y todo su historial?')) return;
-  var asigIds = asigsCli.map(function(a){ return a.id; });
-  var borrarPorAsig = asigIds.length ? Promise.all([
-    sbFetch('panel_sub_entidades?asignacion_id=in.(' + asigIds.join(',') + ')', {method:'DELETE', prefer:'return=minimal'}).catch(function(){}),
-    sbFetch('panel_implementacion_fases?asignacion_id=in.(' + asigIds.join(',') + ')', {method:'DELETE', prefer:'return=minimal'}).catch(function(){}),
-    sbFetch('panel_cobros?asignacion_id=in.(' + asigIds.join(',') + ')', {method:'DELETE', prefer:'return=minimal'}).catch(function(){})
-  ]) : Promise.resolve();
-  borrarPorAsig
-    .then(function(){ return asigIds.length ? sbFetch('panel_asignaciones?cliente_id=eq.' + cl.id, {method:'DELETE', prefer:'return=minimal'}) : null; })
-    .then(function(){ return sbFetch('panel_clientes?id=eq.' + cl.id, {method:'DELETE', prefer:'return=minimal'}); })
-    .then(function(){ _D = null; vClientes(); })
+function eliminarClienteCompleto(cl, cb) {
+  // SOFT DELETE: se marca eliminado=true. El historial (asignaciones, cobros, recibos)
+  // queda intacto en la base por si el cliente vuelve o se necesita el historico.
+  if (!confirm('Eliminar a "' + cl.nombre + '"?\n\nDesaparece del panel pero su historial queda guardado (recuperable).')) return;
+  dbUpd('panel_clientes', cl.id, {eliminado: true})
+    .then(function(){ _D = null; if (cb) cb(); else vClientes(); })
     .catch(function(e){ alert('Error al eliminar: ' + e.message); });
 }
 
@@ -2805,7 +2795,7 @@ function mCobrarRapido() {
   if (!_D || !_D.asigs.length) { alert('No hay asignaciones.'); return; }
   openM(makeModal('Registrar cobro', function(body) {
     var sel = el('select', {class:'fi', id:'rqa'});
-    _D.asigs.filter(function(a){ return !a._cli.revendedor_id; }).forEach(function(a) {
+    _D.asigs.filter(function(a){ return !a._cli.revendedor_id && !a._cli.eliminado; }).forEach(function(a) {
       var sisNombre = a.sistema_id === '45d2d4de-e938-4a95-827d-f29f575eff10' ? 'Trabajo puntual' : a._sis.nombre;
       var op = el('option', {value:a.id}, a._cli.nombre + ' - ' + sisNombre);
       op.dataset.fee = a.fee_mensual||0; sel.appendChild(op);
@@ -6823,7 +6813,7 @@ function vPartners() {
       revs.forEach(function(rev) {
         var sisIds=revSis.filter(function(rs){ return rs.revendedor_id===rev.id; }).map(function(rs){ return rs.sistema_id; });
         var sisList=sistemas.filter(function(s){ return sisIds.indexOf(s.id)!==-1; });
-        var clisDel = clientes.filter(function(c){ return c.revendedor_id===rev.id; });
+        var clisDel = clientes.filter(function(c){ return c.revendedor_id===rev.id && !c.eliminado; });
         var cliCount = clisDel.length;
 
         // Calcular saldo a cobrar este mes
@@ -6903,6 +6893,11 @@ function vPartnerPropio() {
     sbFetch('panel_sistemas?select=*&order=nombre.asc')
   ]).then(function(r) {
     var rev=r[0][0];
+    // Header con la marca del partner (white-label)
+    if (rev && rev.logo_b64) {
+      var lg = document.getElementById('logo');
+      if (lg) lg.src = rev.logo_b64;
+    }
     var sisIds=r[1].map(function(x){ return x.sistema_id; });
     var sisDisp=r[2].filter(function(s){ return sisIds.indexOf(s.id)!==-1; });
     vClientesPartner(rev,sisDisp);
@@ -7023,7 +7018,7 @@ function mEditarPartner(rev,sisList,sistemas,cb) {
 function vClientesPartner(rev,sistemas) {
   loading();
   Promise.all([
-    sbFetch('panel_clientes?revendedor_id=eq.'+rev.id+'&select=*&order=nombre.asc'),
+    sbFetch('panel_clientes?revendedor_id=eq.'+rev.id+'&eliminado=eq.false&select=*&order=nombre.asc'),
     sbFetch('panel_asignaciones?select=*'),
     sbFetch('panel_revendedor_sistemas?revendedor_id=eq.'+rev.id+'&select=sistema_id')
   ]).then(function(r) {
@@ -7060,22 +7055,7 @@ function vClientesPartner(rev,sistemas) {
         ch.appendChild(btnE);
         if (isSuperAdmin()) {
           var btnDelP=el('button',{class:'btn btnsm',style:'margin-left:4px;background:#FCEBEB;border-color:#FCEBEB;color:#A32D2D'},'X');
-          btnDelP.onclick=(function(c){ return function(){
-            var asigsC = asigs.filter(function(a){ return a.cliente_id===c.id; });
-            if (!confirm('Eliminar a "'+c.nombre+'"?\n\nSe borra TODO: '+asigsC.length+' asignacion(es) con sus cobros y recibos. No se puede deshacer.')) return;
-            if (!confirm('Segunda confirmación: eliminar DEFINITIVAMENTE a "'+c.nombre+'"?')) return;
-            var ids = asigsC.map(function(a){ return a.id; });
-            var porAsig = ids.length ? Promise.all([
-              sbFetch('panel_sub_entidades?asignacion_id=in.('+ids.join(',')+')',{method:'DELETE',prefer:'return=minimal'}).catch(function(){}),
-              sbFetch('panel_implementacion_fases?asignacion_id=in.('+ids.join(',')+')',{method:'DELETE',prefer:'return=minimal'}).catch(function(){}),
-              sbFetch('panel_cobros?asignacion_id=in.('+ids.join(',')+')',{method:'DELETE',prefer:'return=minimal'}).catch(function(){})
-            ]) : Promise.resolve();
-            porAsig
-              .then(function(){ return ids.length ? sbFetch('panel_asignaciones?cliente_id=eq.'+c.id,{method:'DELETE',prefer:'return=minimal'}) : null; })
-              .then(function(){ return sbFetch('panel_clientes?id=eq.'+c.id,{method:'DELETE',prefer:'return=minimal'}); })
-              .then(function(){ _D=null; vClientesPartner(rev,sistemas); })
-              .catch(function(e){ alert('Error al eliminar: '+e.message); });
-          }; })(cl);
+          btnDelP.onclick=(function(c){ return function(){ eliminarClienteCompleto(c, function(){ vClientesPartner(rev,sistemas); }); }; })(cl);
           ch.appendChild(btnDelP);
         }
         card.appendChild(ch);
