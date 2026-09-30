@@ -3825,9 +3825,15 @@ function vFinanzas() {
         if (ultimo) {
           var noCuotaPrevios = gastosPF.filter(function(g){ return g.mes_id===ultimo.id && g.tipo!=='ajuste' && !g.cuota_id; });
           noCuotaPrevios.forEach(function(g) {
+            // Conservar el dia del gasto en el mes nuevo (limitado a 28 para meses cortos)
+            var dia = 1;
+            if (g.fecha) { var dPrev = parseInt(g.fecha.slice(8,10), 10); if (dPrev >= 1) dia = Math.min(dPrev, 28); }
+            var fechaG = y+'-'+String(m).padStart(2,'0')+'-'+String(dia).padStart(2,'0');
             inserts.push(dbIns('panel_pf_gastos', {
-              mes_id: id, concepto: g.concepto, monto: 0, monto_usd: 0, categoria: g.categoria,
-              tipo: g.tipo, fecha: fecha, cuota_id: null, pagado: false
+              mes_id: id, concepto: g.concepto,
+              monto: Number(g.monto||0), monto_usd: Number(g.monto_usd||0),
+              monto_negocio: Number(g.monto_negocio||0), monto_usd_negocio: Number(g.monto_usd_negocio||0),
+              categoria: g.categoria, tipo: g.tipo, fecha: fechaG, cuota_id: null, pagado: false
             }));
           });
         }
