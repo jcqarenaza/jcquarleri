@@ -4350,7 +4350,7 @@ function vFinanzas() {
       GASTO_GRUPOS_PF.forEach(function(grupo) {
         var deEsteGrupo = restantes.filter(grupo.match);
         restantes = restantes.filter(function(g){ return !grupo.match(g); });
-        out[grupo.nombre] = deEsteGrupo.reduce(function(s,g){ return s+Number(g.monto||0); }, 0);
+        out[grupo.nombre] = deEsteGrupo.reduce(function(s,g){ return s + Number(g.monto||0) + Number(g.monto_usd||0) * tcUSD; }, 0);
       });
       return out;
     }
@@ -4385,7 +4385,7 @@ function vFinanzas() {
       if (ultimosMesesEv.length > 1) {
         var totalesPorMes = ultimosMesesEv.map(function(mm){ return {mes:mm, tot:totalesModulosPF(mm.id)}; });
         var evCard = el('div',{class:'card',style:'padding:16px;margin-bottom:14px'});
-        evCard.appendChild(el('div',{class:'st',style:'margin-bottom:12px'},'Evolucion por modulo (ultimos '+ultimosMesesEv.length+' meses)'));
+        evCard.appendChild(el('div',{class:'st',style:'margin-bottom:12px'},'Evolucion por modulo (ultimos '+ultimosMesesEv.length+' meses) — USD convertidos a ARS'));
         GASTO_GRUPOS_PF.forEach(function(grupo) {
           var serie = totalesPorMes.map(function(x){ return x.tot[grupo.nombre]||0; });
           if (!serie.some(function(v){ return v>0; })) return; // sin datos en ningun mes, no mostrar fila
@@ -4405,11 +4405,17 @@ function vFinanzas() {
           var colorCambio = (anterior!==null && actual>anterior) ? '#A32D2D' : (anterior!==null && actual<anterior) ? '#3D8A32' : '#94a3b8';
           rowHead.appendChild(el('span',{style:'font-size:11px;font-weight:600;color:'+colorCambio}, fmt(actual)+(cambioTxt?'  '+cambioTxt:'')));
           row.appendChild(rowHead);
-          var barsRow = el('div',{style:'display:flex;gap:4px;align-items:flex-end;height:28px'});
+          function abrevAR(v) {
+            if (v >= 1000000) return '$' + (v/1000000).toFixed(1).replace('.', ',').replace(',0','') + 'M';
+            if (v >= 1000) return '$' + Math.round(v/1000) + 'k';
+            return v > 0 ? '$' + Math.round(v) : '';
+          }
+          var barsRow = el('div',{style:'display:flex;gap:4px;align-items:flex-end;height:44px'});
           serie.forEach(function(v, idx) {
             var h = Math.max(2, Math.round(v/maxV*28));
             var esUltimo = idx === serie.length-1;
-            var bar = el('div',{style:'flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:28px'});
+            var bar = el('div',{style:'flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:44px'});
+            bar.appendChild(el('div',{style:'font-size:9px;color:'+(esUltimo?'#0B9EDA':'#94a3b8')+';font-weight:'+(esUltimo?'600':'400')+';white-space:nowrap;margin-bottom:2px'}, abrevAR(v)));
             bar.appendChild(el('div',{style:'width:100%;border-radius:3px 3px 0 0;background:'+(esUltimo?'#0B9EDA':'#CBD5E1')+';height:'+h+'px'}));
             barsRow.appendChild(bar);
           });
