@@ -186,7 +186,8 @@ async function doLogin() {
   if (saved) {
     try {
       var data = JSON.parse(saved);
-      if (data.token && data.usuario) {
+      var edadMin = data.ts ? (Date.now() - data.ts) / 60000 : 999;
+      if (data.token && data.usuario && edadMin < 50) {
         _authToken = data.token;
         _currentUser = data.usuario;
         // Ocultar hasta que app.js resuelva el rol

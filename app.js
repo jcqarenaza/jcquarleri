@@ -5928,11 +5928,18 @@ function coneosCall(action, payload) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'apikey': SB_KEY, 'Authorization': 'Bearer ' + tok },
     body: JSON.stringify({ action: action, payload: payload || {} })
-  }).then(function(r) { return r.json(); }).then(function(d) {
-    if (d && (d.error === 'ACTOR_NO_AUTENTICADO' || d.error === 'TOKEN_INVALIDO')) {
+  }).then(function(r) {
+    // 401: token vencido o inválido (puede venir del gateway, antes de nuestra función)
+    if (r.status === 401) {
       alert('Tu sesión expiró. Ingresá de nuevo al panel.');
       sessionStorage.removeItem('qp_auth'); location.reload();
-      throw new Error(d.error);
+      throw new Error('sesión expirada');
+    }
+    return r.json();
+  }).then(function(d) {
+    if (d && d.error === 'NO_AUTORIZADO') {
+      alert('No tenés permisos para esta acción.');
+      throw new Error('NO_AUTORIZADO');
     }
     return d;
   });
