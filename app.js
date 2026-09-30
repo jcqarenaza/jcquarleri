@@ -5917,11 +5917,25 @@ var _coneosEmpresas = [];
 var _coneosEmpresaSel = null;
 
 function coneosCall(action, payload) {
+  // Paso 0: la Edge Function valida al actor — se manda el JWT del usuario logueado, no la anon key
+  var tok = window._authToken;
+  if (!tok) {
+    alert('Sesión no válida. Ingresá de nuevo al panel.');
+    sessionStorage.removeItem('qp_auth'); location.reload();
+    return Promise.reject(new Error('sin sesión'));
+  }
   return fetch(SB_URL + '/functions/v1/coneos-admin', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SB_KEY },
+    headers: { 'Content-Type': 'application/json', 'apikey': SB_KEY, 'Authorization': 'Bearer ' + tok },
     body: JSON.stringify({ action: action, payload: payload || {} })
-  }).then(function(r) { return r.json(); });
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (d && (d.error === 'ACTOR_NO_AUTENTICADO' || d.error === 'TOKEN_INVALIDO')) {
+      alert('Tu sesión expiró. Ingresá de nuevo al panel.');
+      sessionStorage.removeItem('qp_auth'); location.reload();
+      throw new Error(d.error);
+    }
+    return d;
+  });
 }
 
 function vConeos() {
@@ -6081,7 +6095,16 @@ function vConeosEmpresa(emp) {
             btnReset.textContent = 'Resetear pass'; btnReset.disabled = false;
           }).catch(function(){ btnReset.textContent = 'Resetear pass'; btnReset.disabled = false; });
         }; })(a);
-        tr.appendChild(el('td', {}, [btnReset]));
+        var btnImp = el('button', {class:'btn btnsm', style:'margin-left:4px;background:#E6F6FD;border-color:#E6F6FD;color:#0C6FA3'}, 'Entrar como →');
+        (function(admin){ btnImp.onclick = function() {
+          btnImp.textContent = 'Generando...'; btnImp.disabled = true;
+          coneosCall('impersonar_admin', {user_id: admin.id, slug: emp.slug}).then(function(r){
+            btnImp.textContent = 'Entrar como →'; btnImp.disabled = false;
+            if (r.error || !r.link) { alert('Error: '+(r.error||'no se pudo generar el link')); return; }
+            window.open(r.link, '_blank');
+          }).catch(function(e){ btnImp.textContent = 'Entrar como →'; btnImp.disabled = false; alert('Error: '+e.message); });
+        }; })(a);
+        tr.appendChild(el('td', {}, [btnReset, btnImp]));
         admTb.appendChild(tr);
       });
       admTbl.appendChild(admTb); admSec.appendChild(admTbl);
