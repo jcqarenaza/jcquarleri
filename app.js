@@ -2231,6 +2231,23 @@ function mEditCliente(cl) {
       estadoRow.appendChild(actLbl);
     }
     body.appendChild(estadoRow);
+    // Partner (solo superadmin): asignar/sacar el cliente de un revendedor
+    if (isSuperAdmin()) {
+      var pWrap = el('div',{class:'fg',style:'margin-top:10px'});
+      pWrap.appendChild(el('label',{class:'fl'},'Partner'));
+      var pSel = el('select',{class:'fi',id:'ec-partner'});
+      pSel.appendChild(el('option',{value:''},'— Sin partner (cliente directo QP) —'));
+      pWrap.appendChild(pSel);
+      pWrap.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-top:3px'},'Al asignar un partner, el cliente sale de tus vistas y cobros y pasa a las del partner.'));
+      body.appendChild(pWrap);
+      sbFetch('revendedores?select=id,nombre&order=nombre.asc').then(function(revs){
+        (revs||[]).forEach(function(r){
+          var op = el('option',{value:r.id},r.nombre);
+          if (cl.revendedor_id === r.id) op.selected = true;
+          pSel.appendChild(op);
+        });
+      }).catch(function(){});
+    }
   }, function(foot) {
     foot.appendChild(cancelBtn());
     var ok = el('button', {class:'btn btnp'}, 'Guardar');
@@ -2238,7 +2255,9 @@ function mEditCliente(cl) {
       var eraDemo = !!cl.es_demo;
       var esDemo  = eraDemo ? !!(ge('ec-demo')&&ge('ec-demo').checked) : false;
       var pausado = !eraDemo ? !(ge('ec-activo')&&ge('ec-activo').checked) : false;
-      dbUpd('panel_clientes', cl.id, {nombre:gv('ecn'), empresa:gv('ece')||null, email:gv('ecm')||null, telefono:gv('ect')||null, notas:gv('ecno')||null, es_demo:esDemo, pausado:pausado})
+      var updCli = {nombre:gv('ecn'), empresa:gv('ece')||null, email:gv('ecm')||null, telefono:gv('ect')||null, notas:gv('ecno')||null, es_demo:esDemo, pausado:pausado};
+      if (isSuperAdmin() && ge('ec-partner')) updCli.revendedor_id = gv('ec-partner') || null;
+      dbUpd('panel_clientes', cl.id, updCli)
       .then(function(){
         closeM();
         if (eraDemo && !esDemo) {
