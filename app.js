@@ -67,7 +67,7 @@ var MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
 var _finUIState = { modoFin:null, tabActual:null, mesSeleccionadoPF:null, periodo:null };
 var P_LAB = {vercel:'Vercel', supabase:'Supabase', github:'GitHub', app_script:'App Script', otro:'Otro'};
 var T_LAB = {mono_empresa:'Mono empresa', multi_empresa:'Multi empresa', multi_usuario:'Multi usuario', saas:'SaaS'};
-var M_LAB = {transferencia:'Transferencia', efectivo:'Efectivo', mercadopago:'MercadoPago', otro:'Otro'};
+var M_LAB = {transferencia:'Transferencia', efectivo:'Efectivo', mercadopago:'MercadoPago', tarjeta:'Tarjeta', dai:'DAI (cripto)', otro:'Otro'};
 var S_COL = {Cortelab:'#0B9EDA', MobixERP:'#5BBD4E', 'El Piamonte':'#E8855A', 'Envios Distri':'#0C6FA3', Artemis:'#3D8A32'};
 var S_BG  = {Cortelab:'#E6F6FD', MobixERP:'#EDF7EA', 'El Piamonte':'#FEF0EB', 'Envios Distri':'#E0F0FA', Artemis:'#E8F5E0'};
 
@@ -111,6 +111,11 @@ function app() { return ge('app'); }
 function setApp(node) { var a = app(); a.innerHTML = ''; a.appendChild(node); }
 function loading() { setApp(el('div', {class:'emp'}, 'Cargando...')); }
 
+// Pagos parciales
+var MEDIOS_PAGO = [['transferencia','Transferencia'],['efectivo','Efectivo'],['tarjeta','Tarjeta'],['mercadopago','MercadoPago'],['dai','DAI (cripto)'],['otro','Otro']];
+function pagadoDe(c) { return (c._pagos||[]).reduce(function(s,p){ return s+Number(p.monto||0); }, 0); }
+function saldoDe(c) { return Math.max(0, Number(c.monto||0) - pagadoDe(c)); }
+
 // Load all data
 function cargar() {
   return Promise.all([
@@ -118,10 +123,11 @@ function cargar() {
     dbGet('panel_asignaciones'), dbGet('panel_cobros'), dbGet('panel_sub_entidades'),
     dbGet('panel_implementacion_fases'), dbGet('panel_alertas'),
     sbFetch('panel_fases?select=*&order=orden.asc'),
-    sbFetch('panel_recibos?select=cobro_id,numero&order=numero.desc')
+    sbFetch('panel_recibos?select=cobro_id,numero&order=numero.desc'),
+    sbFetch('panel_pagos?select=*&order=fecha.asc').catch(function(){ return []; })
   ]).then(function(r) {
     console.log('cargar OK:', r[0].length, 'sis,', r[1].length, 'cls,', r[2].length, 'asigs');
-    var sis=r[0], cls=r[1], asigs=r[2], cobs=r[3], subs=r[4], fases=r[5], alertasDb=r[6], fasesEstructura=r[7], recibos=r[8]||[];
+    var sis=r[0], cls=r[1], asigs=r[2], cobs=r[3], subs=r[4], fases=r[5], alertasDb=r[6], fasesEstructura=r[7], recibos=r[8]||[], pagos=r[9]||[];
     // Enriquecer fases de asignación con la fase estructural
     asigs.forEach(function(a) {
       a._sis  = sis.find(function(s){ return s.id===a.sistema_id; })||{nombre:'?'};
@@ -133,6 +139,7 @@ function cargar() {
       a._fasesEstructura = fasesEstructura.filter(function(f){ return f.sistema_id===a.sistema_id; });
     });
     cobs.forEach(function(c) {
+      c._pagos = pagos.filter(function(p){ return p.cobro_id === c.id; });
       var a = asigs.find(function(x){ return x.id===c.asignacion_id; })||{};
       c._sis = a._sis||{nombre:'-'}; c._cli = a._cli||{nombre:'-'};
       c._asig = a;
@@ -248,7 +255,7 @@ function gerarRecibo(d, numRec) {
   var logoSrc = ge('logo') ? ge('logo').src : '';
   var ec = d.estado==='pagado' ? '#3D8A32' : '#854F0B';
   var eb = d.estado==='pagado' ? '#EDF7EA' : '#FAEEDA';
-  var estadoLabel = d.estado==='pagado' ? 'PAGADO' : 'PENDIENTE';
+  var estadoLabel = d.estado==='pagado' ? 'PAGADO' : (d.estado==='parcial' ? 'PARCIAL' : 'PENDIENTE');
   var fechaStr = fdate(d.fecha);
   var montoStr = fmt(d.monto);
   var waNum = (d.tel||'').replace(/\D/g,'');
@@ -338,13 +345,24 @@ function vDash() {
     var mesActual = hoy.getMonth() + 1;
     var anioActual = hoy.getFullYear();
     var als = calcAlertas(D.asigs, D.alertasDb);
-    var pen = D.cobs.filter(function(c){ return c.estado==='pendiente' && !c._cli.revendedor_id && !c._cli.eliminado; });
-    var totP = pen.reduce(function(s,c){ return s+Number(c.monto); }, 0);
-    var cobradoMes = D.cobs.filter(function(c){
-      if (c.estado !== 'pagado' || !c.fecha_pago || c._cli.revendedor_id || c._cli.eliminado) return false;
-      var f = new Date(c.fecha_pago);
-      return f.getMonth()+1 === mesActual && f.getFullYear() === anioActual;
-    }).reduce(function(s,c){ return s+Number(c.monto); }, 0);
+    var pen = D.cobs.filter(function(c){ return (c.estado==='pendiente' || c.estado==='parcial') && !c._cli.revendedor_id && !c._cli.eliminado; });
+    var totP = pen.reduce(function(s,c){ return s+saldoDe(c); }, 0);
+    // Cobrado del mes: suma de PAGOS del mes (incluye parciales); los cobros viejos sin pagos hijos suman por fecha_pago
+    var cobradoMes = D.cobs.filter(function(c){ return !c._cli.revendedor_id && !c._cli.eliminado; }).reduce(function(s,c){
+      var ps = c._pagos||[];
+      if (ps.length) {
+        return s + ps.reduce(function(s2,p){
+          if (!p.fecha) return s2;
+          var f = new Date(p.fecha);
+          return (f.getMonth()+1===mesActual && f.getFullYear()===anioActual) ? s2+Number(p.monto||0) : s2;
+        }, 0);
+      }
+      if (c.estado==='pagado' && c.fecha_pago) {
+        var f2 = new Date(c.fecha_pago);
+        if (f2.getMonth()+1===mesActual && f2.getFullYear()===anioActual) return s+Number(c.monto||0);
+      }
+      return s;
+    }, 0);
     var clsPropios = D.cls.filter(function(cl){ return !cl.revendedor_id && !cl.eliminado; });
     var clsConAsig = clsPropios.filter(function(cl){ return D.asigs.some(function(a){ return a.cliente_id===cl.id; }); });
     var clsSinSis = clsPropios.filter(function(cl){ return !D.asigs.some(function(a){ return a.cliente_id===cl.id; }); });
@@ -1676,7 +1694,7 @@ function vCobros() {
     wrap.appendChild(sh);
     // Tabs
     var tabs = el('div', {class:'tabs'});
-    ['todos','pendiente','pagado','vencido','cancelado'].forEach(function(t, i) {
+    ['todos','pendiente','parcial','pagado','vencido','cancelado'].forEach(function(t, i) {
       var tab = el('button', {class:'tab'+(i===0?' on':'')}, t.charAt(0).toUpperCase()+t.slice(1));
       tab.dataset.tab = t;
       tab.onclick = function() { filtrar(t); };
@@ -1739,7 +1757,13 @@ function filtrar(f) {
     var tdDesc = el('td', {style:'color:#94a3b8;font-size:12px'});
     tdDesc.appendChild(document.createTextNode(c.descripcion||'-'));
     tr.appendChild(tdDesc);
-    tr.appendChild(el('td', {style:'font-weight:500'}, fmt(c.monto)));
+    var tdMonto = el('td', {style:'font-weight:500'});
+    tdMonto.appendChild(document.createTextNode(fmt(c.monto)));
+    if (c.estado==='parcial') {
+      tdMonto.appendChild(el('div',{style:'font-size:10px;color:#0B9EDA;font-weight:600'},'pagado '+fmt(pagadoDe(c))));
+      tdMonto.appendChild(el('div',{style:'font-size:10px;color:#854F0B'},'saldo '+fmt(saldoDe(c))));
+    }
+    tr.appendChild(tdMonto);
     // metodo column removed
     var fechaTd = el('td', {});
     if (c.estado === 'pagado' && c.fecha_pago) {
@@ -1752,7 +1776,7 @@ function filtrar(f) {
     tr.appendChild(fechaTd);
     // Estado select
     var sel = el('select', {class:'fi', style:'width:auto;padding:4px 8px;font-size:11px'});
-    ['pendiente','pagado','vencido','cancelado'].forEach(function(e2) {
+    ['pendiente','parcial','pagado','vencido','cancelado'].forEach(function(e2) {
       var opt = el('option', {value:e2}, e2); if (c.estado===e2) opt.selected = true; sel.appendChild(opt);
     });
     (function(cid){ sel.onchange = function(){ cambiaEstado(cid, this.value); }; })(c.id);
@@ -1762,12 +1786,91 @@ function filtrar(f) {
     (function(cob){ btnR.onclick = function(){ verRecibo(cob); }; })(c);
     var btnDel = el('button', {class:'btn btnsm', style:'background:#FCEBEB;border-color:#FCEBEB;color:#A32D2D'}, 'X');
     (function(cob){ btnDel.onclick = function(){ eliminarCobroObj(cob); }; })(c);
+    var accs = [btnR, btnDel];
+    if (c.estado==='pendiente' || c.estado==='vencido' || c.estado==='parcial') {
+      var btnP = el('button', {class:'btn btnsm btnp'}, '$ Pago');
+      (function(cob){ btnP.onclick = function(){ mRegistrarPago(cob); }; })(c);
+      accs = [btnP, btnR, btnDel];
+    }
     var tdAcc = el('td', {style:'white-space:nowrap'});
-    [btnR, btnDel].forEach(function(b, i){ if(i>0) tdAcc.appendChild(document.createTextNode(' ')); tdAcc.appendChild(b); });
+    accs.forEach(function(b, i){ if(i>0) tdAcc.appendChild(document.createTextNode(' ')); tdAcc.appendChild(b); });
     tr.appendChild(tdAcc);
     tb.appendChild(tr);
   });
 }
+function mRegistrarPago(c) {
+  var saldo = saldoDe(c);
+  openM(makeModal('Registrar pago', function(body) {
+    body.appendChild(el('div', {class:'ibox'}, (c._cli.nombre||'-') + ' — ' + (c.descripcion||c.tipo_cobro||'-')));
+    var resumen = el('div',{style:'display:flex;gap:14px;margin:8px 0 12px;font-size:12px'});
+    resumen.appendChild(el('div',{},[el('span',{style:'color:#94a3b8'},'Total: '), el('b',{},fmt(c.monto))]));
+    resumen.appendChild(el('div',{},[el('span',{style:'color:#94a3b8'},'Pagado: '), el('b',{style:'color:#0B9EDA'},fmt(pagadoDe(c)))]));
+    resumen.appendChild(el('div',{},[el('span',{style:'color:#94a3b8'},'Saldo: '), el('b',{style:'color:#854F0B'},fmt(saldo))]));
+    body.appendChild(resumen);
+    if ((c._pagos||[]).length) {
+      var hist = el('div',{style:'background:#F8FAFC;border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:11px'});
+      hist.appendChild(el('div',{style:'font-weight:600;color:#64748b;margin-bottom:4px'},'Pagos registrados'));
+      var ML = {}; MEDIOS_PAGO.forEach(function(m){ ML[m[0]]=m[1]; });
+      c._pagos.forEach(function(p){
+        hist.appendChild(el('div',{style:'display:flex;justify-content:space-between;padding:2px 0'},[
+          el('span',{style:'color:#94a3b8'}, fdate(p.fecha) + ' — ' + (ML[p.medio]||p.medio||'-') + (p.notas?' ('+p.notas+')':'')),
+          el('b',{}, fmt(p.monto))
+        ]));
+      });
+      body.appendChild(hist);
+    }
+    mkRow2(body,
+      mkFg('Monto del pago ($)', mkInput('rp-monto','number',saldo)),
+      mkFg('Fecha', mkInput('rp-fecha','date',new Date().toISOString().slice(0,10)))
+    );
+    mkRow2(body,
+      mkFg('Medio', mkSelect('rp-medio', MEDIOS_PAGO, c.metodo||'transferencia')),
+      mkFg('Notas (opcional)', mkInput('rp-notas','text','','ej: últimos 4 díg. tarjeta, hash tx'))
+    );
+    var lg = el('div',{class:'fg',style:'margin-top:4px'});
+    var chk = el('input',{type:'checkbox',id:'rp-recibo',checked:'checked'});
+    var lbl = el('label',{style:'font-size:12px;color:#64748b;display:flex;align-items:center;gap:6px'});
+    lbl.appendChild(chk); lbl.appendChild(document.createTextNode('Generar recibo de este pago'));
+    lg.appendChild(lbl); body.appendChild(lg);
+  }, function(foot) {
+    foot.appendChild(cancelBtn());
+    var ok = el('button', {class:'btn btnp'}, 'Registrar pago');
+    ok.onclick = function() {
+      var monto = Number(gv('rp-monto')||0);
+      var fecha = gv('rp-fecha');
+      var medio = gv('rp-medio');
+      if (!monto || monto <= 0) { alert('Ingresa un monto válido'); return; }
+      if (monto > saldo + 0.01) { alert('El pago supera el saldo (' + fmt(saldo) + ')'); return; }
+      if (!fecha) { alert('Ingresa la fecha'); return; }
+      ok.disabled = true; ok.textContent = 'Guardando...';
+      var quiereRecibo = ge('rp-recibo') && ge('rp-recibo').checked;
+      dbIns('panel_pagos', {cobro_id: c.id, monto: monto, fecha: fecha, medio: medio, notas: gv('rp-notas')||null})
+      .then(function(rows){
+        var totalPagado = pagadoDe(c) + monto;
+        var completo = totalPagado >= Number(c.monto||0) - 0.01;
+        var upd = { metodo: medio, estado: completo ? 'pagado' : 'parcial' };
+        if (completo) upd.fecha_pago = fecha;
+        return dbUpd('panel_cobros', c.id, upd).then(function(){
+          closeM(); _D = null;
+          if (quiereRecibo) {
+            mostrarReciboModal({
+              cli: (c._cli.nombre||'') + (c._cli.empresa ? ' (' + c._cli.empresa + ')' : ''),
+              sis: c._sis ? c._sis.nombre : null,
+              desc: (c.descripcion||c.tipo_cobro||'Cobro') + (completo ? '' : ' — Pago parcial ' + fmt(monto) + ' de ' + fmt(c.monto)),
+              monto: monto, fecha: fecha, met: medio,
+              cobro_id: c.id, nuevoRecibo: true
+            });
+          } else {
+            vCobros();
+          }
+        });
+      })
+      .catch(function(e){ ok.disabled=false; ok.textContent='Registrar pago'; alert('Error: ' + e.message); });
+    };
+    foot.appendChild(ok);
+  }));
+}
+
 function mEditarCobro(c) {
   openM(makeModal('Editar cobro', function(body) {
     body.appendChild(el('div', {class:'ibox'}, (c._cli.nombre||'-') + ' — ' + (c._sis.nombre||'-')));
@@ -1775,7 +1878,7 @@ function mEditarCobro(c) {
     addFg(body, 'Descripcion', mkInput('ec-desc','text',c.descripcion||''));
     mkRow2(body,
       mkFg('Monto ($)', mkInput('ec-monto','number',c.monto||0)),
-      mkFg('Metodo', mkSelect('ec-met',[['transferencia','Transferencia'],['efectivo','Efectivo'],['mercadopago','MercadoPago'],['otro','Otro']],c.metodo||'transferencia'))
+      mkFg('Metodo', mkSelect('ec-met', MEDIOS_PAGO, c.metodo||'transferencia'))
     );
     mkRow2(body,
       mkFg('Vencimiento', mkInput('ec-venc','date',c.fecha_vencimiento?c.fecha_vencimiento.slice(0,10):'')),
@@ -1932,7 +2035,7 @@ function mReciboRapido() {
 
 function mostrarReciboModal(d) {
   var logoSrc = ge('logo') ? ge('logo').src : '';
-  var M_LAB = {transferencia:'Transferencia',efectivo:'Efectivo',mercadopago:'MercadoPago',otro:'Otro'};
+  var M_LAB = {transferencia:'Transferencia',efectivo:'Efectivo',mercadopago:'MercadoPago',tarjeta:'Tarjeta',dai:'DAI (cripto)',otro:'Otro'};
 
   function renderRecibo(conLogo, numRec) {
     var numStr = numRec ? String(numRec).padStart(4,'0') : '';
@@ -2021,7 +2124,19 @@ function mostrarReciboModal(d) {
   }
   window.__reciboToggleLogo = function(val) { escribirRecibo(window.__reciboNum||null, val); };
   // Pedir numero de recibo
-  if (d.cobro_id) {
+  if (d.cobro_id && d.nuevoRecibo) {
+    // Pago parcial/nuevo: SIEMPRE un recibo nuevo por cada pago (no reusar el del cobro)
+    escribirLoading();
+    fetch(SB_URL + '/rest/v1/rpc/next_recibo_num', {
+      method: 'POST',
+      headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' },
+      body: '{}'
+    }).then(function(r){ return r.json(); }).then(function(n){
+      window.__reciboNum = n;
+      dbIns('panel_recibos', { numero: n, cobro_id: d.cobro_id, cliente: d.cli||null, sistema: d.sis||null, monto: d.monto||null, fecha: d.fecha||null }).catch(function(){});
+      escribirRecibo(n, true);
+    }).catch(function(){ window.__reciboNum = null; escribirRecibo(null, true); });
+  } else if (d.cobro_id) {
     escribirLoading();
     sbFetch('panel_recibos?cobro_id=eq.' + d.cobro_id + '&select=numero&order=numero.desc&limit=1')
       .then(function(rows) {
