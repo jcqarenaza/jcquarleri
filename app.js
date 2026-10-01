@@ -3199,6 +3199,7 @@ function vFinanzas() {
     cuotasPF:           sbFetch('panel_pf_cuotas?select=*&order=activa.desc,inicio_year.asc,inicio_month.asc').catch(function(){ return []; }),
     mesesPF:            sbFetch('panel_pf_meses?select=*&order=year.asc,month.asc').catch(function(){ return []; }),
     gastosPF:           sbFetch('panel_pf_gastos?select=*&order=fecha.asc').catch(function(){ return []; }),
+    entregasPF:         sbFetch('panel_pf_entregas?select=*&order=fecha.asc').catch(function(){ return []; }),
     ingresosPF:         sbFetch('panel_pf_ingresos?select=*&order=fecha.asc').catch(function(){ return []; }),
     juanPF:             sbFetch('panel_pf_liquidacion_juan?select=*').catch(function(){ return []; }),
     daianaPF:           sbFetch('panel_pf_daiana?select=*').catch(function(){ return []; }),
@@ -3221,6 +3222,11 @@ function vFinanzas() {
     var gastosPers=R.gastosPers||[], pagoGastosPers=R.pagoGastosPers||[];
     var cuotasPF=R.cuotasPF||[];
     var mesesPF=R.mesesPF||[], gastosPF=R.gastosPF||[], ingresosPF=R.ingresosPF||[], juanPF=R.juanPF||[], daianaPF=R.daianaPF||[], deudasPF=R.deudasPF||[], presupuestoPF=R.presupuestoPF||[];
+    var entregasPF=R.entregasPF||[];
+    gastosPF.forEach(function(g){ g._entregas = entregasPF.filter(function(e){ return e.gasto_id===g.id; }); });
+    // Entregas parciales sobre un gasto PF (en ARS, contra la billetera personal del gasto)
+    function entregadoPF(g) { return (g._entregas||[]).reduce(function(s,e){ return s+Number(e.monto||0); }, 0); }
+    function saldoPF(g) { return Math.max(0, Number(g.monto||0) - entregadoPF(g)); }
     var prestamosPF=R.prestamosPF||[];
     var prestamosPagosPF=R.prestamosPagosPF||[], autoPF=R.autoPF||[];
     var deudasMovsPF=R.deudasMovsPF||[];
@@ -4170,7 +4176,7 @@ function vFinanzas() {
       var gastosSinPagar = gastosPF.filter(function(g){
         return g.mes_id===m.id && !g.pagado && (Number(g.monto)>0 || Number(g.monto_usd)>0);
       });
-      var sale30 = gastosSinPagar.reduce(function(s,g){ return s + Number(g.monto||0) + Number(g.monto_usd||0)*tcUSD; }, 0);
+      var sale30 = gastosSinPagar.reduce(function(s,g){ return s + saldoPF(g) + Number(g.monto_usd||0)*tcUSD; }, 0);
       var neto30 = entra30 - sale30;
       var flujoCard = el('div',{class:'card',style:'padding:16px;margin-top:14px'});
       flujoCard.appendChild(el('div',{class:'st',style:'margin-bottom:10px'},'Flujo próximos 30 días'));
@@ -4769,12 +4775,21 @@ function vFinanzas() {
             tdMonto.appendChild(el('div',{style:'font-size:10px;color:#854F0B;font-weight:500'},'🏢 '+partesNeg.join(' + ')+' negocio'));
           }
           tr.appendChild(tdMonto);
+          if (!g.pagado && entregadoPF(g) > 0) {
+            tdMonto.appendChild(el('div',{style:'font-size:10px;color:#0B9EDA;font-weight:600'},'entregado '+fmt(entregadoPF(g))));
+            tdMonto.appendChild(el('div',{style:'font-size:10px;color:#854F0B'},'falta '+fmt(saldoPF(g))));
+          }
           tr.appendChild(el('td',{style:'font-size:12px;color:#64748B;white-space:nowrap'}, g.fecha ? fdate(g.fecha) : '—'));
           var tog=el('label',{class:'tog'});
           var inp=el('input',{type:'checkbox'}); if (g.pagado) inp.checked=true;
           (function(gg){ inp.onchange=function(){ var checked=this.checked; dbUpd('panel_pf_gastos',gg.id,{pagado:checked}).then(function(){ gg.pagado=checked; }); }; })(g);
           tog.appendChild(inp); tog.appendChild(el('span',{class:'sl'}));
           tr.appendChild(el('td',{},[tog]));
+          var btnPg=null;
+          if (!g.pagado && Number(g.monto)>0) {
+            btnPg=el('button',{class:'btn btnsm btnp'},'$');
+            (function(gg){ btnPg.onclick=function(){ mEntregaPF(gg); }; })(g);
+          }
           var btnE=el('button',{class:'btn btnsm'},'Editar');
           (function(gg){ btnE.onclick=function(){ mEditarGastoPF(gg,function(patch){ Object.assign(gg, patch); renderAll(); }); }; })(g);
           var btnD=el('button',{class:'btn btnsm',style:'margin-left:4px;background:#FCEBEB;border-color:#FCEBEB;color:#A32D2D'},'X');
@@ -4786,11 +4801,74 @@ function vFinanzas() {
               renderAll();
             });
           }; })(g.id);
-          tr.appendChild(el('td',{style:'white-space:nowrap'},[btnE,btnD]));
+          var accPF=[]; if (btnPg) accPF.push(btnPg); accPF.push(btnE); accPF.push(btnD);
+          var tdAccPF=el('td',{style:'white-space:nowrap'});
+          accPF.forEach(function(b,i){ if(i>0) tdAccPF.appendChild(document.createTextNode(' ')); tdAccPF.appendChild(b); });
+          tr.appendChild(tdAccPF);
           tb.appendChild(tr);
         });
         tbl.appendChild(tb); card.appendChild(tbl);
         return card;
+      }
+
+      // Modal de entregas parciales de un gasto PF (tarjeta, Daiana, etc.)
+      function mEntregaPF(g) {
+        var saldo = saldoPF(g);
+        openM(makeModal('Entregas — ' + g.concepto, function(body) {
+          var resumen = el('div',{style:'display:flex;gap:14px;margin:4px 0 12px;font-size:12px'});
+          resumen.appendChild(el('div',{},[el('span',{style:'color:#94a3b8'},'Total: '), el('b',{},fmt(g.monto))]));
+          resumen.appendChild(el('div',{},[el('span',{style:'color:#94a3b8'},'Entregado: '), el('b',{style:'color:#0B9EDA'},fmt(entregadoPF(g)))]));
+          resumen.appendChild(el('div',{},[el('span',{style:'color:#94a3b8'},'Falta: '), el('b',{style:'color:#854F0B'},fmt(saldo))]));
+          body.appendChild(resumen);
+          if ((g._entregas||[]).length) {
+            var hist = el('div',{style:'background:#F8FAFC;border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:11px'});
+            hist.appendChild(el('div',{style:'font-weight:600;color:#64748b;margin-bottom:4px'},'Entregas'));
+            g._entregas.forEach(function(e2){
+              var fila = el('div',{style:'display:flex;justify-content:space-between;align-items:center;padding:2px 0'});
+              fila.appendChild(el('span',{style:'color:#94a3b8'}, fdate(e2.fecha) + (e2.notas?' — '+e2.notas:'')));
+              var der = el('span',{});
+              der.appendChild(el('b',{}, fmt(e2.monto)));
+              var bx = el('button',{class:'btn btnsm',style:'margin-left:6px;padding:1px 6px;font-size:10px;background:#FCEBEB;border-color:#FCEBEB;color:#A32D2D'},'x');
+              (function(eid){ bx.onclick = function(){
+                if (!confirm('Eliminar esta entrega?')) return;
+                sbFetch('panel_pf_entregas?id=eq.'+eid,{method:'DELETE',prefer:'return=minimal'}).then(function(){
+                  var ix = g._entregas.findIndex(function(x){ return x.id===eid; });
+                  if (ix>=0) g._entregas.splice(ix,1);
+                  closeM(); renderAll(); mEntregaPF(g);
+                });
+              }; })(e2.id);
+              der.appendChild(bx);
+              fila.appendChild(der);
+              hist.appendChild(fila);
+            });
+            body.appendChild(hist);
+          }
+          mkRow2(body,
+            mkFg('Monto de la entrega ($)', mkInput('epf-monto','number',saldo)),
+            mkFg('Fecha', mkInput('epf-fecha','date',new Date().toISOString().slice(0,10)))
+          );
+          addFg(body, 'Nota (opcional)', mkInput('epf-notas','text','','ej: primera entrega, efectivo'));
+        }, function(foot) {
+          foot.appendChild(cancelBtn());
+          var ok = el('button',{class:'btn btnp'},'Registrar entrega');
+          ok.onclick = function() {
+            var monto = Number(gv('epf-monto')||0);
+            var fecha = gv('epf-fecha');
+            if (!monto || monto<=0) { alert('Ingresa un monto válido'); return; }
+            if (monto > saldo + 0.01) { alert('La entrega supera lo que falta ('+fmt(saldo)+')'); return; }
+            if (!fecha) { alert('Ingresa la fecha'); return; }
+            ok.disabled = true; ok.textContent = 'Guardando...';
+            dbIns('panel_pf_entregas', {gasto_id: g.id, monto: monto, fecha: fecha, notas: gv('epf-notas')||null})
+            .then(function(rows){
+              g._entregas = (g._entregas||[]).concat(rows && rows[0] ? [rows[0]] : [{monto:monto,fecha:fecha}]);
+              var completo = entregadoPF(g) >= Number(g.monto||0) - 0.01;
+              var fin = completo ? dbUpd('panel_pf_gastos', g.id, {pagado:true}).then(function(){ g.pagado=true; }) : Promise.resolve();
+              return fin.then(function(){ closeM(); renderAll(); });
+            })
+            .catch(function(e){ ok.disabled=false; ok.textContent='Registrar entrega'; alert('Error: '+e.message); });
+          };
+          foot.appendChild(ok);
+        }));
       }
 
       var restantes = gMes.slice();
