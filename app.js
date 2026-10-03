@@ -7261,12 +7261,12 @@ function mBajaPartner(rev, revsActivos, cliCount, cb) {
       var pasos = Promise.resolve();
       if (cliCount>0) {
         pasos = pasos.then(function(){
-          return sbFetch('panel_clientes?revendedor_id=eq.'+rev.id, {method:'PATCH', prefer:'return=minimal', body: JSON.stringify({revendedor_id: destino})});
+          return sbFetch('panel_clientes?revendedor_id=eq.'+rev.id, {method:'PATCH', prefer:'return=minimal', body: {revendedor_id: destino}});
         });
       }
       pasos
-        .then(function(){ return sbFetch('revendedores?id=eq.'+rev.id, {method:'PATCH', prefer:'return=minimal', body: JSON.stringify({activo:false})}); })
-        .then(function(){ return sbFetch('panel_usuarios?revendedor_id=eq.'+rev.id+'&rol=eq.partner', {method:'PATCH', prefer:'return=minimal', body: JSON.stringify({rol:'baja'})}).catch(function(){}); })
+        .then(function(){ return sbFetch('revendedores?id=eq.'+rev.id, {method:'PATCH', prefer:'return=minimal', body: {activo:false}}); })
+        .then(function(){ return sbFetch('panel_usuarios?revendedor_id=eq.'+rev.id+'&rol=eq.partner', {method:'PATCH', prefer:'return=minimal', body: {rol:'baja'}}).catch(function(){}); })
         .then(function(){ _D = null; closeM(); if (cb) cb(); })
         .catch(function(e){ ok.disabled=false; ok.textContent='Dar de baja'; alert('Error: ' + e.message); });
     };
