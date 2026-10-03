@@ -7013,11 +7013,11 @@ function vPartners() {
     sbFetch('panel_asignaciones?select=*'),
     fetch('https://dolarapi.com/v1/dolares/oficial').then(function(r){ return r.json(); }).catch(function(){ return null; })
   ]).then(function(r) {
-    var revs=(r[0]||[]).filter(function(rv){ return rv.activo!==false; }),revSis=r[1],sistemas=r[2],clientes=r[3],asigs=r[4],dolarData=r[5];
-    var revsActivos=revs;
+    var revs=r[0]||[],revSis=r[1],sistemas=r[2],clientes=r[3],asigs=r[4],dolarData=r[5];
+    var revsActivos=revs.filter(function(rv){ return rv.activo!==false; });
     var tc = dolarData && dolarData.venta ? Number(dolarData.venta) : null;
     var wrap=el('div',{}); var sh=el('div',{class:'sh'});
-    sh.appendChild(el('span',{class:'st'},'Partners ('+revs.length+')'));
+    sh.appendChild(el('span',{class:'st'},'Partners ('+revsActivos.length+')'));
     var btnN=el('button',{class:'btn btnp'},'+ Nuevo partner');
     btnN.onclick=function(){ mNuevoPartner(sistemas,function(){ vPartners(); }); };
     sh.appendChild(btnN); wrap.appendChild(sh);
@@ -7025,6 +7025,36 @@ function vPartners() {
       wrap.appendChild(el('div',{class:'card'},[el('div',{class:'emp'},'No hay partners todavía')]));
     } else {
       revs.forEach(function(rev) {
+        if (rev.activo === false) {
+          // Partner dado de baja: visible, griseado, solo Habilitar
+          var cardB=el('div',{class:'cc',style:'opacity:.55'}); var chB=el('div',{class:'ch'});
+          if (rev.logo_b64) {
+            chB.appendChild(el('img',{src:rev.logo_b64,style:'width:36px;height:36px;object-fit:contain;border-radius:8px;border:.5px solid #E2E8F0;background:#fff;filter:grayscale(1)'}));
+          } else {
+            var iniB=rev.nombre.split(' ').map(function(x){ return x[0]||''; }).slice(0,2).join('');
+            chB.appendChild(el('div',{class:'av',style:'background:#94a3b8'},iniB));
+          }
+          var infoB=el('div',{style:'flex:1'});
+          var nomB=el('div',{style:'font-weight:500;font-size:14px;display:flex;align-items:center;gap:8px'});
+          nomB.appendChild(document.createTextNode(rev.nombre));
+          nomB.appendChild(el('span',{style:'font-size:10px;font-weight:600;background:#F1F5F9;color:#64748b;border-radius:999px;padding:2px 8px'},'De baja'));
+          infoB.appendChild(nomB);
+          infoB.appendChild(el('div',{style:'font-size:12px;color:#94a3b8'},rev.email||''));
+          chB.appendChild(infoB);
+          var btnHab=el('button',{class:'btn btnsm btnp'},'Habilitar');
+          btnHab.onclick=(function(rv){ return function(){
+            if (!confirm('Volver a habilitar a "'+rv.nombre+'"? Su usuario recupera el acceso al panel. Los clientes que tenía NO vuelven solos (quedaron donde los traspasaste).')) return;
+            btnHab.disabled=true; btnHab.textContent='Habilitando...';
+            sbFetch('revendedores?id=eq.'+rv.id, {method:'PATCH', prefer:'return=minimal', body: {activo:true}})
+              .then(function(){ return sbFetch('panel_usuarios?revendedor_id=eq.'+rv.id+'&rol=eq.baja', {method:'PATCH', prefer:'return=minimal', body: {rol:'partner'}}).catch(function(){}); })
+              .then(function(){ _D=null; vPartners(); })
+              .catch(function(e){ btnHab.disabled=false; btnHab.textContent='Habilitar'; alert('Error: '+e.message); });
+          }; })(rev);
+          chB.appendChild(btnHab);
+          cardB.appendChild(chB);
+          wrap.appendChild(cardB);
+          return;
+        }
         var sisIds=revSis.filter(function(rs){ return rs.revendedor_id===rev.id; }).map(function(rs){ return rs.sistema_id; });
         var sisList=sistemas.filter(function(s){ return sisIds.indexOf(s.id)!==-1; });
         var clisDel = clientes.filter(function(c){ return c.revendedor_id===rev.id && !c.eliminado; });
