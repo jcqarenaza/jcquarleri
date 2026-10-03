@@ -1608,6 +1608,7 @@ function vClientes() {
 
       // ── Sección Partners ──────────────────────────────────────
       sbFetch('revendedores?select=*&order=nombre.asc').then(function(revs) {
+        revs = (revs||[]).filter(function(rv){ return rv.activo!==false; });
         if (!revs || !revs.length) return;
         wrap.appendChild(el('div', {class:'sh', style:'margin-top:16px'}, [el('span', {class:'st'}, 'Partners (' + revs.length + ')')]));
         revs.forEach(function(rev) {
@@ -2374,7 +2375,8 @@ function mEditCliente(cl) {
       pWrap.appendChild(pSel);
       pWrap.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-top:3px'},'Al asignar un partner, el cliente sale de tus vistas y cobros y pasa a las del partner.'));
       body.appendChild(pWrap);
-      sbFetch('revendedores?select=id,nombre&order=nombre.asc').then(function(revs){
+      sbFetch('revendedores?select=id,nombre,activo&order=nombre.asc').then(function(revs){
+        revs = (revs||[]).filter(function(rv){ return rv.activo!==false; });
         (revs||[]).forEach(function(r){
           var op = el('option',{value:r.id},r.nombre);
           if (cl.revendedor_id === r.id) op.selected = true;
@@ -6994,7 +6996,8 @@ function mNuevoAdminConeos(emp, cb) {
   if (window._onAuthReady && u) window._onAuthReady(u);
   else document.body.classList.remove('qp-loading');
   if (u && u.rol==='partner') go('partners');
-  else if (u) go('dash');
+  else if (u && u.rol==='superadmin') go('dash');
+  else if (u) setApp(el('div',{class:'emp'},'Acceso deshabilitado. Contactá a QP C&IA.'));
   // Sin sesión: la pantalla de login está visible — no se renderiza ni carga nada
 })();
 // ── PARTNERS ────────────────────────────────────────────────────
@@ -7010,7 +7013,8 @@ function vPartners() {
     sbFetch('panel_asignaciones?select=*'),
     fetch('https://dolarapi.com/v1/dolares/oficial').then(function(r){ return r.json(); }).catch(function(){ return null; })
   ]).then(function(r) {
-    var revs=r[0],revSis=r[1],sistemas=r[2],clientes=r[3],asigs=r[4],dolarData=r[5];
+    var revs=(r[0]||[]).filter(function(rv){ return rv.activo!==false; }),revSis=r[1],sistemas=r[2],clientes=r[3],asigs=r[4],dolarData=r[5];
+    var revsActivos=revs;
     var tc = dolarData && dolarData.venta ? Number(dolarData.venta) : null;
     var wrap=el('div',{}); var sh=el('div',{class:'sh'});
     sh.appendChild(el('span',{class:'st'},'Partners ('+revs.length+')'));
@@ -7078,7 +7082,11 @@ function vPartners() {
             alert('Contraseña actualizada para '+(r.email||'el usuario del partner'));
           }).catch(function(e){ alert('Error: '+e.message); });
         }; })(rev);
-        ch.appendChild(btnV); ch.appendChild(btnL); ch.appendChild(btnRP); card.appendChild(ch);
+        var btnBaja=el('button',{class:'btn btnsm',style:'margin-left:4px;background:#FCEBEB;border-color:#FCEBEB;color:#A32D2D'},'Dar de baja');
+        btnBaja.onclick=(function(rv,cnt){ return function(){
+          mBajaPartner(rv, revsActivos, cnt, function(){ vPartners(); });
+        }; })(rev, cliCount);
+        ch.appendChild(btnV); ch.appendChild(btnL); ch.appendChild(btnRP); ch.appendChild(btnBaja); card.appendChild(ch);
         if (sisList.length) {
           var body=el('div',{style:'padding:8px 12px 10px;display:flex;flex-wrap:wrap;gap:6px'});
           sisList.forEach(function(s){ body.appendChild(chip(s.nombre)); });
@@ -7222,6 +7230,47 @@ function mEditarPartner(rev,sisList,sistemas,cb) {
       .catch(function(e){ err.textContent='Error: '+e.message; err.style.display=''; btnG.disabled=false; btnG.textContent='Guardar'; });
     };
     foot.appendChild(btnG);
+  }));
+}
+
+function mBajaPartner(rev, revsActivos, cliCount, cb) {
+  openM(makeModal('Dar de baja — ' + rev.nombre, function(body) {
+    body.appendChild(el('div',{style:'font-size:13px;color:#64748b;margin-bottom:10px'},
+      'El partner queda inactivo (recuperable desde la base) y su usuario pierde el acceso al panel. ' +
+      (cliCount>0 ? 'Tiene ' + cliCount + ' cliente' + (cliCount!==1?'s':'') + ': elegí a dónde pasan.' : 'No tiene clientes.')));
+    if (cliCount>0) {
+      var selW = el('div',{class:'fg'});
+      selW.appendChild(el('label',{class:'fl'},'Traspasar clientes a'));
+      var sel = el('select',{class:'fi',id:'bp-destino'});
+      sel.appendChild(el('option',{value:''},'QP C&IA (clientes directos, sin partner)'));
+      revsActivos.filter(function(r2){ return r2.id!==rev.id; }).forEach(function(r2){
+        sel.appendChild(el('option',{value:r2.id}, r2.nombre));
+      });
+      selW.appendChild(sel);
+      body.appendChild(selW);
+      body.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-top:4px'},'Historial de cobros y asignaciones viaja con cada cliente.'));
+    }
+  }, function(foot) {
+    foot.appendChild(cancelBtn());
+    var ok = el('button',{class:'btn',style:'background:#FCEBEB;border-color:#FCEBEB;color:#A32D2D'},'Dar de baja');
+    ok.onclick = function() {
+      var destino = cliCount>0 ? (gv('bp-destino')||null) : null;
+      var destinoNombre = destino ? (revsActivos.find(function(r2){ return r2.id===destino; })||{}).nombre : 'QP C&IA (directos)';
+      if (!confirm('Dar de baja a "' + rev.nombre + '"' + (cliCount>0 ? ' y pasar sus ' + cliCount + ' cliente(s) a ' + destinoNombre : '') + '?')) return;
+      ok.disabled = true; ok.textContent = 'Procesando...';
+      var pasos = Promise.resolve();
+      if (cliCount>0) {
+        pasos = pasos.then(function(){
+          return sbFetch('panel_clientes?revendedor_id=eq.'+rev.id, {method:'PATCH', prefer:'return=minimal', body: JSON.stringify({revendedor_id: destino})});
+        });
+      }
+      pasos
+        .then(function(){ return sbFetch('revendedores?id=eq.'+rev.id, {method:'PATCH', prefer:'return=minimal', body: JSON.stringify({activo:false})}); })
+        .then(function(){ return sbFetch('panel_usuarios?revendedor_id=eq.'+rev.id+'&rol=eq.partner', {method:'PATCH', prefer:'return=minimal', body: JSON.stringify({rol:'baja'})}).catch(function(){}); })
+        .then(function(){ _D = null; closeM(); if (cb) cb(); })
+        .catch(function(e){ ok.disabled=false; ok.textContent='Dar de baja'; alert('Error: ' + e.message); });
+    };
+    foot.appendChild(ok);
   }));
 }
 

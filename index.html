@@ -125,7 +125,12 @@ function unlockPanel(token, usuario) {
   _currentUser = usuario;
   sessionStorage.setItem('qp_auth', JSON.stringify({ token: token, usuario: usuario, ts: Date.now() }));
   var esPartner = usuario && usuario.rol === 'partner';
-  var esSuperAdmin = !usuario || usuario.rol === 'superadmin';
+  var esSuperAdmin = usuario && usuario.rol === 'superadmin';
+  if (!esPartner && !esSuperAdmin) {
+    sessionStorage.removeItem('qp_auth');
+    alert('Tu acceso al panel fue deshabilitado. Contactá a QP C&IA.');
+    return;
+  }
   // Tabs solo para superadmin
   ['nb-dash','nb-sistemas','nb-clientes','nb-cobros','nb-salud','nb-gastos'].forEach(function(id){
     var b = document.getElementById(id); if (b) b.style.display = esSuperAdmin ? '' : 'none';
