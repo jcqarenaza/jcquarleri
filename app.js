@@ -6194,8 +6194,22 @@ function vConeos() {
   wrap.appendChild(loadCard);
   setApp(wrap);
 
-  coneosCall('estado_general').then(function(empresas) {
+  Promise.all([
+    coneosCall('estado_general'),
+    sbFetch('panel_asignaciones?coneos_empresa_id=not.is.null&select=coneos_empresa_id,cliente_id').catch(function(){ return []; }),
+    sbFetch('panel_clientes?revendedor_id=not.is.null&select=id,revendedor_id').catch(function(){ return []; }),
+    sbFetch('revendedores?select=id,nombre').catch(function(){ return []; })
+  ]).then(function(rr) {
+    var empresas = rr[0];
     if (!Array.isArray(empresas)) { loadDiv.textContent = 'Error al cargar empresas'; return; }
+    // Mapa empresa ConeOS -> nombre del partner (si el cliente vinculado es de un revendedor)
+    var partnerDeEmpresa = {};
+    (rr[1]||[]).forEach(function(a){
+      var cli = (rr[2]||[]).find(function(c){ return c.id === a.cliente_id; });
+      if (!cli) return;
+      var rev = (rr[3]||[]).find(function(r2){ return r2.id === cli.revendedor_id; });
+      if (rev) partnerDeEmpresa[a.coneos_empresa_id] = rev.nombre;
+    });
     _coneosEmpresas = empresas;
     loadCard.innerHTML = '';
 
@@ -6211,7 +6225,10 @@ function vConeos() {
     empresas.forEach(function(emp) {
       var tr = el('tr', {});
       var tdN = el('td', {});
-      tdN.appendChild(el('div', { style: 'font-weight:500' }, emp.nombre));
+      var nomRow = el('div', { style: 'font-weight:500;display:flex;align-items:center;gap:6px' });
+      nomRow.appendChild(document.createTextNode(emp.nombre));
+      if (partnerDeEmpresa[emp.id]) nomRow.appendChild(el('span', {style:'font-size:10px;font-weight:600;background:#EFEDFB;color:#7F77DD;border-radius:999px;padding:2px 8px'}, '🤝 ' + partnerDeEmpresa[emp.id]));
+      tdN.appendChild(nomRow);
       tdN.appendChild(el('div', { style: 'font-size:11px;color:#94a3b8' }, emp.slug));
       tr.appendChild(tdN);
       tr.appendChild(el('td', {}, emp.plan ? chipClass(emp.plan, 'cb') : '-'));
