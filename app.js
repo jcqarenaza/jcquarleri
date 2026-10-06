@@ -6770,13 +6770,13 @@ function mPlanConeOS(emp, asigId) {
           if (m.key === 'reparto') {
             var repActivo = repartoOn;
             var deliveryOn = !!plan.modulos.delivery;
-            // Regla CTO: solo puede ACTIVARSE con delivery activo; desactivar siempre se permite
-            var bloqueado = !repActivo && !deliveryOn;
+            // Regla: solo puede ACTIVARSE en plan Full (y con delivery activo); desactivar siempre se permite
+            var bloqueado = !repActivo && (planActual !== 'full' || !deliveryOn);
             var rowR = el('div',{style:'display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;background:'+(repActivo?'#F0FDF4':'#F8FAFC')+';cursor:'+(bloqueado?'not-allowed':'pointer')+(bloqueado?';opacity:.55':'')});
             rowR.appendChild(el('span',{style:'font-size:13px'},repActivo?'✅':'⬜'));
             var txtR = el('div',{style:'flex:1'});
             txtR.appendChild(el('div',{style:'font-size:13px;font-weight:500;color:'+(repActivo?'#1a2e4a':'#94a3b8')},m.label + ' (cadetes + seguimiento en vivo)'));
-            txtR.appendChild(el('div',{style:'font-size:11px;color:'+(bloqueado?'#A32D2D':'#94a3b8')}, bloqueado ? 'Requiere el módulo Delivery activo' : ('Agregado de Delivery — click para '+(repActivo?'apagar':'prender'))));
+            txtR.appendChild(el('div',{style:'font-size:11px;color:'+(bloqueado?'#A32D2D':'#94a3b8')}, bloqueado ? (planActual !== 'full' ? 'Disponible solo en plan Full' : 'Requiere el módulo Delivery activo') : ('Agregado de Delivery — click para '+(repActivo?'apagar':'prender'))));
             rowR.appendChild(txtR);
             if (!bloqueado) {
               rowR.onclick = function() {
@@ -6790,16 +6790,20 @@ function mPlanConeOS(emp, asigId) {
           // Compras: switch individual (no viene en presets, sin dependencias)
           if (m.key === 'compras') {
             var cmpActivo = comprasOn;
-            var rowC = el('div',{style:'display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;background:'+(cmpActivo?'#F0FDF4':'#F8FAFC')+';cursor:pointer'});
+            // Regla: solo puede ACTIVARSE en plan Full; desactivar siempre se permite
+            var cmpBloqueado = !cmpActivo && planActual !== 'full';
+            var rowC = el('div',{style:'display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;background:'+(cmpActivo?'#F0FDF4':'#F8FAFC')+';cursor:'+(cmpBloqueado?'not-allowed':'pointer')+(cmpBloqueado?';opacity:.55':'')});
             rowC.appendChild(el('span',{style:'font-size:13px'},cmpActivo?'✅':'⬜'));
             var txtC = el('div',{style:'flex:1'});
             txtC.appendChild(el('div',{style:'font-size:13px;font-weight:500;color:'+(cmpActivo?'#1a2e4a':'#94a3b8')},m.label + ' (proveedores, stock y pagos)'));
-            txtC.appendChild(el('div',{style:'font-size:11px;color:#94a3b8'},'Agregado individual — click para '+(cmpActivo?'apagar':'prender')));
+            txtC.appendChild(el('div',{style:'font-size:11px;color:'+(cmpBloqueado?'#A32D2D':'#94a3b8')}, cmpBloqueado ? 'Disponible solo en plan Full' : ('Agregado individual — click para '+(cmpActivo?'apagar':'prender'))));
             rowC.appendChild(txtC);
-            rowC.onclick = function() {
-              comprasOn = !comprasOn;
-              actualizarModulos();
-            };
+            if (!cmpBloqueado) {
+              rowC.onclick = function() {
+                comprasOn = !comprasOn;
+                actualizarModulos();
+              };
+            }
             modWrap.appendChild(rowC);
             return;
           }
