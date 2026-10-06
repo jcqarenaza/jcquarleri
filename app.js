@@ -6620,7 +6620,8 @@ var MODULOS_INFO = [
   { key:'takeaway',    label:'Take Away 🥡',            desc:'Pedidos desde el celular para retirar en el local' },
   { key:'facturacion', label:'Facturación',             desc:'Emisión de facturas electrónicas ARCA' },
   { key:'mercadopago', label:'MercadoPago',             desc:'Cobros con MercadoPago integrado' },
-  { key:'reparto',     label:'🛵 Reparto',              desc:'App de cadetes + seguimiento en vivo' }
+  { key:'reparto',     label:'🛵 Reparto',              desc:'App de cadetes + seguimiento en vivo' },
+  { key:'compras',     label:'Compras',                 desc:'Proveedores, stock y pagos' }
 ];
 
 function mModulosConeOS(emp) { mPlanConeOS(emp, null); }
@@ -6758,6 +6759,7 @@ function mPlanConeOS(emp, asigId) {
       body.appendChild(pppWrap);
 
       var repartoOn = !!modActuales.reparto;
+      var comprasOn = !!modActuales.compras;
       function actualizarModulos() {
         var plan = PLANES_CONEOS[planActual];
         modWrap.innerHTML = '';
@@ -6781,6 +6783,22 @@ function mPlanConeOS(emp, asigId) {
               };
             }
             modWrap.appendChild(rowR);
+            return;
+          }
+          // Compras: switch individual (no viene en presets, sin dependencias)
+          if (m.key === 'compras') {
+            var cmpActivo = comprasOn;
+            var rowC = el('div',{style:'display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;background:'+(cmpActivo?'#F0FDF4':'#F8FAFC')+';cursor:pointer'});
+            rowC.appendChild(el('span',{style:'font-size:13px'},cmpActivo?'✅':'⬜'));
+            var txtC = el('div',{style:'flex:1'});
+            txtC.appendChild(el('div',{style:'font-size:13px;font-weight:500;color:'+(cmpActivo?'#1a2e4a':'#94a3b8')},m.label + ' (proveedores, stock y pagos)'));
+            txtC.appendChild(el('div',{style:'font-size:11px;color:#94a3b8'},'Agregado individual — click para '+(cmpActivo?'apagar':'prender')));
+            rowC.appendChild(txtC);
+            rowC.onclick = function() {
+              comprasOn = !comprasOn;
+              actualizarModulos();
+            };
+            modWrap.appendChild(rowC);
             return;
           }
           var activo = !!plan.modulos[m.key];
@@ -6813,6 +6831,7 @@ function mPlanConeOS(emp, asigId) {
         var modulosFinal = {};
         Object.keys(plan.modulos).forEach(function(k){ modulosFinal[k] = plan.modulos[k]; });
         modulosFinal.reparto = repartoOn;
+        modulosFinal.compras = comprasOn;
         ok.textContent = 'Guardando...'; ok.disabled = true;
         var pppVal = Number((document.getElementById('mod-beneficios-ppp')||{}).value || 1000);
         var promesas = [
