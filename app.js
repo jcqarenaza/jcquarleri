@@ -6644,6 +6644,10 @@ function mPlanConeOS(emp, asigId) {
       else if (modActuales.delivery || modActuales.mesas) planActual = 'pro';
       else planActual = 'starter';
     }
+    // Switches individuales (fuera de presets) — en este scope para que
+    // los vean tanto el body (toggle) como el foot (guardar)
+    var repartoOn = !!modActuales.reparto;
+    var comprasOn = !!modActuales.compras;
 
     openM(makeModal(''+emp.nombre+' — Plan', function(body) {
 
@@ -6758,8 +6762,6 @@ function mPlanConeOS(emp, asigId) {
       pppWrap.appendChild(mkInput('mod-beneficios-ppp','number',benefConfig.pesos_por_punto||1000,''));
       body.appendChild(pppWrap);
 
-      var repartoOn = !!modActuales.reparto;
-      var comprasOn = !!modActuales.compras;
       function actualizarModulos() {
         var plan = PLANES_CONEOS[planActual];
         modWrap.innerHTML = '';
