@@ -6621,6 +6621,7 @@ var MODULOS_INFO = [
   { key:'facturacion', label:'Facturación',             desc:'Emisión de facturas electrónicas ARCA' },
   { key:'mercadopago', label:'MercadoPago',             desc:'Cobros con MercadoPago integrado' },
   { key:'reparto',     label:'🛵 Reparto',              desc:'App de cadetes + seguimiento en vivo' },
+  { key:'reparto_mapa',label:'🗺 Seguimiento con mapa', desc:'El cliente ve al cadete en un mapa en vivo' },
   { key:'compras',     label:'Compras',                 desc:'Proveedores, stock y pagos' }
 ];
 
@@ -6647,6 +6648,7 @@ function mPlanConeOS(emp, asigId) {
     // Switches individuales (fuera de presets) — en este scope para que
     // los vean tanto el body (toggle) como el foot (guardar)
     var repartoOn = !!modActuales.reparto;
+    var repartoMapaOn = !!modActuales.reparto_mapa;
     var comprasOn = !!modActuales.compras;
 
     openM(makeModal(''+emp.nombre+' — Plan', function(body) {
@@ -6787,6 +6789,28 @@ function mPlanConeOS(emp, asigId) {
             modWrap.appendChild(rowR);
             return;
           }
+          // Seguimiento con mapa: escalón 3 — requiere reparto ON; solo activable en Full
+          if (m.key === 'reparto_mapa') {
+            var mapaActivo = repartoMapaOn;
+            var mapaBloqueado = !mapaActivo && (planActual !== 'full' || !repartoOn);
+            var rowM = el('div',{style:'display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;background:'+(mapaActivo?'#F0FDF4':'#F8FAFC')+';cursor:'+(mapaBloqueado?'not-allowed':'pointer')+(mapaBloqueado?';opacity:.55':'')});
+            rowM.appendChild(el('span',{style:'font-size:13px'},mapaActivo?'✅':'⬜'));
+            var txtM = el('div',{style:'flex:1'});
+            txtM.appendChild(el('div',{style:'font-size:13px;font-weight:500;color:'+(mapaActivo?'#1a2e4a':'#94a3b8')},m.label));
+            var subM;
+            if (mapaBloqueado) subM = planActual !== 'full' ? 'Disponible solo en plan Full' : 'Requiere Seguimiento (Reparto) activo';
+            else subM = 'ON: el cliente ve al cadete en un mapa en vivo. OFF: el cadete opera y la caja ve el mapa igual; solo el cliente pierde el mapita.';
+            txtM.appendChild(el('div',{style:'font-size:11px;color:'+(mapaBloqueado?'#A32D2D':'#94a3b8')}, subM));
+            rowM.appendChild(txtM);
+            if (!mapaBloqueado) {
+              rowM.onclick = function() {
+                repartoMapaOn = !repartoMapaOn;
+                actualizarModulos();
+              };
+            }
+            modWrap.appendChild(rowM);
+            return;
+          }
           // Compras: switch individual (no viene en presets, sin dependencias)
           if (m.key === 'compras') {
             var cmpActivo = comprasOn;
@@ -6837,6 +6861,7 @@ function mPlanConeOS(emp, asigId) {
         var modulosFinal = {};
         Object.keys(plan.modulos).forEach(function(k){ modulosFinal[k] = plan.modulos[k]; });
         modulosFinal.reparto = repartoOn;
+        modulosFinal.reparto_mapa = repartoMapaOn;
         modulosFinal.compras = comprasOn;
         ok.textContent = 'Guardando...'; ok.disabled = true;
         var pppVal = Number((document.getElementById('mod-beneficios-ppp')||{}).value || 1000);
