@@ -5531,7 +5531,7 @@ function vFinanzas() {
         function imprimirJuntada(partId, desde, hasta) {
           function esc(t){ return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
           var parts = juntadaParticipantes.filter(function(p){return p.activo && (partId==='todos' || p.id===partId);});
-          var granTotal = 0, bloques = '';
+          var granTotal = 0, nEntregas = 0, bloques = '';
           parts.forEach(function(part){
             var pagos = juntadaPagos.filter(function(p){
               if (p.participante_id!==part.id) return false;
@@ -5541,40 +5541,56 @@ function vFinanzas() {
               return true;
             }).sort(function(a,b){return String(a.fecha).localeCompare(String(b.fecha));});
             var sub = pagos.reduce(function(s,p){return s+Number(p.importe);},0);
-            granTotal += sub;
-            bloques += '<h2>'+esc(part.nombre)+'</h2>';
-            if (!pagos.length) { bloques += '<p class="vacio">Sin entregas en el per\xEDodo</p>'; }
+            granTotal += sub; nEntregas += pagos.length;
+            bloques += '<div class="pb"><div class="ph"><span>'+esc(part.nombre)+'</span><span class="pc">'+pagos.length+' entrega'+(pagos.length!==1?'s':'')+'</span></div>';
+            if (!pagos.length) { bloques += '<div class="vacio">Sin entregas</div>'; }
             else {
-              bloques += '<table><thead><tr><th style="width:110px">Fecha</th><th>Detalle</th><th class="r">Importe</th><th class="r">Acumulado</th></tr></thead><tbody>';
-              var acum = 0;
-              pagos.forEach(function(p){ acum += Number(p.importe); bloques += '<tr><td>'+fdate(p.fecha)+'</td><td>'+esc(p.descripcion||'Entrega')+'</td><td class="r">'+fmt(p.importe)+'</td><td class="r">'+fmt(acum)+'</td></tr>'; });
-              bloques += '<tr class="tot"><td colspan="2">Total '+esc(part.nombre)+' ('+pagos.length+' entrega'+(pagos.length!==1?'s':'')+')</td><td class="r">'+fmt(sub)+'</td><td></td></tr></tbody></table>';
+              bloques += '<table><tbody>';
+              pagos.forEach(function(p){ bloques += '<tr><td class="f">'+fdate(p.fecha)+'</td><td class="d">'+esc(p.descripcion||'')+'</td><td class="r">'+fmt(p.importe)+'</td></tr>'; });
+              bloques += '</tbody></table>';
             }
+            bloques += '<div class="pt"><span>Subtotal</span><span>'+fmt(sub)+'</span></div></div>';
           });
           var periodo = (desde||hasta) ? ('Per\xEDodo: '+(desde?fdate(desde):'inicio')+' al '+(hasta?fdate(hasta):'hoy')) : 'Todas las fechas';
-          var resumen = '';
-          if (partId==='todos') {
-            var gastado = juntadaGastos.filter(function(g){return g.tipo!=='interes_mp';}).reduce(function(s,g){return s+Number(g.importe);},0);
-            var intereses = juntadaGastos.filter(function(g){return g.tipo==='interes_mp';}).reduce(function(s,g){return s+Number(g.importe);},0);
-            resumen = '<h2>Resumen</h2><table><tbody><tr><td>Total aportado'+((desde||hasta)?' (per\xEDodo)':'')+'</td><td class="r">'+fmt(granTotal)+'</td></tr>'
-              + '<tr><td>Total gastado</td><td class="r">'+fmt(gastado)+'</td></tr>'
-              + '<tr><td>Intereses MercadoPago</td><td class="r">'+fmt(intereses)+'</td></tr></tbody></table>';
+          var aportadoGlobal = juntadaPagos.reduce(function(s,p){return s+Number(p.importe);},0);
+          var gastosL = juntadaGastos.filter(function(g){return g.tipo!=='interes_mp';}).sort(function(a,b){return String(a.fecha).localeCompare(String(b.fecha));});
+          var gastado = gastosL.reduce(function(s,g){return s+Number(g.importe);},0);
+          var intereses = juntadaGastos.filter(function(g){return g.tipo==='interes_mp';}).reduce(function(s,g){return s+Number(g.importe);},0);
+          var saldo = aportadoGlobal + intereses - gastado;
+          var kpis = '<div class="k"><small>Aportado'+(partId==='todos'?'':' (selecci\xF3n)')+((desde||hasta)?' (per\xEDodo)':'')+'</small><b class="v">'+fmt(granTotal)+'</b></div>'
+                   + '<div class="k"><small>Total gastado</small><b class="g">'+fmt(gastado)+'</b></div>'
+                   + '<div class="k"><small>Intereses MP</small><b class="i">'+fmt(intereses)+'</b></div>'
+                   + '<div class="k sd"><small>Saldo disponible</small><b>'+fmt(saldo)+'</b></div>';
+          var gastosHtml = '';
+          if (partId==='todos' && gastosL.length) {
+            gastosHtml = '<div class="pb gb"><div class="ph"><span>Gastos comunes</span><span class="pc">'+gastosL.length+' gasto'+(gastosL.length!==1?'s':'')+'</span></div><table><tbody>';
+            gastosL.forEach(function(g){ gastosHtml += '<tr><td class="f">'+fdate(g.fecha)+'</td><td class="d">'+esc(g.descripcion||'')+'</td><td class="r" style="color:#A32D2D">'+fmt(g.importe)+'</td></tr>'; });
+            gastosHtml += '</tbody></table><div class="pt" style="background:#FFF5F5;color:#A32D2D;border-top-color:#FECACA"><span>Total gastado</span><span>'+fmt(gastado)+'</span></div></div>';
           }
           var html = '<!doctype html><html><head><meta charset="utf-8"><title>Juntada - San Rafael 2026</title><style>'
-            + 'body{font-family:Arial,sans-serif;background:#fff;color:#1a2e4a;margin:28px;font-size:13px}'
-            + 'h1{font-size:20px;margin:0 0 2px}h2{font-size:15px;margin:22px 0 6px;border-bottom:2px solid #1a2e4a;padding-bottom:3px}'
-            + '.sub{color:#64748B;font-size:12px;margin-bottom:6px}table{width:100%;border-collapse:collapse;margin-bottom:6px}'
-            + 'th{background:#F1F5F9;text-align:left;padding:6px 8px;font-size:12px;border-bottom:1px solid #CBD5E1}'
-            + 'td{padding:6px 8px;border-bottom:1px solid #E2E8F0}.r{text-align:right}.tot td{font-weight:700;background:#F0FDF4;border-top:1px solid #1a2e4a}'
-            + '.vacio{color:#94a3b8;font-style:italic}.gt{margin-top:18px;font-size:15px;font-weight:700;text-align:right}'
-            + 'tr{page-break-inside:avoid}h2{page-break-after:avoid}'
-            + '@media print{body{margin:12mm}.np{display:none}}'
+            + '@page{size:A4;margin:10mm}'
+            + '*{box-sizing:border-box}'
+            + 'body{font-family:Arial,Helvetica,sans-serif;background:#fff;color:#1a2e4a;margin:0;padding:10mm;font-size:10.5px;line-height:1.25;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
+            + '.top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #0B9EDA;padding-bottom:6px;margin-bottom:8px}'
+            + 'h1{font-size:18px;margin:0;letter-spacing:-.3px}.sub{color:#64748B;font-size:10px;text-align:right}'
+            + '.kp{display:flex;gap:6px;margin-bottom:10px}.k{flex:1;border:1px solid #E2E8F0;border-radius:6px;padding:5px 8px;text-align:center}'
+            + '.k small{display:block;color:#64748B;font-size:9px;text-transform:uppercase;letter-spacing:.4px}.k b{font-size:14px}'
+            + '.sd{background:#E0F2FE;border-color:#0B9EDA}.sd b{color:#0B7AB0;font-size:16px}.v{color:#3D8A32}.g{color:#A32D2D}.i{color:#854F0B}.d2{color:#0B9EDA}'
+            + '.cols{column-count:2;column-gap:10px}'
+            + '.pb{break-inside:avoid;page-break-inside:avoid;border:1px solid #E2E8F0;border-radius:6px;margin-bottom:8px;overflow:hidden}'
+            + '.ph{display:flex;justify-content:space-between;background:#1a2e4a;color:#fff;padding:4px 8px;font-weight:700;font-size:11px}.pc{font-weight:400;opacity:.85;font-size:9.5px}'
+            + 'table{width:100%;border-collapse:collapse}td{padding:2.5px 8px;border-bottom:1px solid #F1F5F9}'
+            + '.f{width:62px;color:#64748B;white-space:nowrap}.d{color:#475569;font-size:9.5px}.r{text-align:right;font-weight:600;white-space:nowrap}'
+            + '.pt{display:flex;justify-content:space-between;background:#F0FDF4;color:#3D8A32;font-weight:700;padding:3px 8px;border-top:1px solid #BBF7D0}'
+            + '.vacio{color:#94a3b8;font-style:italic;padding:4px 8px}'
+            + '.np{margin-bottom:8px;text-align:right}'
+            + '@media print{body{padding:0}.np{display:none}}'
+            + (parts.length<=1 ? '.cols{column-count:1}' : '')
             + '</style></head><body>'
-            + '<button class="np" onclick="window.print()" style="float:right;padding:6px 12px">Imprimir / PDF</button>'
-            + '<h1>🎲 Juntada — San Rafael 2026</h1><div class="sub">'+periodo+' \xB7 Emitido '+fdate(new Date().toISOString())+'</div>'
-            + bloques
-            + (parts.length>1 ? '<div class="gt">Total general: '+fmt(granTotal)+'</div>' : '')
-            + resumen
+            + '<div class="np"><button onclick="window.print()" style="padding:6px 14px;cursor:pointer">Imprimir / PDF</button></div>'
+            + '<div class="top"><h1>🎲 Juntada — San Rafael 2026</h1><div class="sub">'+periodo+'<br>Emitido '+fdate(new Date().toISOString())+'</div></div>'
+            + '<div class="kp">'+kpis+'</div>'
+            + '<div class="cols">'+bloques+gastosHtml+'</div>'
             + '</body></html>';
           var w = window.open('','_blank');
           if (!w) { alert('El navegador bloque\xF3 la ventana. Permit\xED popups para imprimir.'); return; }
