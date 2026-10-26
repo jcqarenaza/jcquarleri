@@ -5425,7 +5425,10 @@ function vFinanzas() {
         sh2.appendChild(el('span', {class:'st'}, '\uD83C\uDFB2 Juntada \u2014 San Rafael 2026'));
         var btnNP = el('button',{class:'btn btnsm'},'+ Participante');
         btnNP.onclick = mNuevoParticipante2;
-        sh2.appendChild(btnNP);
+        var btnPrJ = el('button',{class:'btn btnsm',style:'margin-right:6px'},'\uD83D\uDDA8 Imprimir');
+        btnPrJ.onclick = mImprimirJuntada;
+        var hdrBtnsJ = el('span',{}); hdrBtnsJ.appendChild(btnPrJ); hdrBtnsJ.appendChild(btnNP);
+        sh2.appendChild(hdrBtnsJ);
         sec.appendChild(sh2);
         var totalAportado2 = juntadaPagos.reduce(function(s,p){ return s+Number(p.importe); },0);
         var gastosComunes2 = juntadaGastos.filter(function(g){ return g.tipo !== 'interes_mp'; });
@@ -5512,6 +5515,71 @@ function vFinanzas() {
         sec.appendChild(gtblCard2);
         content.appendChild(sec);
 
+        function mImprimirJuntada() {
+          var parts = juntadaParticipantes.filter(function(p){return p.activo;});
+          var opts = [['todos','Todos los participantes']].concat(parts.map(function(p){return [p.id,p.nombre];}));
+          openM(makeModal('Imprimir Juntada', function(body) {
+            addFg(body,'Participante',mkSelect('jpr-part',opts,'todos'));
+            mkRow2(body,mkFg('Desde (opcional)',mkInput('jpr-desde','date','')),mkFg('Hasta (opcional)',mkInput('jpr-hasta','date','')));
+            body.appendChild(el('div',{style:'font-size:12px;color:#64748B;margin-top:6px'},'Detalle de entregas por fecha, con subtotal por persona.'));
+          }, function(foot) {
+            foot.appendChild(cancelBtn()); var ok=el('button',{class:'btn btnp'},'🖨 Imprimir');
+            ok.onclick=function(){ imprimirJuntada(gv('jpr-part'),gv('jpr-desde'),gv('jpr-hasta')); closeM(); };
+            foot.appendChild(ok);
+          }));
+        }
+        function imprimirJuntada(partId, desde, hasta) {
+          function esc(t){ return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+          var parts = juntadaParticipantes.filter(function(p){return p.activo && (partId==='todos' || p.id===partId);});
+          var granTotal = 0, bloques = '';
+          parts.forEach(function(part){
+            var pagos = juntadaPagos.filter(function(p){
+              if (p.participante_id!==part.id) return false;
+              var f=(p.fecha||'').slice(0,10);
+              if (desde && f<desde) return false;
+              if (hasta && f>hasta) return false;
+              return true;
+            }).sort(function(a,b){return String(a.fecha).localeCompare(String(b.fecha));});
+            var sub = pagos.reduce(function(s,p){return s+Number(p.importe);},0);
+            granTotal += sub;
+            bloques += '<h2>'+esc(part.nombre)+'</h2>';
+            if (!pagos.length) { bloques += '<p class="vacio">Sin entregas en el per\xEDodo</p>'; }
+            else {
+              bloques += '<table><thead><tr><th style="width:110px">Fecha</th><th>Detalle</th><th class="r">Importe</th><th class="r">Acumulado</th></tr></thead><tbody>';
+              var acum = 0;
+              pagos.forEach(function(p){ acum += Number(p.importe); bloques += '<tr><td>'+fdate(p.fecha)+'</td><td>'+esc(p.descripcion||'Entrega')+'</td><td class="r">'+fmt(p.importe)+'</td><td class="r">'+fmt(acum)+'</td></tr>'; });
+              bloques += '<tr class="tot"><td colspan="2">Total '+esc(part.nombre)+' ('+pagos.length+' entrega'+(pagos.length!==1?'s':'')+')</td><td class="r">'+fmt(sub)+'</td><td></td></tr></tbody></table>';
+            }
+          });
+          var periodo = (desde||hasta) ? ('Per\xEDodo: '+(desde?fdate(desde):'inicio')+' al '+(hasta?fdate(hasta):'hoy')) : 'Todas las fechas';
+          var resumen = '';
+          if (partId==='todos') {
+            var gastado = juntadaGastos.filter(function(g){return g.tipo!=='interes_mp';}).reduce(function(s,g){return s+Number(g.importe);},0);
+            var intereses = juntadaGastos.filter(function(g){return g.tipo==='interes_mp';}).reduce(function(s,g){return s+Number(g.importe);},0);
+            resumen = '<h2>Resumen</h2><table><tbody><tr><td>Total aportado'+((desde||hasta)?' (per\xEDodo)':'')+'</td><td class="r">'+fmt(granTotal)+'</td></tr>'
+              + '<tr><td>Total gastado</td><td class="r">'+fmt(gastado)+'</td></tr>'
+              + '<tr><td>Intereses MercadoPago</td><td class="r">'+fmt(intereses)+'</td></tr></tbody></table>';
+          }
+          var html = '<!doctype html><html><head><meta charset="utf-8"><title>Juntada - San Rafael 2026</title><style>'
+            + 'body{font-family:Arial,sans-serif;background:#fff;color:#1a2e4a;margin:28px;font-size:13px}'
+            + 'h1{font-size:20px;margin:0 0 2px}h2{font-size:15px;margin:22px 0 6px;border-bottom:2px solid #1a2e4a;padding-bottom:3px}'
+            + '.sub{color:#64748B;font-size:12px;margin-bottom:6px}table{width:100%;border-collapse:collapse;margin-bottom:6px}'
+            + 'th{background:#F1F5F9;text-align:left;padding:6px 8px;font-size:12px;border-bottom:1px solid #CBD5E1}'
+            + 'td{padding:6px 8px;border-bottom:1px solid #E2E8F0}.r{text-align:right}.tot td{font-weight:700;background:#F0FDF4;border-top:1px solid #1a2e4a}'
+            + '.vacio{color:#94a3b8;font-style:italic}.gt{margin-top:18px;font-size:15px;font-weight:700;text-align:right}'
+            + 'tr{page-break-inside:avoid}h2{page-break-after:avoid}'
+            + '@media print{body{margin:12mm}.np{display:none}}'
+            + '</style></head><body>'
+            + '<button class="np" onclick="window.print()" style="float:right;padding:6px 12px">Imprimir / PDF</button>'
+            + '<h1>🎲 Juntada — San Rafael 2026</h1><div class="sub">'+periodo+' \xB7 Emitido '+fdate(new Date().toISOString())+'</div>'
+            + bloques
+            + (parts.length>1 ? '<div class="gt">Total general: '+fmt(granTotal)+'</div>' : '')
+            + resumen
+            + '</body></html>';
+          var w = window.open('','_blank');
+          if (!w) { alert('El navegador bloque\xF3 la ventana. Permit\xED popups para imprimir.'); return; }
+          w.document.write(html); w.document.close(); setTimeout(function(){ w.print(); }, 400);
+        }
         function mNuevoParticipante2() {
           openM(makeModal('Nuevo participante', function(body) { addFg(body,'Nombre',mkInput('jp2-nom','text','')); }, function(foot) {
             foot.appendChild(cancelBtn()); var ok=el('button',{class:'btn btnp'},'Agregar');
