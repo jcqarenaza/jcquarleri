@@ -3852,11 +3852,29 @@ function vFinanzas() {
       return gastoMes ? Number(gastoMes.monto) : Number(c.monto);
     }
 
+    // Genera el gasto de una cuota en un mes (si corresponde y no existe todavia)
+    function generarGastoCuotaMesPF(c, mes) {
+      if (!mes || !isCuotaActivaPF(c, mes.year, mes.month)) return Promise.resolve(null);
+      if (gastosPF.find(function(g){ return g.cuota_id===c.id && g.mes_id===mes.id; })) return Promise.resolve(null);
+      var fecha = mes.year+'-'+String(mes.month).padStart(2,'0')+'-01';
+      return dbIns('panel_pf_gastos', {
+        mes_id: mes.id, concepto: nombreConNumeroCuotaPF(c, mes.year, mes.month), monto: c.monto, categoria: 'Créditos',
+        tipo: 'fijos', fecha: fecha, cuota_id: c.id, pagado: false
+      });
+    }
+
     function renderCuotasPF() {
       var sh=el('div',{class:'sh'});
       sh.appendChild(el('span',{class:'st'},'Cuotas y creditos'));
       var btnN=el('button',{class:'btn btnp'},'+ Nueva cuota');
-      btnN.onclick=function(){ mNuevaCuotaPF(function(){ vFinanzas(); }); };
+      btnN.onclick=function(){ mNuevaCuotaPF(function(nueva){
+        // Si hay un mes abierto donde la cuota ya corre, se genera su gasto ahi (antes quedaba afuera hasta crear el mes siguiente)
+        var abiertos = mesesPF.filter(function(m){ return m.status==='open'; });
+        if (!nueva) { vFinanzas(); return; }
+        Promise.all(abiertos.map(function(m){ return generarGastoCuotaMesPF(nueva, m); }))
+          .catch(function(e){ alert('La cuota se guardo pero no se pudo generar su gasto del mes: '+e.message); })
+          .then(function(){ vFinanzas(); });
+      }); };
       sh.appendChild(btnN);
       content.appendChild(sh);
       content.appendChild(mesSelectorPF());
@@ -3908,7 +3926,15 @@ function vFinanzas() {
         var btnEM=el('button',{class:'btn btnsm', style:'background:#E6F6FD;border-color:#E6F6FD;color:#0C6FA3'},'Monto del mes');
         (function(cc){ btnEM.onclick=function(){
           var gastoMes = gastosPF.find(function(g){ return g.cuota_id===cc.id && g.mes_id===mesSeleccionadoPF; });
-          if (!gastoMes) { alert('Esta cuota todavia no tiene un gasto generado en '+mesSeleccionadoPF+'. Se genera solo al crear el mes con cuotas activas.'); return; }
+          if (!gastoMes) {
+            var mesSel = mesesPF.find(function(m){ return m.id===mesSeleccionadoPF; });
+            if (mesSel && isCuotaActivaPF(cc, mesSel.year, mesSel.month)) {
+              if (confirm('Esta cuota todavia no tiene su gasto en '+MESES[mesSel.month-1]+' '+mesSel.year+'. Generarlo ahora?')) {
+                generarGastoCuotaMesPF(cc, mesSel).then(function(){ vFinanzas(); }).catch(function(e){ alert('Error: '+e.message); });
+              }
+            } else { alert('Esta cuota no corre en el mes seleccionado ('+mesSeleccionadoPF+').'); }
+            return;
+          }
           mEditarGastoPF(gastoMes, function(patch){ Object.assign(gastoMes, patch); renderAll(); });
         }; })(c);
         var btnE=el('button',{class:'btn btnsm', style:'margin-left:4px'},'Editar cuota base');
@@ -5810,7 +5836,7 @@ function mNuevaCuotaPF(cb) {
         nombre: nom, tipo: gv('npf-tipo'), monto: Number(gv('npf-monto')||0),
         cuota_actual: Number(gv('npf-actual')||1), cuota_total: gv('npf-total')?Number(gv('npf-total')):null,
         inicio_year: iy, inicio_month: im, activa: true
-      }).then(function(){ closeM(); cb(); });
+      }).then(function(r){ closeM(); cb((r&&r[0])||null); });
     };
     foot.appendChild(ok);
   }));
