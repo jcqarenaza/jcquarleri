@@ -3239,8 +3239,13 @@ function vFinanzas() {
     var entregasPF=R.entregasPF||[];
     gastosPF.forEach(function(g){ g._entregas = entregasPF.filter(function(e){ return e.gasto_id===g.id; }); });
     // Entregas parciales sobre un gasto PF (en ARS, contra la billetera personal del gasto)
-    function entregadoPF(g) { return (g._entregas||[]).reduce(function(s,e){ return s+Number(e.monto||0); }, 0); }
+    // Las entregas sin moneda (historicas) son ARS; las de dolares llevan moneda:'USD'
+    function entregadoPF(g) { return (g._entregas||[]).filter(function(e){ return (e.moneda||'ARS')!=='USD'; }).reduce(function(s,e){ return s+Number(e.monto||0); }, 0); }
     function saldoPF(g) { return Math.max(0, Number(g.monto||0) - entregadoPF(g)); }
+    // Dolares de la tarjeta: lo personal + lo del negocio (es lo que cobra el resumen en USD)
+    function usdTotalPF(g) { return Number(g.monto_usd||0) + Number(g.monto_usd_negocio||0); }
+    function entregadoUSDPF(g) { return (g._entregas||[]).filter(function(e){ return e.moneda==='USD'; }).reduce(function(s,e){ return s+Number(e.monto||0); }, 0); }
+    function saldoUSDPF(g) { return Math.max(0, usdTotalPF(g) - entregadoUSDPF(g)); }
     var prestamosPF=R.prestamosPF||[];
     var prestamosPagosPF=R.prestamosPagosPF||[], autoPF=R.autoPF||[];
     var deudasMovsPF=R.deudasMovsPF||[];
@@ -4216,7 +4221,7 @@ function vFinanzas() {
       var gastosSinPagar = gastosPF.filter(function(g){
         return g.mes_id===m.id && !g.pagado && (Number(g.monto)>0 || Number(g.monto_usd)>0);
       });
-      var sale30 = gastosSinPagar.reduce(function(s,g){ return s + saldoPF(g) + Number(g.monto_usd||0)*tcUSD; }, 0);
+      var sale30 = gastosSinPagar.reduce(function(s,g){ return s + saldoPF(g) + Math.max(0, Number(g.monto_usd||0) - entregadoUSDPF(g))*tcUSD; }, 0);
       var neto30 = entra30 - sale30;
       var flujoCard = el('div',{class:'card',style:'padding:16px;margin-top:14px'});
       flujoCard.appendChild(el('div',{class:'st',style:'margin-bottom:10px'},'Flujo próximos 30 días'));
@@ -4819,6 +4824,10 @@ function vFinanzas() {
             tdMonto.appendChild(el('div',{style:'font-size:10px;color:#0B9EDA;font-weight:600'},'entregado '+fmt(entregadoPF(g))));
             tdMonto.appendChild(el('div',{style:'font-size:10px;color:#854F0B'},'falta '+fmt(saldoPF(g))));
           }
+          if (!g.pagado && entregadoUSDPF(g) > 0) {
+            tdMonto.appendChild(el('div',{style:'font-size:10px;color:#0B9EDA;font-weight:600'},'entregado '+fmtMon(entregadoUSDPF(g),'USD')));
+            tdMonto.appendChild(el('div',{style:'font-size:10px;color:#854F0B'},'falta '+fmtMon(saldoUSDPF(g),'USD')));
+          }
           tr.appendChild(el('td',{style:'font-size:12px;color:#64748B;white-space:nowrap'}, g.fecha ? fdate(g.fecha) : '—'));
           var tog=el('label',{class:'tog'});
           var inp=el('input',{type:'checkbox'}); if (g.pagado) inp.checked=true;
@@ -4826,7 +4835,7 @@ function vFinanzas() {
           tog.appendChild(inp); tog.appendChild(el('span',{class:'sl'}));
           tr.appendChild(el('td',{},[tog]));
           var btnPg=null;
-          if (!g.pagado && Number(g.monto)>0) {
+          if (!g.pagado && (Number(g.monto)>0 || usdTotalPF(g)>0)) {
             btnPg=el('button',{class:'btn btnsm btnp'},'$');
             (function(gg){ btnPg.onclick=function(){ mEntregaPF(gg); }; })(g);
           }
@@ -4853,13 +4862,25 @@ function vFinanzas() {
 
       // Modal de entregas parciales de un gasto PF (tarjeta, Daiana, etc.)
       function mEntregaPF(g) {
-        var saldo = saldoPF(g);
+        var hayARS = Number(g.monto||0) > 0, hayUSD = usdTotalPF(g) > 0;
+        function monedaSel() { var e = document.getElementById('epf-mon'); return e ? e.value : (hayARS ? 'ARS' : 'USD'); }
+        function saldoDe(mon) { return mon==='USD' ? saldoUSDPF(g) : saldoPF(g); }
+        function fmtM(n, mon) { return mon==='USD' ? fmtMon(n,'USD') : fmt(n); }
         openM(makeModal('Entregas — ' + g.concepto, function(body) {
-          var resumen = el('div',{style:'display:flex;gap:14px;margin:4px 0 12px;font-size:12px'});
-          resumen.appendChild(el('div',{},[el('span',{style:'color:#94a3b8'},'Total: '), el('b',{},fmt(g.monto))]));
-          resumen.appendChild(el('div',{},[el('span',{style:'color:#94a3b8'},'Entregado: '), el('b',{style:'color:#0B9EDA'},fmt(entregadoPF(g)))]));
-          resumen.appendChild(el('div',{},[el('span',{style:'color:#94a3b8'},'Falta: '), el('b',{style:'color:#854F0B'},fmt(saldo))]));
-          body.appendChild(resumen);
+          if (hayARS) {
+            var resumen = el('div',{style:'display:flex;gap:14px;margin:4px 0 6px;font-size:12px'});
+            resumen.appendChild(el('div',{},[el('span',{style:'color:#94a3b8'},'Total $: '), el('b',{},fmt(g.monto))]));
+            resumen.appendChild(el('div',{},[el('span',{style:'color:#94a3b8'},'Entregado: '), el('b',{style:'color:#0B9EDA'},fmt(entregadoPF(g)))]));
+            resumen.appendChild(el('div',{},[el('span',{style:'color:#94a3b8'},'Falta: '), el('b',{style:'color:#854F0B'},fmt(saldoPF(g)))]));
+            body.appendChild(resumen);
+          }
+          if (hayUSD) {
+            var resumenU = el('div',{style:'display:flex;gap:14px;margin:4px 0 12px;font-size:12px'});
+            resumenU.appendChild(el('div',{},[el('span',{style:'color:#94a3b8'},'Total USD: '), el('b',{},fmtMon(usdTotalPF(g),'USD'))]));
+            resumenU.appendChild(el('div',{},[el('span',{style:'color:#94a3b8'},'Entregado: '), el('b',{style:'color:#0B9EDA'},fmtMon(entregadoUSDPF(g),'USD'))]));
+            resumenU.appendChild(el('div',{},[el('span',{style:'color:#94a3b8'},'Falta: '), el('b',{style:'color:#854F0B'},fmtMon(saldoUSDPF(g),'USD'))]));
+            body.appendChild(resumenU);
+          }
           if ((g._entregas||[]).length) {
             var hist = el('div',{style:'background:#F8FAFC;border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:11px'});
             hist.appendChild(el('div',{style:'font-weight:600;color:#64748b;margin-bottom:4px'},'Entregas'));
@@ -4867,7 +4888,7 @@ function vFinanzas() {
               var fila = el('div',{style:'display:flex;justify-content:space-between;align-items:center;padding:2px 0'});
               fila.appendChild(el('span',{style:'color:#94a3b8'}, fdate(e2.fecha) + (e2.notas?' — '+e2.notas:'')));
               var der = el('span',{});
-              der.appendChild(el('b',{}, fmt(e2.monto)));
+              der.appendChild(el('b',{}, fmtM(e2.monto, e2.moneda==='USD'?'USD':'ARS')));
               var bx = el('button',{class:'btn btnsm',style:'margin-left:6px;padding:1px 6px;font-size:10px;background:#FCEBEB;border-color:#FCEBEB;color:#A32D2D'},'x');
               (function(eid){ bx.onclick = function(){
                 if (!confirm('Eliminar esta entrega?')) return;
@@ -4883,8 +4904,14 @@ function vFinanzas() {
             });
             body.appendChild(hist);
           }
+          var inicial = hayARS ? 'ARS' : 'USD';
+          if (hayARS && hayUSD) {
+            var selMon = mkSelect('epf-mon', [['ARS','Pesos (ARS)'],['USD','Dolares (USD)']], 'ARS');
+            selMon.onchange = function(){ var m = document.getElementById('epf-monto'); if (m) m.value = saldoDe(this.value); };
+            addFg(body, 'Moneda de la entrega', selMon);
+          }
           mkRow2(body,
-            mkFg('Monto de la entrega ($)', mkInput('epf-monto','number',saldo)),
+            mkFg('Monto de la entrega', mkInput('epf-monto','number',saldoDe(inicial))),
             mkFg('Fecha', mkInput('epf-fecha','date',new Date().toISOString().slice(0,10)))
           );
           addFg(body, 'Nota (opcional)', mkInput('epf-notas','text','','ej: primera entrega, efectivo'));
@@ -4892,20 +4919,25 @@ function vFinanzas() {
           foot.appendChild(cancelBtn());
           var ok = el('button',{class:'btn btnp'},'Registrar entrega');
           ok.onclick = function() {
+            var mon = monedaSel();
+            var saldo = saldoDe(mon);
             var monto = Number(gv('epf-monto')||0);
             var fecha = gv('epf-fecha');
             if (!monto || monto<=0) { alert('Ingresa un monto válido'); return; }
-            if (monto > saldo + 0.01) { alert('La entrega supera lo que falta ('+fmt(saldo)+')'); return; }
+            if (monto > saldo + 0.01) { alert('La entrega supera lo que falta ('+fmtM(saldo,mon)+')'); return; }
             if (!fecha) { alert('Ingresa la fecha'); return; }
             ok.disabled = true; ok.textContent = 'Guardando...';
-            dbIns('panel_pf_entregas', {gasto_id: g.id, monto: monto, fecha: fecha, notas: gv('epf-notas')||null})
+            var rowIns = {gasto_id: g.id, monto: monto, fecha: fecha, notas: gv('epf-notas')||null};
+            if (mon==='USD') rowIns.moneda = 'USD'; // las ARS no mandan moneda (default ARS)
+            dbIns('panel_pf_entregas', rowIns)
             .then(function(rows){
-              g._entregas = (g._entregas||[]).concat(rows && rows[0] ? [rows[0]] : [{monto:monto,fecha:fecha}]);
-              var completo = entregadoPF(g) >= Number(g.monto||0) - 0.01;
+              g._entregas = (g._entregas||[]).concat(rows && rows[0] ? [rows[0]] : [{monto:monto,fecha:fecha,moneda:(mon==='USD'?'USD':undefined)}]);
+              // Pagado al cubrir TODAS las monedas del gasto
+              var completo = (!hayARS || entregadoPF(g) >= Number(g.monto||0) - 0.01) && (!hayUSD || entregadoUSDPF(g) >= usdTotalPF(g) - 0.01);
               var fin = completo ? dbUpd('panel_pf_gastos', g.id, {pagado:true}).then(function(){ g.pagado=true; }) : Promise.resolve();
               return fin.then(function(){ closeM(); renderAll(); });
             })
-            .catch(function(e){ ok.disabled=false; ok.textContent='Registrar entrega'; alert('Error: '+e.message); });
+            .catch(function(e){ ok.disabled=false; ok.textContent='Registrar entrega'; alert('Error: '+e.message+(mon==='USD'?'\n\nSi dice que no existe la columna "moneda", falta correr el SQL de panel_pf_entregas.':'')); });
           };
           foot.appendChild(ok);
         }));
