@@ -1430,7 +1430,14 @@ function mImportarGitHub() {
 function cargarMetricasSis(s, row) {
   var nombreL = (s.nombre||''). toLowerCase();
   var esPiamonte = nombreL.indexOf('piamonte') >= 0;
-    fetch('https://tviiikkdskucmgcmtswu.supabase.co/functions/v1/metricas-sistema', {
+    (esPiamonte && s.supabase_url && s.supabase_key
+      // Piamonte: comprobantes tiene RLS solo para authenticated; se lee por RPC agregada (get_metricas_panel) con la anon key
+      ? fetch(s.supabase_url.replace(/\/$/, '') + '/rest/v1/rpc/get_metricas_panel', {
+          method: 'POST',
+          headers: { apikey: s.supabase_key, Authorization: 'Bearer ' + s.supabase_key, 'Content-Type': 'application/json' },
+          body: '{}'
+        }).then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      : fetch('https://tviiikkdskucmgcmtswu.supabase.co/functions/v1/metricas-sistema', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -1443,7 +1450,8 @@ function cargarMetricasSis(s, row) {
       campo_total: s.metrica_campo_total || 'total_price',
       campo_fecha: s.metrica_campo_fecha || 'created_at'
     })
-  }).then(function(r){ return r.json(); }).then(function(d) {
+  }).then(function(r){ return r.json(); })
+  ).then(function(d) {
     if (!d || d.error) throw new Error(d ? d.error : 'sin datos');
     row.innerHTML = '';
     [
@@ -3083,8 +3091,12 @@ function vSalud() {
       var pct = p.pct_uso || 0;
       var gaugeCol = pct > 90 ? '#A32D2D' : pct > 70 ? '#854F0B' : '#5BBD4E';
       var hdrRight = el('div', {style:'display:flex;align-items:center;gap:10px'});
-      hdrRight.appendChild(el('span', {style:'font-size:12px;color:'+gaugeCol+';font-weight:600'}, pct+'%'));
-      hdrRight.appendChild(el('span', {style:'font-size:12px;color:#64748B'}, p.db_size_mb+' MB / '+p.limite_mb+' MB'));
+      if (p.error) {
+        hdrRight.appendChild(el('span', {style:'font-size:12px;color:#A32D2D;font-weight:600'}, 'sin datos'));
+      } else {
+        hdrRight.appendChild(el('span', {style:'font-size:12px;color:'+gaugeCol+';font-weight:600'}, pct+'%'));
+        hdrRight.appendChild(el('span', {style:'font-size:12px;color:#64748B'}, p.db_size_mb+' MB / '+p.limite_mb+' MB'));
+      }
       if (p.tablas_bloat.length > 0) hdrRight.appendChild(chipClass(p.tablas_bloat.length+' bloat', 'ca'));
       hdr.appendChild(hdrRight);
       card.appendChild(hdr);
