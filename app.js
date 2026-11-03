@@ -3205,6 +3205,8 @@ function vFinanzas() {
     ingresos:           sbFetch('panel_ingresos?select=*&order=fecha.desc').catch(function(){ return []; }),
     sistemas:           sbFetch('panel_sistemas?select=id,nombre').catch(function(){ return []; }),
     clientes:           sbFetch('panel_clientes?select=id,nombre,es_demo,eliminado').catch(function(){ return []; }),
+    cuentasPF:          sbFetch('panel_pf_cuentas?select=*&activa=eq.true&order=orden.asc,created_at.asc').catch(function(){ return []; }),
+    movimientosPF:      sbFetch('panel_pf_movimientos?select=*&order=created_at.asc').catch(function(){ return []; }),
     asignacionesFin:    sbFetch('panel_asignaciones?select=id,cliente_id').catch(function(){ return []; }),
     dolarData:          fetch('https://dolarapi.com/v1/dolares/oficial').then(function(r){ return r.json(); }).catch(function(){ return null; }),
     pagoGastos:         sbFetch('panel_gastos_pagos?select=*&order=fecha.desc').catch(function(){ return []; }),
@@ -3417,6 +3419,7 @@ function vFinanzas() {
       btn.onclick = function() {
         modoFin = md[0];
         _finUIState.modoFin = modoFin;
+        if (typeof qBtn !== 'undefined') qBtn.style.display = modoFin==='personal' ? '' : 'none';
         modoWrap.querySelectorAll('.tab').forEach(function(b){ b.classList.remove('on'); });
         btn.classList.add('on');
         negocioControlsWrap.style.display = modoFin==='negocio' ? '' : 'none';
@@ -3427,7 +3430,11 @@ function vFinanzas() {
       };
       modoWrap.appendChild(btn);
     });
-    wrap.appendChild(modoWrap);
+    var qBtn = el('button',{class:'btn btnp',style:'margin-bottom:14px;display:'+(modoFin==='personal'?'':'none')},'⚡ Gasto rápido');
+    qBtn.onclick = function(){ mGastoRapidoPF(); };
+    var filaModo = el('div',{style:'display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap'});
+    filaModo.appendChild(modoWrap); filaModo.appendChild(qBtn);
+    wrap.appendChild(filaModo);
     wrap.appendChild(negocioControlsWrap);
 
     var tabsEl = el('div', {class:'tabs', style:'margin-bottom:20px;flex-wrap:wrap'});
@@ -3436,7 +3443,7 @@ function vFinanzas() {
     function tabsForModo() {
       return modoFin === 'negocio'
         ? [['resumen','Resumen'],['ingresos','Ingresos'],['gastos','Gastos']]
-        : [['resumen-pf','Resumen'],['ingresos-pf','Ingresos'],['gastos-pf','Gastos'],['cuotas','Cuotas'],['prestamos-pf','Prestamos'],['auto-pf','Auto'],['deudas-pf','Deudas'],['pedrito-pf','👶 Pedrito'],['juntada-pf','🎲 Juntada']];
+        : [['resumen-pf','Resumen'],['ingresos-pf','Ingresos'],['gastos-pf','Gastos'],['cuotas','Cuotas'],['prestamos-pf','Prestamos'],['cuentas-pf','💳 Cuentas'],['auto-pf','Auto'],['deudas-pf','Deudas'],['pedrito-pf','👶 Pedrito'],['juntada-pf','🎲 Juntada']];
     }
     function renderTabs() {
       tabsEl.innerHTML = '';
@@ -3475,6 +3482,7 @@ function vFinanzas() {
         else if (tabActual === 'pedrito-pf') renderPedritoPF();
         else if (tabActual === 'juntada-pf') renderJuntada();
         else if (tabActual === 'prestamos-pf') renderPrestamosPF();
+        else if (tabActual === 'cuentas-pf') renderCuentasPF();
         else if (tabActual === 'auto-pf') renderAutoPF();
         else if (tabActual === 'asesor-pf') { tabActual = 'resumen-pf'; _finUIState.tabActual = tabActual; renderTabs(); renderResumenPF(); }
         else renderDeudasPF();
@@ -4537,12 +4545,13 @@ function vFinanzas() {
         addFg(body, 'Concepto', mkInput('nipf-conc','text','','Ej: AUH, Alimentos, Musica'));
         mkRow2(body, mkFg('Categoria', mkSelect('nipf-cat',[['AUH','AUH'],['Alimentos','Alimentos'],['Otros','Otros'],['Inversiones','Inversiones'],['Transferencia interna','Transferencia interna']],'Otros')), mkFg('Monto ($)', mkInput('nipf-monto','number','0')));
         addFg(body, 'Fecha', mkInput('nipf-fecha','date',new Date().toISOString().slice(0,10)));
+        if (cuentasPF.length) addFg(body, '¿A qué cuenta entró?', selCuentaPF('nipf-cuenta', cuentaDefaultIngresoPF()));
       }, function(foot) {
         foot.appendChild(cancelBtn());
         var ok = el('button', {class:'btn btnp'}, 'Guardar');
         ok.onclick = function() {
           var conc = gv('nipf-conc').trim(); if (!conc) { alert('Concepto obligatorio'); return; }
-          dbIns('panel_pf_ingresos', {mes_id:mesId, concepto:conc, categoria:gv('nipf-cat'), monto:Number(gv('nipf-monto')||0), fecha:gv('nipf-fecha')||null})
+          dbIns('panel_pf_ingresos', Object.assign({mes_id:mesId, concepto:conc, categoria:gv('nipf-cat'), monto:Number(gv('nipf-monto')||0), fecha:gv('nipf-fecha')||null}, cuentasPF.length ? {cuenta_id:gv('nipf-cuenta')||null} : {}))
             .then(function(r){ closeM(); cb((r&&r[0])||null); });
         };
         foot.appendChild(ok);
@@ -4840,7 +4849,12 @@ function vFinanzas() {
           tr.appendChild(el('td',{style:'font-size:12px;color:#64748B;white-space:nowrap'}, g.fecha ? fdate(g.fecha) : '—'));
           var tog=el('label',{class:'tog'});
           var inp=el('input',{type:'checkbox'}); if (g.pagado) inp.checked=true;
-          (function(gg){ inp.onchange=function(){ var checked=this.checked; dbUpd('panel_pf_gastos',gg.id,{pagado:checked}).then(function(){ gg.pagado=checked; return sincPagoPrestamoPF(gg, checked); }).then(function(){ if (gg.prestamo_id) renderAll(); }).catch(function(e){ alert('Error: '+e.message); }); }; })(g);
+          (function(gg){ inp.onchange=function(){
+            var checked=this.checked;
+            if (checked && cuentasPF.length) { this.checked = false; mMarcarPagadoPF(gg, function(){ renderAll(); }); return; }
+            var patchP = {pagado:checked}; if (cuentasPF.length && !checked) { patchP.pagado_at = null; patchP.cuenta_id = null; }
+            dbUpd('panel_pf_gastos',gg.id,patchP).then(function(){ gg.pagado=checked; if (!checked) { gg.pagado_at=null; gg.cuenta_id=null; } return sincPagoPrestamoPF(gg, checked); }).then(function(){ if (gg.prestamo_id || cuentasPF.length) renderAll(); }).catch(function(e){ alert('Error: '+e.message); });
+          }; })(g);
           tog.appendChild(inp); tog.appendChild(el('span',{class:'sl'}));
           tr.appendChild(el('td',{},[tog]));
           var btnPg=null;
@@ -4924,6 +4938,7 @@ function vFinanzas() {
             mkFg('Fecha', mkInput('epf-fecha','date',new Date().toISOString().slice(0,10)))
           );
           addFg(body, 'Nota (opcional)', mkInput('epf-notas','text','','ej: primera entrega, efectivo'));
+          if (cuentasPF.length) addFg(body, '¿De qué cuenta sale?', selCuentaPF('epf-cuenta', (inicial==='USD' && !hayARS ? (cuentaUsdPF()||cuentaDefaultIngresoPF()) : cuentaDefaultIngresoPF())));
         }, function(foot) {
           foot.appendChild(cancelBtn());
           var ok = el('button',{class:'btn btnp'},'Registrar entrega');
@@ -4937,13 +4952,15 @@ function vFinanzas() {
             if (!fecha) { alert('Ingresa la fecha'); return; }
             ok.disabled = true; ok.textContent = 'Guardando...';
             var rowIns = {gasto_id: g.id, monto: monto, fecha: fecha, notas: gv('epf-notas')||null};
+            var ctaE = cuentasPF.length ? (gv('epf-cuenta')||null) : null;
+            if (cuentasPF.length) { rowIns.cuenta_id = ctaE; recordarCuentaPF(g.concepto, ctaE); }
             if (mon==='USD') rowIns.moneda = 'USD'; // las ARS no mandan moneda (default ARS)
             dbIns('panel_pf_entregas', rowIns)
             .then(function(rows){
               g._entregas = (g._entregas||[]).concat(rows && rows[0] ? [rows[0]] : [{monto:monto,fecha:fecha,moneda:(mon==='USD'?'USD':undefined)}]);
               // Pagado al cubrir TODAS las monedas del gasto
               var completo = (!hayARS || entregadoPF(g) >= Number(g.monto||0) - 0.01) && (!hayUSD || entregadoUSDPF(g) >= usdTotalPF(g) - 0.01);
-              var fin = completo ? dbUpd('panel_pf_gastos', g.id, {pagado:true}).then(function(){ g.pagado=true; return sincPagoPrestamoPF(g, true, fecha); }) : Promise.resolve();
+              var fin = completo ? dbUpd('panel_pf_gastos', g.id, (cuentasPF.length ? {pagado:true, pagado_at:new Date().toISOString(), cuenta_id:ctaE} : {pagado:true})).then(function(){ g.pagado=true; if (cuentasPF.length) { g.pagado_at=new Date().toISOString(); g.cuenta_id=ctaE; } return sincPagoPrestamoPF(g, true, fecha); }) : Promise.resolve();
               return fin.then(function(){ closeM(); renderAll(); });
             })
             .catch(function(e){ ok.disabled=false; ok.textContent='Registrar entrega'; alert('Error: '+e.message+(mon==='USD'?'\n\nSi dice que no existe la columna "moneda", falta correr el SQL de panel_pf_entregas.':'')); });
@@ -5213,6 +5230,7 @@ function vFinanzas() {
         }
         addFg(body, 'Mes (para que cuente como gasto de ese mes)', mkSelect('pgp-mes', mesesPF.map(function(mm){ return [mm.id, MESES[mm.month-1]+' '+mm.year]; }), mesSeleccionadoPF));
         addFg(body, 'Notas', mkInput('pgp-notas','text',''));
+        if (cuentasPF.length) addFg(body, '¿De qué cuenta sale? (solo si ya lo pagaste)', selCuentaPF('pgp-cuenta', esUSD ? (cuentaUsdPF() || cuentaDefaultIngresoPF()) : cuentaDefaultIngresoPF()));
       }, function(foot) {
         foot.appendChild(cancelBtn());
         var ok = el('button', {class:'btn btnp'}, 'Guardar');
@@ -5224,6 +5242,7 @@ function vFinanzas() {
           var tc = esUSD ? Number(gv('pgp-tc')||0) : 0;
           if (esUSD && !(tc>0)) { alert('Ingresá el precio del dólar'); return; }
           var gastoBody = {mes_id:mesId, categoria:'Créditos', tipo:'varios', fecha:fecha, prestamo_id:p.id, pagado:!prog};
+          if (cuentasPF.length && !prog) { gastoBody.cuenta_id = gv('pgp-cuenta')||null; gastoBody.pagado_at = new Date().toISOString(); recordarCuentaPF(p.nombre, gastoBody.cuenta_id); }
           if (esUSD) { gastoBody.concepto = p.nombre+' (USD '+monto+')'; gastoBody.monto = Math.round(monto*tc); gastoBody.prestamo_monto = monto; }
           else { gastoBody.concepto = p.nombre; gastoBody.monto = monto; }
           ok.disabled = true; ok.textContent = 'Guardando...';
@@ -5525,13 +5544,17 @@ function vFinanzas() {
       var transI = ingMes.filter(function(i){ return i.categoria==='Transferencia interna'; }).reduce(function(s,i){ return s+Number(i.monto); },0);
       var dsPend = Math.max(0, Math.round(t.juanDS - transI));
 
+      var usdHold = cuentasPF.length ? disponibleUsdPF() : 0;
       var pend = gastosPF.filter(function(g){ return g.mes_id===m.id && !g.pagado; }).map(function(g){
-        return {concepto:g.concepto, categoria:g.categoria, fecha:g.fecha, saldo_ars:Math.round(saldoPF(g)), saldo_usd:Math.round(saldoUSDPF(g)*100)/100};
+        return {concepto:g.concepto, categoria:g.categoria, fecha:g.fecha, saldo_ars:Math.round(saldoPF(g)), saldo_usd:Math.round(saldoUSDPF(g)*100)/100, prestamo_usd:Number(g.prestamo_monto||0)};
       }).filter(function(g){ return g.saldo_ars>0 || g.saldo_usd>0; });
 
       var ev = [];
       pend.forEach(function(g){
-        ev.push({fecha:aHoy(g.fecha), entra:0, sale:Math.round(g.saldo_ars + g.saldo_usd*tcUSD), tarjeta:g.categoria==='Tarjetas', detalle:g.concepto});
+        var saleArs = g.saldo_ars + g.saldo_usd*tcUSD, notaUsd = '';
+        if (usdHold > 0 && g.saldo_usd > 0) { var cu = Math.min(usdHold, g.saldo_usd); usdHold -= cu; saleArs -= cu*tcUSD; notaUsd = ' (USD '+cu+' cubiertos con tus dolares)'; }
+        else if (usdHold > 0 && g.prestamo_usd > 0 && g.saldo_ars > 0) { var cu2 = Math.min(usdHold, g.prestamo_usd); usdHold -= cu2; saleArs = g.saldo_ars*(1 - cu2/g.prestamo_usd); notaUsd = ' (USD '+cu2+' cubiertos con tus dolares)'; }
+        ev.push({fecha:aHoy(g.fecha), entra:0, sale:Math.round(Math.max(0,saleArs)), tarjeta:g.categoria==='Tarjetas', detalle:g.concepto+notaUsd});
       });
       // Pagos mensuales fijos en USD que no estan como gasto del mes (ej: Susana, "USD 400 x mes")
       prestamosPF.filter(function(p){ return p.activo && p.moneda==='USD'; }).forEach(function(p){
@@ -5539,7 +5562,8 @@ function vFinanzas() {
         var yaPago = pagosDePrestamoPF(p).some(function(pg){ return (pg.fecha||'').slice(0,7)===mesStr; }) || gastosPF.some(function(g){ return g.mes_id===m.id && g.prestamo_id===p.id; });
         if (yaPago) return;
         var dia = (p.fecha||'').slice(8,10) || '15';
-        ev.push({fecha:aHoy(mesStr+'-'+dia), entra:0, sale:Math.round(Number(mm[1])*tcUSD), tarjeta:false, detalle:p.nombre+' (USD '+mm[1]+', no figura en los gastos del mes)'});
+        var usdSus = Number(mm[1]), cuS = Math.min(usdHold, usdSus); usdHold -= cuS;
+        ev.push({fecha:aHoy(mesStr+'-'+dia), entra:0, sale:Math.round((usdSus-cuS)*tcUSD), tarjeta:false, detalle:p.nombre+' (USD '+mm[1]+', no figura en los gastos del mes'+(cuS>0?'; USD '+cuS+' cubiertos con tus dolares':'')+')'});
       });
       // Ingresos esperados con fecha
       if (dsPend > 500) {
@@ -5579,7 +5603,7 @@ function vFinanzas() {
         calendario_caja: calendario,
         por_cobrar_negocio: porCobrar,
         deudas_a_cobrar: deudasPF.filter(function(d){ return d.estado==='pendiente'; }).map(function(d){ return {nombre:d.nombre, concepto:d.concepto, monto:Number(d.monto)}; }),
-        prestamos: prestamosPF.filter(function(p){ return p.activo; }).map(function(p){ return {nombre:p.nombre, moneda:p.moneda, saldo:Math.max(0, Number(p.monto_total)-pagadoPrestamoPF(p)), notas:p.notas||null}; })
+        prestamos: prestamosPF.filter(function(p){ return p.activo && !(cuentasPF.length && /descubierto/i.test(p.nombre||'')); }).map(function(p){ return {nombre:p.nombre, moneda:p.moneda, saldo:Math.max(0, Number(p.monto_total)-pagadoPrestamoPF(p)), notas:p.notas||null}; })
       };
     }
 
@@ -5610,6 +5634,205 @@ function vFinanzas() {
       return wrap;
     }
 
+    // ---- GASTO RAPIDO ----
+    var TIPOS_RAPIDO_PF = [
+      {k:'Combustible', cat:'Transporte', ic:'⛽'},
+      {k:'Súper / Despensa', cat:'Supermercado', ic:'🛒'},
+      {k:'Farmacia', cat:'Salud', ic:'💊'},
+      {k:'Salidas', cat:'Ocio', ic:'🎭'},
+      {k:'Otro', cat:'Varios', ic:'🧾'}
+    ];
+    function mGastoRapidoPF() {
+      var sel = TIPOS_RAPIDO_PF[0];
+      openM(makeModal('⚡ Gasto rápido', function(body) {
+        var chips = el('div',{style:'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px'});
+        var btns = [];
+        TIPOS_RAPIDO_PF.forEach(function(t) {
+          var b = el('button',{class:'btn btnsm',type:'button'}, t.ic+' '+t.k);
+          b.onclick = function(){ sel = t; pintar(); var c = document.getElementById('gr-conc'); if (c && (!c.value || btns.some(function(x){ return x.t.k===c.value; }))) c.value = t.k; };
+          btns.push({b:b, t:t}); chips.appendChild(b);
+        });
+        function pintar() { btns.forEach(function(x){ x.b.className = 'btn btnsm' + (x.t===sel ? ' btnp' : ''); }); }
+        body.appendChild(chips); pintar();
+        mkRow2(body, mkFg('Concepto', mkInput('gr-conc','text',sel.k)), mkFg('Monto ($)', mkInput('gr-monto','number','','0')));
+        var cuentasOk = cuentasPF.filter(function(c){ return !c.reservada && c.moneda!=='USD'; });
+        if (cuentasOk.length) {
+          addFg(body, '¿De qué cuenta sale?', mkSelect('gr-cuenta', cuentasOk.map(function(c){ return [c.id, c.nombre+(c.tipo==='tarjeta'?' (tarjeta)':'')]; }), cuentaDefaultIngresoPF() || cuentasOk[0].id));
+        }
+        mkRow2(body, mkFg('Fecha', mkInput('gr-fecha','date',new Date().toISOString().slice(0,10))), mkFg('Nota (opcional)', mkInput('gr-nota','text','')));
+        setTimeout(function(){ var m = document.getElementById('gr-monto'); if (m) m.focus(); }, 50);
+      }, function(foot) {
+        foot.appendChild(cancelBtn());
+        var ok = el('button',{class:'btn btnp'},'Cargar gasto');
+        ok.onclick = function() {
+          var monto = Number(gv('gr-monto')||0); if (!(monto>0)) { alert('Poné el monto'); return; }
+          var fecha = gv('gr-fecha') || new Date().toISOString().slice(0,10);
+          var conc = (gv('gr-conc')||sel.k).trim() || sel.k; var nota = gv('gr-nota').trim();
+          var mm = mesesPF.find(function(x){ return x.year===Number(fecha.slice(0,4)) && x.month===Number(fecha.slice(5,7)); }) || getMesPF(mesSeleccionadoPF);
+          if (!mm) { alert('No hay un mes cargado para esa fecha'); return; }
+          var cid = cuentasPF.length ? (gv('gr-cuenta')||null) : null;
+          var cta = cid ? cuentasPF.find(function(c){ return c.id===cid; }) : null;
+          if (cta && cta.tipo!=='tarjeta' && saldoCuentaPF(cta) - monto < 0 && saldoCuentaPF(cta) >= 0) {
+            if (!confirm(cta.nombre+' quedaría en '+fmt(Math.round(saldoCuentaPF(cta)-monto))+'. ¿Cargarlo igual?')) return;
+          }
+          var iso = new Date().toISOString();
+          var row = {mes_id:mm.id, concepto:conc+(nota?' — '+nota:''), monto:monto, categoria:sel.cat, tipo:'varios', fecha:fecha, pagado:true};
+          if (cuentasPF.length) { row.pagado_at = iso; row.cuenta_id = cid; }
+          ok.disabled = true; ok.textContent = 'Guardando...';
+          dbIns('panel_pf_gastos', row).then(function(r){
+            var g = (r&&r[0]) || row; if (!g._entregas) g._entregas = []; gastosPF.push(g);
+            closeM(); renderAll();
+          }).catch(function(e){ ok.disabled=false; ok.textContent='Cargar gasto'; alert('Error: '+e.message+'\n\nSi dice que no existe la columna, falta correr el SQL de cuentas.'); });
+        };
+        foot.appendChild(ok);
+      }));
+    }
+
+    // ---- PESTAÑA CUENTAS ----
+    function renderCuentasPF() {
+      var box = el('div',{class:'card',style:'padding:20px;margin-bottom:14px;background:#fff'});
+      var top = el('div',{style:'display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px'});
+      top.appendChild(el('div',{style:'font-weight:700;font-size:15px;color:#1a2e4a'},'💳 Cuentas'));
+      var acc = el('div',{style:'display:flex;gap:8px;flex-wrap:wrap'});
+      var bMov = el('button',{class:'btn btnp btnsm'},'↔ Mover plata / comprar USD');
+      var bNew = el('button',{class:'btn btnsm'},'+ Nueva cuenta');
+      acc.appendChild(bMov); acc.appendChild(bNew); top.appendChild(acc); box.appendChild(top);
+      if (!cuentasPF.length) {
+        box.appendChild(el('div',{style:'font-size:13px;color:#64748B;line-height:1.5'},'Todavía no hay cuentas. Corré el SQL de cuentas en Supabase y recargá.'));
+        content.appendChild(box); return;
+      }
+      var kp = el('div',{style:'display:flex;gap:24px;flex-wrap:wrap;margin-bottom:14px'});
+      function kpi(l,v,c){ var x=el('div',{}); x.appendChild(el('div',{style:'font-size:11px;color:#64748B'},l)); x.appendChild(el('div',{style:'font-size:17px;font-weight:700;color:'+c},v)); kp.appendChild(x); }
+      kpi('Disponible en pesos', fmt(Math.round(disponibleArsPF())), '#3D8A32');
+      kpi('Dólares', 'USD '+(Math.round(disponibleUsdPF()*100)/100), '#0B9EDA');
+      kpi('Descubierto', fmt(Math.round(descubiertoPF())), descubiertoPF()<0 ? '#A32D2D' : '#64748B');
+      if (consumoTarjetaPF() > 0) kpi('Consumo en tarjeta', fmt(Math.round(consumoTarjetaPF())), '#854F0B');
+      if (reservadoUsdPF() > 0) kpi('Reservado (no disponible)', 'USD '+(Math.round(reservadoUsdPF()*100)/100), '#854F0B');
+      box.appendChild(kp);
+      var tw = el('div',{style:'overflow-x:auto'});
+      var tb = el('table',{class:'tbl',style:'font-size:13px'});
+      tb.appendChild(elH('thead',{},'<tr><th>Cuenta</th><th style="text-align:right">Saldo</th><th>Base</th><th></th></tr>'));
+      var tbd = el('tbody');
+      cuentasPF.forEach(function(c) {
+        var sa = saldoCuentaPF(c), usd = c.moneda==='USD';
+        var tr = el('tr',{});
+        tr.appendChild(el('td',{style:'font-weight:600'}, c.nombre+(usd?' (USD)':'')+(c.ingreso_default?' · recibe cobros':'')+(c.reservada?' · reservada (no cuenta como disponible)':'')+(c.tipo==='tarjeta'?' · tarjeta (lo negativo es lo que debés)':'')));
+        tr.appendChild(el('td',{style:'text-align:right;font-weight:700;color:'+(sa<0?'#A32D2D':'#1a2e4a')}, usd ? 'USD '+(Math.round(sa*100)/100) : fmt(Math.round(sa))));
+        tr.appendChild(el('td',{style:'font-size:11px;color:#94a3b8'}, (usd?'USD '+c.saldo_inicial:fmt(Number(c.saldo_inicial)))+' al '+fmtFechaHoraPF(new Date(c.saldo_inicial_ts).getTime())));
+        var td = el('td',{style:'white-space:nowrap;text-align:right'});
+        var bRes = el('button',{class:'btn btnsm',style:'margin-right:4px'}, c.reservada ? 'Hacer disponible' : 'Reservar'); bRes.onclick = function(){ dbUpd('panel_pf_cuentas', c.id, {reservada:!c.reservada}).then(function(){ c.reservada = !c.reservada; renderAll(); }).catch(function(e){ alert('Error: '+e.message+'\n\nSi dice que no existe la columna, falta correr el SQL de reservas.'); }); };
+        var bAj = el('button',{class:'btn btnsm'},'Ajustar'); var bDet = el('button',{class:'btn btnsm',style:'margin-left:4px'},'Movimientos'); var bX = el('button',{class:'btn btnsm',style:'margin-left:4px;background:#FCEBEB;border-color:#FCEBEB;color:#A32D2D'},'×');
+        bAj.onclick = function(){ mAjustarCuentaPF(c); }; bDet.onclick = function(){ mMovimientosCuentaPF(c); };
+        bX.onclick = function(){ if (!confirm('Quitar la cuenta "'+c.nombre+'"? Los pagos ya cargados no se borran.')) return; dbUpd('panel_pf_cuentas', c.id, {activa:false}).then(function(){ cuentasPF.splice(cuentasPF.indexOf(c),1); renderAll(); }); };
+        td.appendChild(bRes); td.appendChild(bAj); td.appendChild(bDet); td.appendChild(bX); tr.appendChild(td); tbd.appendChild(tr);
+      });
+      tb.appendChild(tbd); tw.appendChild(tb); box.appendChild(tw);
+      box.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-top:10px;line-height:1.5'},'El saldo = base + ingresos − pagos − movimientos posteriores a la hora de la base. Los cobros del negocio entran a la cuenta marcada "recibe cobros". Si un saldo no coincide con tu banco, tocá Ajustar: te muestra la diferencia que no se explica con lo cargado.'));
+      var movs = movimientosPF.slice().sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); }).slice(0,12);
+      if (movs.length) {
+        box.appendChild(el('div',{style:'font-weight:600;font-size:13px;color:#1a2e4a;margin:16px 0 6px'},'Últimos movimientos entre cuentas'));
+        movs.forEach(function(mv){
+          var co = cuentasPF.find(function(x){ return x.id===mv.cuenta_origen; }) || {nombre:'?',moneda:'ARS'}, cd = cuentasPF.find(function(x){ return x.id===mv.cuenta_destino; }) || {nombre:'?',moneda:'ARS'};
+          function mm(n,c){ return c.moneda==='USD' ? 'USD '+n : fmt(Math.round(Number(n))); }
+          var f = el('div',{style:'display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:4px 0;border-bottom:1px solid #F1F5F9'});
+          f.appendChild(el('span',{}, fdate(mv.fecha)+' · '+co.nombre+' → '+cd.nombre+' · '+mm(mv.monto_origen,co)+(co.moneda!==cd.moneda ? ' → '+mm(mv.monto_destino,cd)+(mv.tc?' (dólar a '+fmt(Number(mv.tc))+')':'') : '')+(mv.notas?' · '+mv.notas:'')));
+          var bd = el('button',{class:'btn btnsm',style:'background:#FCEBEB;border-color:#FCEBEB;color:#A32D2D'},'×');
+          bd.onclick = function(){ if (!confirm('Eliminar este movimiento?')) return; sbFetch('panel_pf_movimientos?id=eq.'+mv.id,{method:'DELETE',prefer:'return=minimal'}).then(function(){ movimientosPF.splice(movimientosPF.indexOf(mv),1); renderAll(); }); };
+          f.appendChild(bd); box.appendChild(f);
+        });
+      }
+      bNew.onclick = function(){ mNuevaCuentaPF(); };
+      bMov.onclick = function(){ mMoverPlataPF(); };
+      content.appendChild(box);
+    }
+    function mNuevaCuentaPF() {
+      openM(makeModal('Nueva cuenta', function(body) {
+        addFg(body, 'Nombre', mkInput('nc-nom','text','','Ej: Santander, Efectivo'));
+        mkRow2(body, mkFg('Moneda', mkSelect('nc-mon',[['ARS','Pesos'],['USD','Dólares']],'ARS')), mkFg('Saldo de hoy', mkInput('nc-sal','number','0')));
+      }, function(foot) {
+        foot.appendChild(cancelBtn());
+        var ok = el('button',{class:'btn btnp'},'Crear');
+        ok.onclick = function() {
+          var nom = gv('nc-nom').trim(); if (!nom) { alert('Poné un nombre'); return; }
+          dbIns('panel_pf_cuentas', {nombre:nom, moneda:gv('nc-mon'), saldo_inicial:Number(gv('nc-sal')||0), orden:cuentasPF.length+1}).then(function(r){ if (r&&r[0]) cuentasPF.push(r[0]); closeM(); renderAll(); }).catch(function(e){ alert('Error: '+e.message); });
+        };
+        foot.appendChild(ok);
+      }));
+    }
+    function mAjustarCuentaPF(c) {
+      var calc = saldoCuentaPF(c), usd = c.moneda==='USD';
+      openM(makeModal('Ajustar — '+c.nombre, function(body) {
+        body.appendChild(el('div',{class:'ibox'},'Saldo según lo cargado: '+(usd?'USD '+(Math.round(calc*100)/100):fmt(Math.round(calc)))));
+        var inp = mkInput('aj-real','number',Math.round(calc*100)/100);
+        addFg(body, 'Saldo real hoy (el que ves en la app del banco)', inp);
+        var dif = el('div',{style:'font-size:12px;font-weight:600;margin:-4px 0 8px'});
+        function pintar(){ var d = Number(gv('aj-real')||0) - calc; dif.style.color = Math.abs(d)<1 ? '#3D8A32' : '#A32D2D'; dif.textContent = Math.abs(d)<1 ? 'Coincide con lo cargado.' : 'Hay '+(usd?'USD '+(Math.round(d*100)/100):fmt(Math.round(d)))+' que no se explican con los movimientos cargados (un pago, ingreso o transferencia sin cargar).'; }
+        inp.oninput = pintar; pintar(); body.appendChild(dif);
+        body.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;line-height:1.4'},'Al guardar, ese saldo pasa a ser la nueva base de la cuenta, con la hora de ahora.'));
+      }, function(foot) {
+        foot.appendChild(cancelBtn());
+        var ok = el('button',{class:'btn btnp'},'Guardar saldo real');
+        ok.onclick = function() {
+          var real = Number(gv('aj-real')||0), iso = new Date().toISOString();
+          dbUpd('panel_pf_cuentas', c.id, {saldo_inicial:real, saldo_inicial_ts:iso}).then(function(){ c.saldo_inicial = real; c.saldo_inicial_ts = iso; closeM(); renderAll(); }).catch(function(e){ alert('Error: '+e.message); });
+        };
+        foot.appendChild(ok);
+      }));
+    }
+    function mMovimientosCuentaPF(c) {
+      var usd = c.moneda==='USD';
+      openM(makeModal('Movimientos — '+c.nombre, function(body) {
+        var lista = movimientosCuentaPF(c).sort(function(a,b){ return b.t-a.t; });
+        body.appendChild(el('div',{style:'font-size:12px;color:#64748B;margin-bottom:8px'},'Desde la base: '+(usd?'USD '+c.saldo_inicial:fmt(Number(c.saldo_inicial)))+' ('+fmtFechaHoraPF(new Date(c.saldo_inicial_ts).getTime())+')'));
+        if (!lista.length) body.appendChild(el('div',{style:'font-size:13px;color:#94a3b8'},'Sin movimientos después de la base.'));
+        lista.forEach(function(x){
+          var f = el('div',{style:'display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid #F1F5F9;gap:10px'});
+          f.appendChild(el('span',{}, fmtFechaHoraPF(x.t)+' · '+x.det));
+          f.appendChild(el('b',{style:'color:'+(x.monto<0?'#A32D2D':'#3D8A32')}, (x.monto<0?'−':'+')+(usd?'USD '+(Math.round(Math.abs(x.monto)*100)/100):fmt(Math.round(Math.abs(x.monto))))));
+          body.appendChild(f);
+        });
+      }, function(foot) { foot.appendChild(cancelBtn()); }));
+    }
+    function mMoverPlataPF() {
+      var opts = cuentasPF.map(function(c){ return [c.id, c.nombre+(c.moneda==='USD'?' (USD)':'')]; });
+      var usdId = cuentaUsdPF();
+      openM(makeModal('Mover plata entre cuentas', function(body) {
+        var sO = mkSelect('mv-o', opts, opts[0] ? opts[0][0] : ''), sD = mkSelect('mv-d', opts, usdId || (opts[1] ? opts[1][0] : ''));
+        mkRow2(body, mkFg('Sale de', sO), mkFg('Entra a', sD));
+        var inpM = mkInput('mv-m','number','');
+        var inpTc = mkInput('mv-tc','number',Math.round(tcUSD));
+        mkRow2(body, mkFg('Monto que sale', inpM), mkFg('Fecha', mkInput('mv-f','date',new Date().toISOString().slice(0,10))));
+        var fgTc = mkFg('Precio del dólar ($ por USD)', inpTc); body.appendChild(fgTc);
+        var res = el('div',{style:'font-size:12px;font-weight:600;color:#1a2e4a;margin:-2px 0 10px'}); body.appendChild(res);
+        addFg(body, 'Nota (opcional)', mkInput('mv-n','text','','ej: compra USD para Susana, cubrir descubierto'));
+        function cta(id){ return cuentasPF.find(function(x){ return x.id===id; }); }
+        function calc() {
+          var o = cta(sO.value), d = cta(sD.value); if (!o||!d) return null;
+          var m = Number(inpM.value||0), tc = Number(inpTc.value||0), dif = o.moneda!==d.moneda;
+          fgTc.style.display = dif ? '' : 'none';
+          var dest = !dif ? m : (o.moneda==='USD' ? m*tc : (tc>0 ? m/tc : 0));
+          res.textContent = m>0 ? ('Entra: '+(d.moneda==='USD'?'USD '+(Math.round(dest*100)/100):fmt(Math.round(dest)))) : '';
+          return {o:o,d:d,m:m,tc:dif?tc:null,dest:dest,dif:dif};
+        }
+        [sO,sD,inpM,inpTc].forEach(function(x){ x.oninput = calc; x.onchange = calc; }); calc();
+      }, function(foot) {
+        foot.appendChild(cancelBtn());
+        var ok = el('button',{class:'btn btnp'},'Registrar');
+        ok.onclick = function() {
+          var o = cuentasPF.find(function(x){ return x.id===gv('mv-o'); }), d = cuentasPF.find(function(x){ return x.id===gv('mv-d'); });
+          var m = Number(gv('mv-m')||0), tc = Number(gv('mv-tc')||0);
+          if (!o||!d||o.id===d.id) { alert('Elegí dos cuentas distintas'); return; }
+          if (!(m>0)) { alert('Poné el monto'); return; }
+          var dif = o.moneda!==d.moneda; if (dif && !(tc>0)) { alert('Poné el precio del dólar'); return; }
+          var dest = !dif ? m : (o.moneda==='USD' ? m*tc : m/tc);
+          ok.disabled = true;
+          dbIns('panel_pf_movimientos', {fecha:gv('mv-f')||null, cuenta_origen:o.id, cuenta_destino:d.id, monto_origen:m, monto_destino:Math.round(dest*100)/100, tc:dif?tc:null, notas:gv('mv-n')||null})
+            .then(function(r){ if (r&&r[0]) movimientosPF.push(r[0]); closeM(); renderAll(); }).catch(function(e){ ok.disabled=false; alert('Error: '+e.message); });
+        };
+        foot.appendChild(ok);
+      }));
+    }
+
     // ---- Estado persistente del asesor (panel_config, clave 'pf_asesor') ----
     var asesorEstPF = (function(){
       var r = (config||[]).find(function(c){ return c.clave==='pf_asesor'; });
@@ -5625,6 +5848,70 @@ function vFinanzas() {
     function fmtFechaHoraPF(ts) { var d = new Date(ts); return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
 
 
+    // ---- CUENTAS: cada cuenta arranca con un saldo base (con hora) y se mueve con los pagos, ingresos y movimientos posteriores ----
+    var cuentasPF = (R.cuentasPF||[]), movimientosPF = (R.movimientosPF||[]);
+    function fechaLocalPF(ts) { var d = new Date(ts); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+    function convPF(monto, de, a) { de = de||'ARS'; a = a||'ARS'; if (de===a) return monto; return de==='USD' ? monto*tcUSD : monto/tcUSD; }
+    function montoGastoEnCuentaPF(g, c) {
+      var remARS = Math.max(0, Number(g.monto||0) - entregadoPF(g)), remUSD = saldoUSDPF(g);
+      if (c.moneda === 'USD') {
+        if (remUSD > 0) return remUSD + remARS/tcUSD;
+        if (Number(g.prestamo_monto||0) > 0 && remARS > 0) return Number(g.prestamo_monto);
+        return remARS/tcUSD;
+      }
+      return remARS + remUSD*tcUSD;
+    }
+    function movimientosCuentaPF(c) {
+      var ts = new Date(c.saldo_inicial_ts||0).getTime(), out = [];
+      ingresosPF.forEach(function(i){ if (i.cuenta_id===c.id && i.created_at && new Date(i.created_at).getTime()>ts) out.push({t:new Date(i.created_at).getTime(), monto:convPF(Number(i.monto||0),'ARS',c.moneda), det:'Ingreso: '+(i.concepto||i.categoria||'')}); });
+      if (c.ingreso_default && c.moneda !== 'USD') {
+        var dTs = fechaLocalPF(ts);
+        cobros.forEach(function(co){ if (co.fecha_pago && String(co.fecha_pago).slice(0,10) > dTs && String(co.fecha_pago).slice(0,10) <= fechaLocalPF(Date.now())) out.push({t:new Date(co.fecha_pago+'T12:00:00').getTime(), monto:Number(co.monto||0), det:'Cobro: '+(co.descripcion||co.tipo_cobro||'')}); });
+      }
+      gastosPF.forEach(function(g){
+        if (g.pagado && g.cuenta_id===c.id && g.pagado_at && new Date(g.pagado_at).getTime()>ts) { var a = montoGastoEnCuentaPF(g, c); if (a > 0) out.push({t:new Date(g.pagado_at).getTime(), monto:-a, det:'Pago: '+(g.concepto||'')}); }
+        (g._entregas||[]).forEach(function(e){ if (e.cuenta_id===c.id && e.created_at && new Date(e.created_at).getTime()>ts) out.push({t:new Date(e.created_at).getTime(), monto:-convPF(Number(e.monto||0), e.moneda==='USD'?'USD':'ARS', c.moneda), det:'Entrega: '+(g.concepto||'')}); });
+      });
+      movimientosPF.forEach(function(mv){
+        if (!(mv.created_at && new Date(mv.created_at).getTime()>ts)) return;
+        if (mv.cuenta_destino===c.id) out.push({t:new Date(mv.created_at).getTime(), monto:Number(mv.monto_destino||0), det:'Movimiento entrante'+(mv.notas?': '+mv.notas:'')});
+        if (mv.cuenta_origen===c.id) out.push({t:new Date(mv.created_at).getTime(), monto:-Number(mv.monto_origen||0), det:'Movimiento saliente'+(mv.notas?': '+mv.notas:'')});
+      });
+      return out;
+    }
+    function saldoCuentaPF(c) { return Number(c.saldo_inicial||0) + movimientosCuentaPF(c).reduce(function(a,x){ return a + x.monto; }, 0); }
+    function disponibleArsPF() { return cuentasPF.filter(function(c){ return c.moneda!=='USD' && !c.reservada && c.tipo!=='tarjeta'; }).reduce(function(a,c){ return a + Math.max(0, saldoCuentaPF(c)); }, 0); }
+    function disponibleUsdPF() { return cuentasPF.filter(function(c){ return c.moneda==='USD' && !c.reservada; }).reduce(function(a,c){ return a + Math.max(0, saldoCuentaPF(c)); }, 0); }
+    function reservadoUsdPF() { return cuentasPF.filter(function(c){ return c.moneda==='USD' && c.reservada; }).reduce(function(a,c){ return a + Math.max(0, saldoCuentaPF(c)); }, 0); }
+    function consumoTarjetaPF() { return cuentasPF.filter(function(c){ return c.tipo==='tarjeta'; }).reduce(function(a,c){ return a + Math.max(0, -saldoCuentaPF(c)); }, 0); }
+    function descubiertoPF() { return cuentasPF.filter(function(c){ return c.moneda!=='USD' && c.tipo!=='tarjeta'; }).reduce(function(a,c){ return a + Math.min(0, saldoCuentaPF(c)); }, 0); }
+    function selCuentaPF(id, def) { return mkSelect(id, [['','(sin asignar)']].concat(cuentasPF.map(function(c){ return [c.id, c.nombre+(c.moneda==='USD'?' (USD)':'')+(c.reservada?' · reservada':'')]; })), def||''); }
+    function claveCtaPF(t) { return String(t||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim().slice(0,40); }
+    function ultimaCuentaPF(concepto) { try { var mp = JSON.parse(localStorage.getItem('qp_ultima_cuenta')||'{}'); var id = mp[claveCtaPF(concepto)]; if (id && cuentasPF.some(function(c){ return c.id===id; })) return id; } catch(e) {} return ''; }
+    function recordarCuentaPF(concepto, id) { try { var mp = JSON.parse(localStorage.getItem('qp_ultima_cuenta')||'{}'); mp[claveCtaPF(concepto)] = id||''; localStorage.setItem('qp_ultima_cuenta', JSON.stringify(mp)); } catch(e) {} }
+    function cuentaDefaultIngresoPF() { var c = cuentasPF.find(function(x){ return x.ingreso_default; }); return c ? c.id : ''; }
+    function cuentaUsdPF() { var c = cuentasPF.find(function(x){ return x.moneda==='USD' && !x.reservada; }); return c ? c.id : ''; }
+    // Marcar un gasto como pagado pidiendo la cuenta
+    function mMarcarPagadoPF(g, onDone) {
+      var defId = (Number(g.prestamo_monto||0)>0 || (usdTotalPF(g)>0 && Number(g.monto||0)===0)) ? (cuentaUsdPF() || cuentaDefaultIngresoPF()) : cuentaDefaultIngresoPF();
+      openM(makeModal('Marcar pagado — '+(g.concepto||'gasto'), function(body) {
+        addFg(body, '¿De qué cuenta salió?', selCuentaPF('mpg-cuenta', defId));
+        body.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;line-height:1.4'},'El saldo de esa cuenta baja solo. Si pagaste desde una cuenta en dólares, descuenta los USD.'));
+      }, function(foot) {
+        foot.appendChild(cancelBtn());
+        var ok = el('button',{class:'btn btnp'},'Marcar pagado');
+        ok.onclick = function() {
+          var cid = gv('mpg-cuenta')||null, iso = new Date().toISOString();
+          ok.disabled = true; ok.textContent = 'Guardando...';
+          dbUpd('panel_pf_gastos', g.id, {pagado:true, pagado_at:iso, cuenta_id:cid}).then(function(){
+            g.pagado = true; g.pagado_at = iso; g.cuenta_id = cid; recordarCuentaPF(g.concepto, cid);
+            return sincPagoPrestamoPF(g, true);
+          }).then(function(){ closeM(); onDone(); }).catch(function(e){ ok.disabled=false; ok.textContent='Marcar pagado'; alert('Error: '+e.message+'\n\nSi dice que no existe la columna, falta correr el SQL de cuentas.'); });
+        };
+        foot.appendChild(ok);
+      }));
+    }
+
     // ---- Caja calculada desde el panel: sueldo depositado + ingresos cargados - pagos hechos del mes ----
     function efectivoDetallePF(m) {
       m = m || getMesPF(mesSeleccionadoPF); if (!m) return null;
@@ -5639,11 +5926,17 @@ function vFinanzas() {
         if (g.pagado) return a + Number(g.monto||0) + Number(g.monto_usd||0)*tcUSD;
         return a + Math.max(0, Number(g.monto||0) - saldoPF(g)) + Math.max(0, usdTotalPF(g) - saldoUSDPF(g))*tcUSD;
       }, 0);
-      return {valor:sueldo+ing+cob-pag, sueldo:sueldo, ing:ing, cob:cob, pag:pag, cobL:cobL};
+      var calc = sueldo+ing+cob-pag;
+      var conCuentas = cuentasPF.length > 0;
+      return {valor:(conCuentas ? disponibleArsPF() : calc), calculado:calc, origen:(conCuentas ? 'cuentas' : 'panel'), sueldo:sueldo, ing:ing, cob:cob, pag:pag, cobL:cobL};
     }
     function efectivoPF(m) { var d = efectivoDetallePF(m); return d ? Math.round(d.valor) : 0; }
     function lineaEfectivoPF() {
       var d = efectivoDetallePF(); if (!d) return '';
+      if (d.origen === 'cuentas') {
+        var partes = cuentasPF.map(function(c){ var sa = saldoCuentaPF(c); return c.nombre+' '+(c.moneda==='USD' ? 'USD '+(Math.round(sa*100)/100) : fmt(Math.round(sa))); });
+        return 'Cuentas: '+partes.join(' · ')+'. Disponible en pesos: '+fmt(Math.round(d.valor))+(descubiertoPF()<0 ? ' · descubierto '+fmt(Math.round(descubiertoPF())) : '')+'.';
+      }
       return 'Caja según el panel: sueldo depositado '+fmt(d.sueldo)+' + ingresos cargados '+fmt(d.ing)+' + cobros del negocio '+fmt(d.cob)+' − pagos hechos '+fmt(d.pag)+' = '+fmt(d.valor)+'. No incluye saldo de meses anteriores.';
     }
 
@@ -5656,6 +5949,15 @@ function vFinanzas() {
       var hash = hashAsesorPF(datos);
       if (ing > 0) { datos.ingreso_nuevo = ing; datos.efectivo_antes_del_ingreso = Number(o.efectivo||0) - ing; }
       datos.efectivo_origen = 'Calculado por el panel: sueldo depositado + ingresos personales cargados + cobros del negocio cobrados - pagos hechos del mes. No incluye saldo de meses anteriores ni plata que no este cargada en el panel. Todo lo listado en caja_detalle YA esta cobrado/pagado y ya esta sumado/restado en efectivo_hoy: no pidas marcarlo como cobrado ni lo confundas con los cobros pendientes (por_cobrar_negocio), que son otros.';
+      if (cuentasPF.length) {
+        datos.efectivo_origen = 'Suma de saldos en pesos de las cuentas de Juan (solo saldos positivos). Cada pago, ingreso y movimiento de plata se registra con su cuenta, asi que los saldos se actualizan solos; se corrigen cuando Juan ajusta una cuenta con su saldo real. El descubierto del Banco Rio (saldo negativo) no es plata disponible: se repite todos los meses, su costo son los intereses, y todo ingreso que entre a esa cuenta se come primero el descubierto. Los dolares disponibles cubren los pagos en USD (ej: Susana) antes de usar pesos.';
+        datos.cuentas = cuentasPF.map(function(c){ var sa = saldoCuentaPF(c); return {nombre:c.nombre, moneda:c.moneda, saldo:(c.moneda==='USD' ? Math.round(sa*100)/100 : Math.round(sa)), tipo:(c.tipo==='tarjeta' ? 'tarjeta (saldo negativo = consumos nuevos que hay que pagar)' : (c.reservada ? 'reservada (no disponible)' : (sa<0 ? 'descubierto' : 'disponible')))}; });
+        datos.descubierto_total = Math.round(descubiertoPF());
+        datos.usd_disponibles = Math.round(disponibleUsdPF()*100)/100;
+        datos.consumo_nuevo_en_tarjeta = Math.round(consumoTarjetaPF());
+        datos.usd_reservados_no_tocar = Math.round(reservadoUsdPF()*100)/100;
+        datos.nota_reservas = 'Las cuentas marcadas reservada (por ejemplo la reserva en dolares para la juntada) NO son plata disponible ni cubren pagos: no las uses para armar la caja.';
+      }
       var dc = efectivoDetallePF(m);
       if (dc) datos.caja_detalle = {sueldo_depositado:Math.round(dc.sueldo), ingresos_personales_cargados:Math.round(dc.ing), pagos_hechos_del_mes:Math.round(dc.pag),
         cobros_negocio_ya_cobrados_este_mes:dc.cobL.map(function(c){ return {descripcion:c.descripcion||c.tipo_cobro, monto:Number(c.monto), fecha_pago:c.fecha_pago}; })};
@@ -5921,34 +6223,11 @@ function vFinanzas() {
       var bMin = el('button',{class:'btn btnsm',title:'Cerrar'},'×');
       hb.appendChild(bClr); hb.appendChild(bMin); hd.appendChild(hb); panel.appendChild(hd);
 
-      var linea = el('div',{style:'padding:0 14px 4px;font-size:10px;color:#94a3b8;line-height:1.4'}); panel.appendChild(linea);
-      var estado = el('div',{style:'padding:2px 14px 8px;font-size:11px;font-weight:600;border-bottom:1px solid #F1F5F9;line-height:1.4'}); panel.appendChild(estado);
-
-      var lista = el('div',{style:'flex:1;overflow:auto;padding:12px 14px'}); panel.appendChild(lista);
-
-      var chips = el('div',{style:'padding:6px 14px 0;display:flex;gap:6px;flex-wrap:wrap'});
-      function chip(txt, fn) { var b = el('button',{class:'btn btnsm',style:'font-size:11px'},txt); b.onclick = fn; chips.appendChild(b); }
-      chip('¿Cómo viene el mes?', function(){ enviarChatPF('¿Cómo viene el mes? Dame el análisis completo.'); });
-      chip('¿Qué pago esta semana?', function(){ enviarChatPF('¿Qué tengo que pagar esta semana y en qué orden?'); });
-      chip('💰 Entró plata', function(){ enviarChatPF('Entró plata nueva que ya cargué en el panel. ¿Qué hago con ella? Dame las prioridades de pago en orden.'); });
-      panel.appendChild(chips);
-
-      var fin = el('div',{style:'padding:8px 14px 12px;display:flex;gap:8px;align-items:flex-end'});
-      var txt = el('textarea',{rows:'2',placeholder:'Preguntale al asesor…',style:iSt+'flex:1;resize:none;font-family:inherit;font-size:13px'});
-      var btnSend = el('button',{class:'btn btnp'},'Enviar');
-      fin.appendChild(txt); fin.appendChild(btnSend); panel.appendChild(fin);
-
-      var launcher = el('button',{style:'position:fixed;right:18px;bottom:18px;z-index:800;background:#0B9EDA;color:#fff;border:0;border-radius:26px;padding:11px 18px;font-weight:600;font-size:14px;box-shadow:0 6px 20px rgba(11,158,218,.4);cursor:pointer'},'🤖 Asesor');
-      var badge = el('span',{style:'display:none;margin-left:8px;background:#E24B4A;border-radius:10px;width:10px;height:10px;vertical-align:middle;display:none'});
-      launcher.appendChild(badge);
-
-      chatPF.ui = {linea:linea, root:root, panel:panel, launcher:launcher, lista:lista, estado:estado, btnSend:btnSend, badge:badge};
-      chatPF.mounted = true;
-      root.appendChild(panel); root.appendChild(launcher);
-
-      function enviarDesdeCaja() { var v = txt.value; txt.value = ''; enviarChatPF(v); }
-      btnSend.onclick = enviarDesdeCaja;
-      txt.onkeydown = function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarDesdeCaja(); } };
+      var linea = el('div',{style:'padding:8px 14px 4px;font-size:10px;color:#94a3b8;line-height:1.4'}); panel.appendChild(linea);
+      var bCta = el('button',{class:'btn btnsm',style:'margin:2px 14px 6px;font-size:11px;align-self:flex-start'},'💳 Ver cuentas');
+      var boxCta = el('div',{style:'display:none'});
+      panel.appendChild(bCta);
+      bCta.onclick = function(){ tabActual = 'cuentas-pf'; _finUIState.tabActual = tabActual; renderTabs(); renderAll(); };
       bClr.onclick = function() { if (!confirm('Borrar toda la conversación con el asesor?')) return; chatPF.msgs = []; pintarMsgsChatPF(); guardarChatPF(); };
       bMin.onclick = function(){ setAbiertoChatPF(false); };
       launcher.onclick = function(){ setAbiertoChatPF(true); };
