@@ -5863,16 +5863,17 @@ function vFinanzas() {
     }
     function chatAbiertoPrefPF() {
       try { var v = localStorage.getItem('qp_asesor_chat_open'); if (v==='1') return true; if (v==='0') return false; } catch(e) {}
-      return window.innerWidth >= 1200;
+      return false;
     }
     function setAbiertoChatPF(v) {
       if (!chatPF.mounted) return;
       chatPF.abierto = v;
       try { localStorage.setItem('qp_asesor_chat_open', v ? '1' : '0'); } catch(e) {}
       var u = chatPF.ui;
-      u.panel.style.display = v ? 'flex' : 'none';
-      u.launcher.style.display = v ? 'none' : '';
-      u.root.style.paddingRight = (v && window.innerWidth >= 1200) ? '420px' : '';
+      var visible = (modoFin === 'personal');
+      u.panel.style.display = (v && visible) ? 'flex' : 'none';
+      u.launcher.style.display = (!v && visible) ? '' : 'none';
+      u.root.style.paddingRight = (v && visible && window.innerWidth >= 1500) ? '390px' : '';
       if (v) { u.badge.style.display = 'none'; u.lista.scrollTop = u.lista.scrollHeight; }
     }
     function pintarMsgsChatPF() {
@@ -5896,6 +5897,7 @@ function vFinanzas() {
     // Linea de estado que cambia sola con los datos (se llama en cada renderAll)
     function actualizarEstadoChatPF() {
       if (!chatPF || !chatPF.mounted) return;
+      setAbiertoChatPF(chatPF.abierto);
       var u = chatPF.ui, m = getMesPF(mesSeleccionadoPF);
       if (!m) return;
       if (asesorEstPF.efectivo != null) {
@@ -5933,7 +5935,7 @@ function vFinanzas() {
     }
     function montarChatAsesorPF(root) {
       var iSt = 'padding:6px 8px;border:1px solid #CBD5E1;border-radius:8px;font-size:12px;background:#fff;color:#1a2e4a;box-sizing:border-box;';
-      var panel = el('div',{style:'position:fixed;top:0;right:0;bottom:0;width:min(410px,100vw);background:#fff;border-left:1px solid #E2E8F0;box-shadow:-6px 0 24px rgba(15,23,42,.08);z-index:800;display:none;flex-direction:column'});
+      var panel = el('div',{style:'position:fixed;top:76px;right:14px;bottom:14px;width:min(360px,calc(100vw - 28px));background:#fff;border:1px solid #E2E8F0;border-radius:14px;box-shadow:0 10px 36px rgba(15,23,42,.18);overflow:hidden;z-index:800;display:none;flex-direction:column'});
       var hd = el('div',{style:'padding:12px 14px;border-bottom:1px solid #F1F5F9;display:flex;justify-content:space-between;align-items:center;gap:8px'});
       hd.appendChild(el('div',{style:'font-weight:700;font-size:14px;color:#1a2e4a'},'🤖 Asesor · finanzas personales'));
       var hb = el('div',{style:'display:flex;gap:6px'});
