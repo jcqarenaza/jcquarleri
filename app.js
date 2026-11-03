@@ -4458,7 +4458,7 @@ function vFinanzas() {
       var sh=el('div',{class:'sh'});
       sh.appendChild(el('span',{class:'st'},'Otros ingresos del mes'));
       var btnN=el('button',{class:'btn btnp'},'+ Nuevo ingreso');
-      btnN.onclick=function(){ mNuevoIngresoPF(m.id, function(nuevo){ ingresosPF.push(nuevo); renderAll(); }); };
+      btnN.onclick=function(){ mNuevoIngresoPF(m.id, function(nuevo){ ingresosPF.push(nuevo); renderAll(); avisoIngresoPF(nuevo); }); };
       sh.appendChild(btnN);
       content.appendChild(sh);
 
@@ -4832,7 +4832,7 @@ function vFinanzas() {
           tr.appendChild(el('td',{style:'font-size:12px;color:#64748B;white-space:nowrap'}, g.fecha ? fdate(g.fecha) : '—'));
           var tog=el('label',{class:'tog'});
           var inp=el('input',{type:'checkbox'}); if (g.pagado) inp.checked=true;
-          (function(gg){ inp.onchange=function(){ var checked=this.checked; var pAt = checked ? new Date().toISOString() : null; dbUpd('panel_pf_gastos',gg.id,{pagado:checked, pagado_at:pAt}).then(function(){ gg.pagado=checked; gg.pagado_at=pAt; return sincPagoPrestamoPF(gg, checked); }).then(function(){ if (gg.prestamo_id) renderAll(); }).catch(function(e){ alert('Error: '+e.message); }); }; })(g);
+          (function(gg){ inp.onchange=function(){ var checked=this.checked; dbUpd('panel_pf_gastos',gg.id,{pagado:checked}).then(function(){ gg.pagado=checked; return sincPagoPrestamoPF(gg, checked); }).then(function(){ if (gg.prestamo_id) renderAll(); }).catch(function(e){ alert('Error: '+e.message); }); }; })(g);
           tog.appendChild(inp); tog.appendChild(el('span',{class:'sl'}));
           tr.appendChild(el('td',{},[tog]));
           var btnPg=null;
@@ -4935,7 +4935,7 @@ function vFinanzas() {
               g._entregas = (g._entregas||[]).concat(rows && rows[0] ? [rows[0]] : [{monto:monto,fecha:fecha,moneda:(mon==='USD'?'USD':undefined)}]);
               // Pagado al cubrir TODAS las monedas del gasto
               var completo = (!hayARS || entregadoPF(g) >= Number(g.monto||0) - 0.01) && (!hayUSD || entregadoUSDPF(g) >= usdTotalPF(g) - 0.01);
-              var fin = completo ? dbUpd('panel_pf_gastos', g.id, {pagado:true, pagado_at:new Date().toISOString()}).then(function(){ g.pagado=true; g.pagado_at=new Date().toISOString(); return sincPagoPrestamoPF(g, true, fecha); }) : Promise.resolve();
+              var fin = completo ? dbUpd('panel_pf_gastos', g.id, {pagado:true}).then(function(){ g.pagado=true; return sincPagoPrestamoPF(g, true, fecha); }) : Promise.resolve();
               return fin.then(function(){ closeM(); renderAll(); });
             })
             .catch(function(e){ ok.disabled=false; ok.textContent='Registrar entrega'; alert('Error: '+e.message+(mon==='USD'?'\n\nSi dice que no existe la columna "moneda", falta correr el SQL de panel_pf_entregas.':'')); });
@@ -5215,7 +5215,7 @@ function vFinanzas() {
           var mesId = gv('pgp-mes');
           var tc = esUSD ? Number(gv('pgp-tc')||0) : 0;
           if (esUSD && !(tc>0)) { alert('Ingresá el precio del dólar'); return; }
-          var gastoBody = {mes_id:mesId, categoria:'Créditos', tipo:'varios', fecha:fecha, prestamo_id:p.id, pagado:!prog, pagado_at:(!prog ? new Date().toISOString() : null)};
+          var gastoBody = {mes_id:mesId, categoria:'Créditos', tipo:'varios', fecha:fecha, prestamo_id:p.id, pagado:!prog};
           if (esUSD) { gastoBody.concepto = p.nombre+' (USD '+monto+')'; gastoBody.monto = Math.round(monto*tc); gastoBody.prestamo_monto = monto; }
           else { gastoBody.concepto = p.nombre; gastoBody.monto = monto; }
           ok.disabled = true; ok.textContent = 'Guardando...';
@@ -5617,44 +5617,24 @@ function vFinanzas() {
     function fmtFechaHoraPF(ts) { var d = new Date(ts); return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
 
 
-    // ---- Efectivo estimado: base informada + ingresos - pagos registrados desde entonces ----
-    function efectivoDetallePF() {
-      if (asesorEstPF.efectivo == null) return null;
-      var base = Number(asesorEstPF.efectivo)||0, ts = asesorEstPF.efectivo_ts||0;
-      if (!ts) return {valor:base, base:base, ing:0, pag:0, ts:0};
+    // ---- Caja calculada desde el panel: sueldo depositado + ingresos cargados - pagos hechos del mes ----
+    function efectivoDetallePF(m) {
+      m = m || getMesPF(mesSeleccionadoPF); if (!m) return null;
       var hoy = new Date().toISOString().slice(0,10);
-      var ing = (ingresosPF||[]).filter(function(i){ return i.created_at && new Date(i.created_at).getTime() > ts && (!i.fecha || String(i.fecha).slice(0,10) <= hoy); })
+      var j = juanPF.find(function(x){ return x.mes_id===m.id; })||{};
+      var sueldo = Number(calcJuanTotalsPF(j, m.month).juanSueldo)||0;
+      var ing = ingresosPF.filter(function(i){ return i.mes_id===m.id && (!i.fecha || String(i.fecha).slice(0,10) <= hoy); })
         .reduce(function(a,i){ return a + Number(i.monto||0); }, 0);
-      var ents = []; (gastosPF||[]).forEach(function(g){ (g._entregas||[]).forEach(function(e){ ents.push(Object.assign({gasto_id:g.id}, e)); }); });
-      var entNuevas = ents.filter(function(e){ return e.created_at && new Date(e.created_at).getTime() > ts && (e.moneda||'ARS')!=='USD'; })
-        .reduce(function(a,e){ return a + Number(e.monto||0); }, 0);
-      var gas = (gastosPF||[]).filter(function(g){ return g.pagado && g.pagado_at && new Date(g.pagado_at).getTime() > ts; })
-        .reduce(function(a,g){
-          var tot = Number(g.monto||0) || (Number(g.monto_usd||0) * (tcUSD||0));
-          var yaEnt = ents.filter(function(e){ return e.gasto_id===g.id; }).reduce(function(b,e){ return b + Number(e.monto||0); }, 0);
-          return a + Math.max(0, tot - yaEnt);
-        }, 0);
-      var pag = entNuevas + gas;
-      return {valor: base + ing - pag, base:base, ing:ing, pag:pag, ts:ts};
+      var pag = gastosPF.filter(function(g){ return g.mes_id===m.id; }).reduce(function(a,g){
+        if (g.pagado) return a + Number(g.monto||0) + Number(g.monto_usd||0)*tcUSD;
+        return a + Math.max(0, Number(g.monto||0) - saldoPF(g)) + Math.max(0, usdTotalPF(g) - saldoUSDPF(g))*tcUSD;
+      }, 0);
+      return {valor:sueldo+ing-pag, sueldo:sueldo, ing:ing, pag:pag};
     }
-    function efectivoPF() { var d = efectivoDetallePF(); return d ? Math.round(d.valor) : null; }
-    // Fija un nuevo efectivo real solo si difiere del estimado (si no, conserva la base y su hora)
-    function rebasePF(v, extra) {
-      var est = efectivoPF();
-      var patch = Object.assign({}, extra||{});
-      if (est == null || Math.round(v) !== est) { patch.efectivo = v; patch.efectivo_ts = Date.now(); }
-      return guardarAsesorEstPF(patch);
-    }
+    function efectivoPF(m) { var d = efectivoDetallePF(m); return d ? Math.round(d.valor) : 0; }
     function lineaEfectivoPF() {
       var d = efectivoDetallePF(); if (!d) return '';
-      if (!d.ts) return 'Efectivo informado manualmente.';
-      var horas = (Date.now()-d.ts)/3600000;
-      var t = 'Base '+fmt(d.base)+' ('+fmtFechaHoraPF(d.ts)+')';
-      if (d.ing) t += ' + ingresos '+fmt(d.ing);
-      if (d.pag) t += ' − pagos '+fmt(d.pag);
-      t += ' = '+fmt(d.valor)+'. Se actualiza solo con lo que cargás o marcás pagado.';
-      if (horas > 72) t += ' Hace '+Math.floor(horas/24)+' días que no lo confirmás con tu saldo real.';
-      return t;
+      return 'Caja según el panel: sueldo depositado '+fmt(d.sueldo)+' + ingresos cargados '+fmt(d.ing)+' − pagos hechos '+fmt(d.pag)+' = '+fmt(d.valor)+'. No incluye saldo de meses anteriores.';
     }
 
     // Llama a la Edge Function asesor-pf. o: {efectivo, diaDS, pregunta, modo:'completo'|'gasto', gastoNuevo}
@@ -5662,10 +5642,10 @@ function vFinanzas() {
       var tok = window._authToken;
       if (!tok) return Promise.reject(new Error('Sesión no válida. Ingresá de nuevo al panel.'));
       var ing = Number(o.ingreso)||0;
-      var datos = datosAsesorPF(m, Number(o.efectivo||0) + ing, o.diaDS);
+      var datos = datosAsesorPF(m, Number(o.efectivo||0), o.diaDS);
       var hash = hashAsesorPF(datos);
-      if (ing > 0) { datos.ingreso_nuevo = ing; datos.efectivo_antes_del_ingreso = Number(o.efectivo||0); }
-      if (asesorEstPF.efectivo_ts) datos.efectivo_informado_hace_horas = Math.round((Date.now()-asesorEstPF.efectivo_ts)/360000)/10;
+      if (ing > 0) { datos.ingreso_nuevo = ing; datos.efectivo_antes_del_ingreso = Number(o.efectivo||0) - ing; }
+      datos.efectivo_origen = 'Calculado por el panel: sueldo depositado + ingresos cargados - pagos hechos del mes. No incluye saldo de meses anteriores ni plata que no este cargada en el panel.';
       return fetch(SB_URL+'/functions/v1/asesor-pf', {
         method:'POST',
         headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+tok},
@@ -5707,13 +5687,8 @@ function vFinanzas() {
       var m = getMesPF(g.mes_id) || getMesPF(mesSeleccionadoPF);
       if (!m) return;
       var tt = toastAsesorPF('🤖 Asesor · ' + (g.concepto || 'gasto nuevo'));
-      if (asesorEstPF.efectivo == null) {
-        tt.body.appendChild(el('div',{style:'font-size:13px;color:#64748B;line-height:1.5;margin-bottom:10px'},'Para decirte qué hacer necesito saber cuánto efectivo tenés hoy. Cargalo una vez en la pestaña Asesor y desde ahí te aviso solo.'));
-        var bIr = el('button',{class:'btn btnp btnsm'},'Ir al Asesor'); bIr.onclick = irAAsesorPF; tt.body.appendChild(bIr);
-        return;
-      }
       tt.body.appendChild(el('div',{style:'font-size:13px;color:#64748B'},'Revisando cómo impacta en tu calendario de caja…'));
-      llamarAsesorPF(m, {efectivo:efectivoPF(), diaDS:asesorEstPF.dia_ds||10, modo:'gasto',
+      llamarAsesorPF(m, {efectivo:efectivoPF(m), diaDS:asesorEstPF.dia_ds||10, modo:'gasto',
         gastoNuevo:{concepto:g.concepto, monto_ars:Number(g.monto||0), monto_usd:Number(g.monto_usd||0), fecha:g.fecha||null}})
       .then(function(d) {
         if (!tt.box.isConnected) return;
@@ -5731,24 +5706,15 @@ function vFinanzas() {
       var box = el('div',{class:'card',style:'padding:20px;margin-bottom:14px;background:#fff'});
       box.appendChild(el('div',{style:'font-weight:700;font-size:15px;color:#1a2e4a;margin-bottom:4px'},'🤖 Asesor IA'));
       box.appendChild(el('div',{style:'font-size:12px;color:#64748B;margin-bottom:14px;line-height:1.5'},
-        'Ya tiene tus gastos con fecha, tarjetas, DS pendiente, cobros y préstamos. Solo necesita saber cuánto efectivo tenés hoy. Se actualiza solo cuando cambian los datos, y cuando cargás un gasto te avisa qué hacer.'));
+        'Ya tiene tus gastos con fecha, tarjetas, DS pendiente, cobros y préstamos. La caja de hoy la calcula solo del panel (sueldo depositado + ingresos cargados − pagos hechos). Se actualiza solo cuando cambian los datos, y cuando cargás un gasto te avisa qué hacer.'));
       var iSt = 'padding:8px 10px;border:1px solid #CBD5E1;border-radius:8px;font-size:13px;background:#fff;color:#1a2e4a;box-sizing:border-box;';
       var row = el('div',{style:'display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px'});
-      var c1 = el('div',{}); c1.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-bottom:4px'},'Efectivo disponible hoy ($)'));
-      var inpEfe = el('input',{type:'number',placeholder:'0',style:iSt+'width:190px'});
-      if (asesorEstPF.efectivo != null) inpEfe.value = efectivoPF();
-      c1.appendChild(inpEfe);
       var c2 = el('div',{}); c2.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-bottom:4px'},'Día que llega la distri'));
       var inpDia = el('input',{type:'number',min:'1',max:'31',style:iSt+'width:110px'}); inpDia.value = asesorEstPF.dia_ds || 10; c2.appendChild(inpDia);
-      var c3 = el('div',{}); c3.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-bottom:4px'},'Me ingresó plata ($, opcional)'));
-      var inpIng = el('input',{type:'number',placeholder:'Ej: 500000',style:iSt+'width:190px'}); c3.appendChild(inpIng);
-      row.appendChild(c1); row.appendChild(c2); row.appendChild(c3); box.appendChild(row);
-      if (asesorEstPF.efectivo != null) {
-        var dEfe = efectivoDetallePF();
-        box.appendChild(el('div',{style:'font-size:11px;margin-bottom:10px;color:'+((Date.now()-(dEfe.ts||0))/3600000>72?'#A32D2D':'#94a3b8')}, lineaEfectivoPF()+' Si el número no coincide con tu saldo real, corregilo acá.'));
-      }
+      row.appendChild(c2); box.appendChild(row);
+      var lineaTab = el('div',{style:'font-size:11px;margin-bottom:10px;color:#94a3b8'}, lineaEfectivoPF()); box.appendChild(lineaTab);
       box.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-bottom:4px'},'Pregunta (opcional)'));
-      var txt = el('textarea',{rows:'2',placeholder:'Ej: me ingresaron $500.000, ¿qué pago primero? / ¿y si la distri llega el 6?',style:iSt+'width:100%;resize:vertical;margin-bottom:10px;font-family:inherit'});
+      var txt = el('textarea',{rows:'2',placeholder:'Ej: ¿qué pago primero? / ¿y si la distri llega el 6?',style:iSt+'width:100%;resize:vertical;margin-bottom:10px;font-family:inherit'});
       box.appendChild(txt);
       var btn = el('button',{class:'btn btnp'},'Actualizar y consultar');
       box.appendChild(btn);
@@ -5760,7 +5726,7 @@ function vFinanzas() {
       box.insertBefore(vivo, txt.previousSibling);
       function pintarVivo() {
         vivo.innerHTML = '';
-        var efe = Number(inpEfe.value)||0, ing = Number(inpIng.value)||0, dia = Number(inpDia.value)||10;
+        var efe = efectivoPF(m), ing = 0, dia = Number(inpDia.value)||10; lineaTab.textContent = lineaEfectivoPF();
         var d = datosAsesorPF(m, efe+ing, dia);
         var cal = d.calendario_caja;
         var entra = cal.reduce(function(a,r){ return a+r.entra; },0);
@@ -5769,7 +5735,7 @@ function vFinanzas() {
         var cierre = cal.length ? cal[cal.length-1].saldo_sin_tarjetas : (efe+ing);
         var kp = el('div',{style:'display:flex;gap:20px;flex-wrap:wrap;margin-bottom:10px'});
         function kpi(l,v,c){ var x=el('div',{}); x.appendChild(el('div',{style:'font-size:11px;color:#64748B'},l)); x.appendChild(el('div',{style:'font-size:15px;font-weight:700;color:'+c},v)); kp.appendChild(x); }
-        kpi('Efectivo'+(ing>0?' + ingreso':''), fmt(Math.round(efe+ing)), '#0B9EDA');
+        kpi('Caja (según el panel)', fmt(Math.round(efe+ing)), '#0B9EDA');
         kpi('Sale (sin tarjetas)', fmt(Math.round(sale)), '#A32D2D');
         kpi('Entra esperado', fmt(Math.round(entra)), '#3D8A32');
         kpi('Saldo al cierre', fmt(Math.round(cierre)), cierre>=0?'#3D8A32':'#A32D2D');
@@ -5794,13 +5760,13 @@ function vFinanzas() {
         });
         tb.appendChild(tbd); tw.appendChild(tb); vivo.appendChild(tw);
       }
-      inpEfe.oninput = pintarVivo; inpDia.oninput = pintarVivo; inpIng.oninput = pintarVivo;
+      inpDia.oninput = pintarVivo;
       pintarVivo();
 
       function pintarGuardado() {
         out.innerHTML = '';
         if (!asesorEstPF.texto) {
-          out.appendChild(el('div',{style:'font-size:13px;color:#64748B'},'Cargá tu efectivo de hoy y tocá "Actualizar y consultar". Después se actualiza solo.'));
+          out.appendChild(el('div',{style:'font-size:13px;color:#64748B'},'Tocá "Actualizar y consultar". Después se actualiza solo cuando cambian los datos.'));
           return;
         }
         out.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-bottom:8px'},
@@ -5810,10 +5776,9 @@ function vFinanzas() {
       }
       function ejecutar(manual, hashActual) {
         if (_asesorBusyPF) return;
-        var efe = manual ? Number(inpEfe.value) : efectivoPF();
-        if (manual && (inpEfe.value==='' || isNaN(efe))) { out.innerHTML=''; out.appendChild(el('div',{style:'color:#A32D2D;font-size:13px'},'Ingresá el efectivo que tenés hoy (puede ser 0).')); return; }
+        var efe = efectivoPF(m);
         var dia = Number(inpDia.value) || asesorEstPF.dia_ds || 10;
-        var ing = manual ? (Number(inpIng.value)||0) : 0;
+        var ing = 0;
         var pregunta = manual ? txt.value.trim() : '';
         if (ing > 0 && !pregunta) pregunta = 'Me ingresaron '+fmt(ing)+'. ¿Qué hago con esta plata? Dame las prioridades de pago en orden.';
         _asesorBusyPF = true; btn.disabled = true; btn.textContent = 'Analizando...';
@@ -5823,7 +5788,7 @@ function vFinanzas() {
           _asesorFalloPF = null;
           if (ing > 0) {
             // Respuesta puntual sobre una plata que entro: se muestra pero no reemplaza el analisis guardado
-            rebasePF(efe, {dia_ds:dia});
+            guardarAsesorEstPF({dia_ds:dia});
             if (box.isConnected) {
               out.innerHTML = '';
               out.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-bottom:8px'},'Prioridades para los '+fmt(ing)+' que ingresaron'));
@@ -5832,7 +5797,7 @@ function vFinanzas() {
             return;
           }
           var patch = {dia_ds:dia, texto:d.texto, texto_ts:Date.now(), hash:d._hash, mes_id:m.id, modelo:d.modelo, tokens_in:d.tokens_in, tokens_out:d.tokens_out, pregunta:pregunta||null};
-          if (manual) rebasePF(efe, patch); else guardarAsesorEstPF(patch);
+          guardarAsesorEstPF(patch);
           if (box.isConnected) pintarGuardado();
         }).catch(function(e) {
           if (!manual) _asesorFalloPF = hashActual;
@@ -5842,8 +5807,8 @@ function vFinanzas() {
       btn.onclick = function(){ ejecutar(true); };
       pintarGuardado();
       // Si ya hay efectivo guardado y los datos cambiaron desde el ultimo analisis, se actualiza solo
-      if (asesorEstPF.efectivo != null && !_asesorBusyPF) {
-        var h = hashAsesorPF(datosAsesorPF(m, efectivoPF(), asesorEstPF.dia_ds || 10));
+      if (!_asesorBusyPF) {
+        var h = hashAsesorPF(datosAsesorPF(m, efectivoPF(m), asesorEstPF.dia_ds || 10));
         if ((h !== asesorEstPF.hash || asesorEstPF.mes_id !== m.id) && h !== _asesorFalloPF) ejecutar(false, h);
       }
       content.appendChild(box);
@@ -5873,7 +5838,6 @@ function vFinanzas() {
       var visible = (modoFin === 'personal');
       u.panel.style.display = (v && visible) ? 'flex' : 'none';
       u.launcher.style.display = (!v && visible) ? '' : 'none';
-      u.root.style.paddingRight = (v && visible && window.innerWidth >= 1500) ? '390px' : '';
       if (v) { u.badge.style.display = 'none'; u.lista.scrollTop = u.lista.scrollHeight; }
     }
     function pintarMsgsChatPF() {
@@ -5881,7 +5845,7 @@ function vFinanzas() {
       u.lista.innerHTML = '';
       if (!chatPF.msgs.length) {
         u.lista.appendChild(el('div',{style:'font-size:13px;color:#64748B;line-height:1.6'},
-          'Hola Juan. Ya veo tus gastos con fecha, tarjetas, DS pendiente y cobros. Cargá tu efectivo de hoy y preguntame lo que quieras: "¿qué pago primero?", "¿y si la distri llega el 6?" o tocá "Me ingresó plata". Cuando cargues un gasto te aviso qué hacer.'));
+          'Hola Juan. Veo tus gastos con fecha, tarjetas, DS pendiente, cobros y lo que vas cargando. La caja la calculo del panel: no hace falta que me pases nada. Cuando cargues un gasto o un ingreso te aviso qué hacer, o preguntame: "¿qué pago primero?", "¿y si la distri llega el 6?".'));
       }
       chatPF.msgs.forEach(function(x) {
         var esU = x.r === 'u';
@@ -5895,20 +5859,24 @@ function vFinanzas() {
       u.lista.scrollTop = u.lista.scrollHeight;
     }
     // Linea de estado que cambia sola con los datos (se llama en cada renderAll)
+    function avisoIngresoPF(n) {
+      if (!n || !chatPF || !chatPF.mounted || modoFin !== 'personal') return;
+      var hoy = new Date().toISOString().slice(0,10);
+      var yaEntro = !n.fecha || String(n.fecha).slice(0,10) <= hoy;
+      setAbiertoChatPF(true);
+      enviarChatPF('Cargué un ingreso: '+(n.concepto||n.categoria||'ingreso')+' por '+fmt(n.monto)+(yaEntro?'':' (con fecha '+fdate(n.fecha)+')')+'. ¿Qué hago con esta plata? Dame las prioridades de pago en orden.',
+        yaEntro ? {ingreso:Number(n.monto)||0} : {});
+    }
     function actualizarEstadoChatPF() {
       if (!chatPF || !chatPF.mounted) return;
       setAbiertoChatPF(chatPF.abierto);
       var u = chatPF.ui, m = getMesPF(mesSeleccionadoPF);
       if (!m) return;
-      if (asesorEstPF.efectivo != null) {
-        if (document.activeElement !== u.inE) u.inE.value = efectivoPF();
-        u.linea.textContent = lineaEfectivoPF();
-      }
-      if (asesorEstPF.efectivo == null) { u.estado.textContent = 'Cargá tu efectivo de hoy para ver el calendario de caja.'; u.estado.style.color = '#64748B'; return; }
-      var d = datosAsesorPF(m, efectivoPF(), asesorEstPF.dia_ds || 10);
+      u.linea.textContent = lineaEfectivoPF();
+      var d = datosAsesorPF(m, efectivoPF(m), asesorEstPF.dia_ds || 10);
       var cal = d.calendario_caja;
       var neg = cal.filter(function(r){ return r.saldo_sin_tarjetas < 0; })[0];
-      var cierre = cal.length ? cal[cal.length-1].saldo_sin_tarjetas : efectivoPF();
+      var cierre = cal.length ? cal[cal.length-1].saldo_sin_tarjetas : efectivoPF(m);
       if (neg) { u.estado.textContent = '⚠ Primer día en negativo: '+fdate(neg.fecha)+' ('+fmt(neg.saldo_sin_tarjetas)+') · cierre '+fmt(cierre); u.estado.style.color = '#A32D2D'; }
       else { u.estado.textContent = '✔ Sin días en negativo (sin tarjetas) · cierre '+fmt(cierre); u.estado.style.color = '#3D8A32'; }
     }
@@ -5918,14 +5886,10 @@ function vFinanzas() {
       texto = String(texto||'').trim(); if (!texto) return;
       var m = getMesPF(mesSeleccionadoPF); if (!m) return;
       chatPF.msgs.push({r:'u', t:texto, ts:Date.now()});
-      if (asesorEstPF.efectivo == null) {
-        chatPF.msgs.push({r:'a', t:'Primero cargá tu efectivo de hoy (arriba) y vuelvo a mirar tus números.', ts:Date.now(), err:true});
-        pintarMsgsChatPF(); guardarChatPF(); return;
-      }
       var hist = chatPF.msgs.slice(0,-1).filter(function(x){ return !x.pend && !x.err; }).slice(-10).map(function(x){ return {role:x.r==='u'?'user':'assistant', content:x.t}; });
       var pend = {r:'a', t:'', pend:true};
       chatPF.msgs.push(pend); chatPF.busy = true; chatPF.ui.btnSend.disabled = true; pintarMsgsChatPF();
-      llamarAsesorPF(m, {efectivo:efectivoPF(), diaDS:asesorEstPF.dia_ds||10, pregunta:texto, modo:o.modo||'chat', gastoNuevo:o.gastoNuevo, ingreso:o.ingreso, historial:hist})
+      llamarAsesorPF(m, {efectivo:efectivoPF(m), diaDS:asesorEstPF.dia_ds||10, pregunta:texto, modo:o.modo||'chat', gastoNuevo:o.gastoNuevo, ingreso:o.ingreso, historial:hist})
       .then(function(d){ pend.pend = false; pend.t = d.texto; pend.ts = Date.now(); })
       .catch(function(e){ pend.pend = false; pend.err = true; pend.t = 'No pude consultar: '+e.message; })
       .then(function(){
@@ -5944,11 +5908,9 @@ function vFinanzas() {
       hb.appendChild(bClr); hb.appendChild(bMin); hd.appendChild(hb); panel.appendChild(hd);
 
       var er = el('div',{style:'padding:8px 14px 4px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap'});
-      var ce = el('div',{}); ce.appendChild(el('div',{style:'font-size:10px;color:#64748B;margin-bottom:2px'},'Efectivo hoy ($)'));
-      var inE = el('input',{type:'number',placeholder:'0',style:iSt+'width:130px'}); if (asesorEstPF.efectivo != null) inE.value = efectivoPF(); ce.appendChild(inE);
       var cd = el('div',{}); cd.appendChild(el('div',{style:'font-size:10px;color:#64748B;margin-bottom:2px'},'Día distri'));
       var inD = el('input',{type:'number',min:'1',max:'31',style:iSt+'width:64px'}); inD.value = asesorEstPF.dia_ds || 10; cd.appendChild(inD);
-      er.appendChild(ce); er.appendChild(cd); panel.appendChild(er);
+      er.appendChild(cd); panel.appendChild(er);
       var linea = el('div',{style:'padding:0 14px 4px;font-size:10px;color:#94a3b8;line-height:1.4'}); panel.appendChild(linea);
       var estado = el('div',{style:'padding:2px 14px 8px;font-size:11px;font-weight:600;border-bottom:1px solid #F1F5F9;line-height:1.4'}); panel.appendChild(estado);
 
@@ -5956,14 +5918,10 @@ function vFinanzas() {
 
       var chips = el('div',{style:'padding:6px 14px 0;display:flex;gap:6px;flex-wrap:wrap'});
       function chip(txt, fn) { var b = el('button',{class:'btn btnsm',style:'font-size:11px'},txt); b.onclick = fn; chips.appendChild(b); }
-      var filaIng = el('div',{style:'padding:6px 14px 0;display:none;gap:6px;align-items:center'});
-      var inI = el('input',{type:'number',placeholder:'Monto que ingresó ($)',style:iSt+'flex:1'});
-      var bI = el('button',{class:'btn btnp btnsm'},'Ver prioridades');
-      filaIng.appendChild(inI); filaIng.appendChild(bI);
       chip('¿Cómo viene el mes?', function(){ enviarChatPF('¿Cómo viene el mes? Dame el análisis completo.'); });
       chip('¿Qué pago esta semana?', function(){ enviarChatPF('¿Qué tengo que pagar esta semana y en qué orden?'); });
-      chip('💰 Me ingresó plata', function(){ filaIng.style.display = filaIng.style.display==='none' ? 'flex' : 'none'; if (filaIng.style.display==='flex') inI.focus(); });
-      panel.appendChild(chips); panel.appendChild(filaIng);
+      chip('💰 Entró plata', function(){ enviarChatPF('Entró plata nueva que ya cargué en el panel. ¿Qué hago con ella? Dame las prioridades de pago en orden.'); });
+      panel.appendChild(chips);
 
       var fin = el('div',{style:'padding:8px 14px 12px;display:flex;gap:8px;align-items:flex-end'});
       var txt = el('textarea',{rows:'2',placeholder:'Preguntale al asesor…',style:iSt+'flex:1;resize:none;font-family:inherit;font-size:13px'});
@@ -5974,19 +5932,13 @@ function vFinanzas() {
       var badge = el('span',{style:'display:none;margin-left:8px;background:#E24B4A;border-radius:10px;width:10px;height:10px;vertical-align:middle;display:none'});
       launcher.appendChild(badge);
 
-      chatPF.ui = {inE:inE, linea:linea, root:root, panel:panel, launcher:launcher, lista:lista, estado:estado, btnSend:btnSend, badge:badge};
+      chatPF.ui = {linea:linea, root:root, panel:panel, launcher:launcher, lista:lista, estado:estado, btnSend:btnSend, badge:badge};
       chatPF.mounted = true;
       root.appendChild(panel); root.appendChild(launcher);
 
       function enviarDesdeCaja() { var v = txt.value; txt.value = ''; enviarChatPF(v); }
       btnSend.onclick = enviarDesdeCaja;
       txt.onkeydown = function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarDesdeCaja(); } };
-      bI.onclick = function() {
-        var n = Number(inI.value)||0; if (n <= 0) return;
-        inI.value = ''; filaIng.style.display = 'none';
-        enviarChatPF('Me ingresaron '+fmt(n)+'. ¿Qué hago con esta plata? Dame las prioridades de pago en orden.', {ingreso:n});
-      };
-      inE.onchange = function() { rebasePF(Number(inE.value)||0, {dia_ds:Number(inD.value)||10}); actualizarEstadoChatPF(); };
       inD.oninput = function() { asesorEstPF.dia_ds = Number(inD.value)||10; actualizarEstadoChatPF(); };
       inD.onchange = function() { guardarAsesorEstPF({dia_ds:Number(inD.value)||10}); };
       bClr.onclick = function() { if (!confirm('Borrar toda la conversación con el asesor?')) return; chatPF.msgs = []; pintarMsgsChatPF(); guardarChatPF(); };
