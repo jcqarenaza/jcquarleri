@@ -5701,6 +5701,18 @@ function vFinanzas() {
     }
 
     // ---- PESTAÑA CUENTAS ----
+    var cuentasAbiertasPF = {};
+    function marcaCtaPF(k) {
+      var n = String(k||'');
+      if (/mercado/i.test(n)) return {c:'#00B1EA', t:'MP'};
+      if (/naranja/i.test(n)) return {c:'#FF6A00', t:'NX'};
+      if (/naci[oó]n/i.test(n)) return {c:'#0B5CA8', t:'BN'};
+      if (/r[ií]o/i.test(n)) return {c:'#E2001A', t:'BR'};
+      if (/santander/i.test(n)) return {c:'#EC0000', t:'S'};
+      if (/pampa/i.test(n)) return {c:'#00A3E0', t:'BP'};
+      if (/efectivo/i.test(n)) return {c:'#3D8A32', t:'💵'};
+      return {c:'#64748B', t:n.slice(0,2).toUpperCase()};
+    }
     function renderCuentasPF() {
       var box = el('div',{class:'card',style:'padding:20px;margin-bottom:14px;background:#fff'});
       var top = el('div',{style:'display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px'});
@@ -5726,8 +5738,22 @@ function vFinanzas() {
       cuentasPF.forEach(function(c){ var k = instCtaPF(c); if (!gmap[k]) { gmap[k] = {k:k, items:[]}; grupos.push(gmap[k]); } gmap[k].items.push(c); });
       grupos.forEach(function(g) {
         g.items.sort(function(a,b){ return (a.moneda==='USD'?1:0) - (b.moneda==='USD'?1:0); });
-        var card = el('div',{style:'border:1px solid #E2E8F0;border-radius:10px;padding:10px 14px;margin-bottom:10px'});
-        card.appendChild(el('div',{style:'font-weight:700;font-size:14px;color:#1a2e4a;margin-bottom:4px'}, g.k));
+        var card = el('div',{style:'border:1px solid #E2E8F0;border-radius:12px;padding:0 14px;margin-bottom:10px;background:#fff'});
+        var bm = marcaCtaPF(g.k);
+        var sumArs = 0, sumUsd = 0, resArs = 0, resUsd = 0;
+        g.items.forEach(function(c){ var v = saldoCuentaPF(c); if (c.tipo==='tarjeta') return; if (c.moneda==='USD') { if (c.reservada) resUsd += v; else sumUsd += v; } else { if (c.reservada) resArs += v; else sumArs += v; } });
+        var cab = el('div',{style:'display:flex;align-items:center;gap:12px;padding:12px 0;cursor:pointer;user-select:none'});
+        cab.appendChild(el('div',{style:'width:36px;height:36px;border-radius:50%;background:'+bm.c+';color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:'+(bm.t.length>2?'13':'15')+'px;flex:0 0 auto'}, bm.t));
+        cab.appendChild(el('div',{style:'font-weight:700;font-size:14px;color:#1a2e4a;flex:1;min-width:90px'}, g.k));
+        var resu = el('div',{style:'display:flex;gap:14px;align-items:baseline;flex-wrap:wrap;justify-content:flex-end'});
+        resu.appendChild(el('span',{style:'font-size:14px;font-weight:700;color:'+(sumArs<0?'#A32D2D':'#1a2e4a')}, fmt(Math.round(sumArs))));
+        if (g.items.some(function(c){ return c.moneda==='USD' && !c.reservada; })) resu.appendChild(el('span',{style:'font-size:14px;font-weight:700;color:#0B9EDA'}, 'USD '+(Math.round(sumUsd*100)/100)));
+        if (resArs>0 || resUsd>0) resu.appendChild(el('span',{style:'font-size:12px;font-weight:600;color:#854F0B'}, '🔒 '+[resArs>0?fmt(Math.round(resArs)):'', resUsd>0?'USD '+(Math.round(resUsd*100)/100):''].filter(Boolean).join(' + ')));
+        cab.appendChild(resu);
+        var chev = el('span',{style:'color:#94a3b8;font-size:12px;width:12px;text-align:center'}, cuentasAbiertasPF[g.k] ? '▾' : '▸');
+        cab.appendChild(chev); card.appendChild(cab);
+        var cuerpo = el('div',{style:'display:'+(cuentasAbiertasPF[g.k] ? 'block' : 'none')}); card.appendChild(cuerpo);
+        cab.onclick = function(){ cuentasAbiertasPF[g.k] = !cuentasAbiertasPF[g.k]; cuerpo.style.display = cuentasAbiertasPF[g.k] ? 'block' : 'none'; chev.textContent = cuentasAbiertasPF[g.k] ? '▾' : '▸'; };
         g.items.forEach(function(c) {
           var sa = saldoCuentaPF(c), usd = c.moneda==='USD';
           var fila = el('div',{style:'display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;border-top:1px solid #F1F5F9'});
@@ -5745,7 +5771,7 @@ function vFinanzas() {
           var bAj = el('button',{class:'btn btnsm'},'Ajustar'); var bDet = el('button',{class:'btn btnsm',style:'margin-left:4px'},'Movimientos'); var bX = el('button',{class:'btn btnsm',style:'margin-left:4px;background:#FCEBEB;border-color:#FCEBEB;color:#A32D2D'},'×');
           bAj.onclick = function(){ mAjustarCuentaPF(c); }; bDet.onclick = function(){ mMovimientosCuentaPF(c); };
           bX.onclick = function(){ if (!confirm('Quitar la cuenta "'+etiqCtaPF(c)+'"? Los pagos ya cargados no se borran.')) return; dbUpd('panel_pf_cuentas', c.id, {activa:false}).then(function(){ cuentasPF.splice(cuentasPF.indexOf(c),1); renderAll(); }); };
-          td.appendChild(bRes); td.appendChild(bAj); td.appendChild(bDet); td.appendChild(bX); fila.appendChild(td); card.appendChild(fila);
+          td.appendChild(bRes); td.appendChild(bAj); td.appendChild(bDet); td.appendChild(bX); fila.appendChild(td); cuerpo.appendChild(fila);
         });
         box.appendChild(card);
       });
@@ -5935,7 +5961,7 @@ function vFinanzas() {
     function ultimaCuentaPF(concepto) { try { var mp = JSON.parse(localStorage.getItem('qp_ultima_cuenta')||'{}'); var id = mp[claveCtaPF(concepto)]; if (id && cuentasPF.some(function(c){ return c.id===id; })) return id; } catch(e) {} return ''; }
     function recordarCuentaPF(concepto, id) { try { var mp = JSON.parse(localStorage.getItem('qp_ultima_cuenta')||'{}'); mp[claveCtaPF(concepto)] = id||''; localStorage.setItem('qp_ultima_cuenta', JSON.stringify(mp)); } catch(e) {} }
     function cuentaDefaultIngresoPF() { var c = cuentasPF.find(function(x){ return x.ingreso_default; }); return c ? c.id : ''; }
-    function cuentaUsdPF() { var us = cuentasPF.filter(function(x){ return x.moneda==='USD' && !x.reservada; }); var c = us.find(function(x){ return /r[ií]o/i.test(instCtaPF(x)); }) || us[0]; return c ? c.id : ''; }
+    function cuentaUsdPF() { var us = cuentasPF.filter(function(x){ return x.moneda==='USD' && !x.reservada; }); var c = us.find(function(x){ return /santander|r[ií]o/i.test(instCtaPF(x)); }) || us[0]; return c ? c.id : ''; }
     function cuentaCompraUsdPF() { var us = cuentasPF.filter(function(x){ return x.moneda==='USD' && !x.reservada; }); var c = us.find(function(x){ return /naranja/i.test(instCtaPF(x)) && x.tipo!=='tarjeta'; }) || us[0]; return c ? c.id : ''; }
     // Marcar un gasto como pagado pidiendo la cuenta
     function mMarcarPagadoPF(g, onDone) {
