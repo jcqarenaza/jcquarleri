@@ -5625,13 +5625,13 @@ function vFinanzas() {
       var sueldo = Number(calcJuanTotalsPF(j, m.month).juanSueldo)||0;
       var ing = ingresosPF.filter(function(i){ return i.mes_id===m.id && (!i.fecha || String(i.fecha).slice(0,10) <= hoy); })
         .reduce(function(a,i){ return a + Number(i.monto||0); }, 0);
-      var cob = (cobros||[]).filter(function(c){ return c.fecha_pago && String(c.fecha_pago).slice(0,7)===(m.year+'-'+String(m.month).padStart(2,'0')) && String(c.fecha_pago).slice(0,10) <= hoy; })
-        .reduce(function(a,c){ return a + Number(c.monto||0); }, 0);
+      var cobL = (cobros||[]).filter(function(c){ return c.fecha_pago && String(c.fecha_pago).slice(0,7)===(m.year+'-'+String(m.month).padStart(2,'0')) && String(c.fecha_pago).slice(0,10) <= hoy; });
+      var cob = cobL.reduce(function(a,c){ return a + Number(c.monto||0); }, 0);
       var pag = gastosPF.filter(function(g){ return g.mes_id===m.id; }).reduce(function(a,g){
         if (g.pagado) return a + Number(g.monto||0) + Number(g.monto_usd||0)*tcUSD;
         return a + Math.max(0, Number(g.monto||0) - saldoPF(g)) + Math.max(0, usdTotalPF(g) - saldoUSDPF(g))*tcUSD;
       }, 0);
-      return {valor:sueldo+ing+cob-pag, sueldo:sueldo, ing:ing, cob:cob, pag:pag};
+      return {valor:sueldo+ing+cob-pag, sueldo:sueldo, ing:ing, cob:cob, pag:pag, cobL:cobL};
     }
     function efectivoPF(m) { var d = efectivoDetallePF(m); return d ? Math.round(d.valor) : 0; }
     function lineaEfectivoPF() {
@@ -5647,7 +5647,10 @@ function vFinanzas() {
       var datos = datosAsesorPF(m, Number(o.efectivo||0), o.diaDS);
       var hash = hashAsesorPF(datos);
       if (ing > 0) { datos.ingreso_nuevo = ing; datos.efectivo_antes_del_ingreso = Number(o.efectivo||0) - ing; }
-      datos.efectivo_origen = 'Calculado por el panel: sueldo depositado + ingresos personales cargados + cobros del negocio cobrados - pagos hechos del mes. No incluye saldo de meses anteriores ni plata que no este cargada en el panel.';
+      datos.efectivo_origen = 'Calculado por el panel: sueldo depositado + ingresos personales cargados + cobros del negocio cobrados - pagos hechos del mes. No incluye saldo de meses anteriores ni plata que no este cargada en el panel. Todo lo listado en caja_detalle YA esta cobrado/pagado y ya esta sumado/restado en efectivo_hoy: no pidas marcarlo como cobrado ni lo confundas con los cobros pendientes (por_cobrar_negocio), que son otros.';
+      var dc = efectivoDetallePF(m);
+      if (dc) datos.caja_detalle = {sueldo_depositado:Math.round(dc.sueldo), ingresos_personales_cargados:Math.round(dc.ing), pagos_hechos_del_mes:Math.round(dc.pag),
+        cobros_negocio_ya_cobrados_este_mes:dc.cobL.map(function(c){ return {descripcion:c.descripcion||c.tipo_cobro, monto:Number(c.monto), fecha_pago:c.fecha_pago}; })};
       return fetch(SB_URL+'/functions/v1/asesor-pf', {
         method:'POST',
         headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+tok},
