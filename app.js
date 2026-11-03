@@ -5910,10 +5910,6 @@ function vFinanzas() {
       var bMin = el('button',{class:'btn btnsm',title:'Cerrar'},'×');
       hb.appendChild(bClr); hb.appendChild(bMin); hd.appendChild(hb); panel.appendChild(hd);
 
-      var er = el('div',{style:'padding:8px 14px 4px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap'});
-      var cd = el('div',{}); cd.appendChild(el('div',{style:'font-size:10px;color:#64748B;margin-bottom:2px'},'Distri llega hasta el día'));
-      var inD = el('input',{type:'number',min:'1',max:'31',title:'Fecha tope: la plata de la distri entra a mas tardar ese dia. Si entra antes, cargala como Transferencia interna.',style:iSt+'width:64px'}); inD.value = asesorEstPF.dia_ds || 10; cd.appendChild(inD);
-      er.appendChild(cd); panel.appendChild(er);
       var linea = el('div',{style:'padding:0 14px 4px;font-size:10px;color:#94a3b8;line-height:1.4'}); panel.appendChild(linea);
       var estado = el('div',{style:'padding:2px 14px 8px;font-size:11px;font-weight:600;border-bottom:1px solid #F1F5F9;line-height:1.4'}); panel.appendChild(estado);
 
@@ -5942,8 +5938,6 @@ function vFinanzas() {
       function enviarDesdeCaja() { var v = txt.value; txt.value = ''; enviarChatPF(v); }
       btnSend.onclick = enviarDesdeCaja;
       txt.onkeydown = function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarDesdeCaja(); } };
-      inD.oninput = function() { asesorEstPF.dia_ds = Number(inD.value)||10; actualizarEstadoChatPF(); };
-      inD.onchange = function() { guardarAsesorEstPF({dia_ds:Number(inD.value)||10}); };
       bClr.onclick = function() { if (!confirm('Borrar toda la conversación con el asesor?')) return; chatPF.msgs = []; pintarMsgsChatPF(); guardarChatPF(); };
       bMin.onclick = function(){ setAbiertoChatPF(false); };
       launcher.onclick = function(){ setAbiertoChatPF(true); };
