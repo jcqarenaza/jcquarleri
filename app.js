@@ -3204,7 +3204,8 @@ function vFinanzas() {
     gastos:             sbFetch('panel_gastos?select=*&order=activo.desc,nombre.asc').catch(function(){ return []; }),
     ingresos:           sbFetch('panel_ingresos?select=*&order=fecha.desc').catch(function(){ return []; }),
     sistemas:           sbFetch('panel_sistemas?select=id,nombre').catch(function(){ return []; }),
-    clientes:           sbFetch('panel_clientes?select=id,nombre').catch(function(){ return []; }),
+    clientes:           sbFetch('panel_clientes?select=id,nombre,es_demo,eliminado').catch(function(){ return []; }),
+    asignacionesFin:    sbFetch('panel_asignaciones?select=id,cliente_id').catch(function(){ return []; }),
     dolarData:          fetch('https://dolarapi.com/v1/dolares/oficial').then(function(r){ return r.json(); }).catch(function(){ return null; }),
     pagoGastos:         sbFetch('panel_gastos_pagos?select=*&order=fecha.desc').catch(function(){ return []; }),
     config:             sbFetch('panel_config?select=clave,valor').catch(function(){ return []; }),
@@ -3232,6 +3233,13 @@ function vFinanzas() {
   Promise.all(FIN_KEYS.map(function(k){ return FIN_Q[k]; })).then(function(rArr) {
     var R = {}; FIN_KEYS.forEach(function(k, i){ R[k] = rArr[i]; });
     var cobros=R.cobros, cobrosPendientes=R.cobrosPendientes, gastos=R.gastos, ingresos=R.ingresos, sistemas=R.sistemas, clientes=R.clientes;
+    // Los cobros de clientes demo o eliminados no son plata real: se excluyen de lo pendiente y de la caja
+    (function(){
+      var malos = {}; (R.clientes||[]).forEach(function(c){ if (c.es_demo || c.eliminado) malos[c.id] = true; });
+      var asigMala = {}; (R.asignacionesFin||[]).forEach(function(a){ if (malos[a.cliente_id]) asigMala[a.id] = true; });
+      cobrosPendientes = (cobrosPendientes||[]).filter(function(c){ return !asigMala[c.asignacion_id]; });
+      cobros = (cobros||[]).filter(function(c){ return !asigMala[c.asignacion_id]; });
+    })();
     var dolarData=R.dolarData, pagoGastos=R.pagoGastos, config=R.config||[];
     var gastosPers=R.gastosPers||[], pagoGastosPers=R.pagoGastosPers||[];
     var cuotasPF=R.cuotasPF||[];
