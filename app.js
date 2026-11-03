@@ -5668,7 +5668,7 @@ function vFinanzas() {
         mkRow2(body, mkFg('Concepto', mkInput('gr-conc','text',sel.k)), mkFg('Monto ($)', mkInput('gr-monto','number','','0')));
         var cuentasOk = cuentasPF.filter(function(c){ return !c.reservada && c.moneda!=='USD'; });
         if (cuentasOk.length) {
-          addFg(body, '¿De qué cuenta sale?', mkSelect('gr-cuenta', cuentasOk.map(function(c){ return [c.id, etiqCtaPF(c)]; }), cuentaDefaultIngresoPF() || cuentasOk[0].id));
+          addFg(body, '¿De qué cuenta sale?', mkSelect('gr-cuenta', cuentasOk.map(function(c){ return [c.id, etiqCtaPF(c)]; }).concat([['__tarjeta','💳 Con tarjeta (queda a pagar)']]), cuentaDefaultIngresoPF() || cuentasOk[0].id));
         }
         mkRow2(body, mkFg('Fecha', mkInput('gr-fecha','date',new Date().toISOString().slice(0,10))), mkFg('Nota (opcional)', mkInput('gr-nota','text','')));
         setTimeout(function(){ var m = document.getElementById('gr-monto'); if (m) m.focus(); }, 50);
@@ -5682,13 +5682,14 @@ function vFinanzas() {
           var mm = mesesPF.find(function(x){ return x.year===Number(fecha.slice(0,4)) && x.month===Number(fecha.slice(5,7)); }) || getMesPF(mesSeleccionadoPF);
           if (!mm) { alert('No hay un mes cargado para esa fecha'); return; }
           var cid = cuentasPF.length ? (gv('gr-cuenta')||null) : null;
+          var conTarjeta = (cid==='__tarjeta'); if (conTarjeta) cid = null;
           var cta = cid ? cuentasPF.find(function(c){ return c.id===cid; }) : null;
           if (cta && cta.tipo!=='tarjeta' && saldoCuentaPF(cta) - monto < 0 && saldoCuentaPF(cta) >= 0) {
             if (!confirm(etiqCtaPF(cta)+' quedaría en '+fmt(Math.round(saldoCuentaPF(cta)-monto))+'. ¿Cargarlo igual?')) return;
           }
           var iso = new Date().toISOString();
-          var row = {mes_id:mm.id, concepto:conc+(nota?' — '+nota:''), monto:monto, categoria:sel.cat, tipo:'varios', fecha:fecha, pagado:true};
-          if (cuentasPF.length) { row.pagado_at = iso; row.cuenta_id = cid; }
+          var row = {mes_id:mm.id, concepto:conc+(nota?' — '+nota:'')+(conTarjeta?' (tarjeta)':''), monto:monto, categoria:sel.cat, tipo:'varios', fecha:fecha, pagado:!conTarjeta};
+          if (cuentasPF.length && !conTarjeta) { row.pagado_at = iso; row.cuenta_id = cid; }
           ok.disabled = true; ok.textContent = 'Guardando...';
           dbIns('panel_pf_gastos', row).then(function(r){
             var g = (r&&r[0]) || row; if (!g._entregas) g._entregas = []; gastosPF.push(g);
