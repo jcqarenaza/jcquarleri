@@ -4777,7 +4777,7 @@ function vFinanzas() {
       var sh=el('div',{class:'sh'});
       sh.appendChild(el('span',{class:'st'},'Gastos del mes ('+gMes.length+')'));
       var btnN=el('button',{class:'btn btnp'},'+ Nuevo gasto');
-      btnN.onclick=function(){ mNuevoGastoPF(m, function(nuevo){ gastosPF.push(nuevo); renderAll(); }); };
+      btnN.onclick=function(){ mNuevoGastoPF(m, function(nuevo){ gastosPF.push(nuevo); renderAll(); avisoAsesorPF(nuevo); }); };
       sh.appendChild(btnN);
       content.appendChild(sh);
 
@@ -5110,6 +5110,7 @@ function vFinanzas() {
           if (nuevoGasto && !nuevoGasto._entregas) nuevoGasto._entregas = [];
           if (nuevoPago && saldo - Number(nuevoPago.monto) <= 0.01) { p.activo = false; dbUpd('panel_pf_prestamos', p.id, {activo:false}); }
           renderAll();
+          if (nuevoGasto && !nuevoGasto.pagado) avisoAsesorPF(nuevoGasto);
         }); };
         right.appendChild(btnPago);
         var btnH = el('button',{class:'btn btnsm'},'Historial');
@@ -5600,55 +5601,208 @@ function vFinanzas() {
       return wrap;
     }
 
+    // ---- Estado persistente del asesor (panel_config, clave 'pf_asesor') ----
+    var asesorEstPF = (function(){
+      var r = (config||[]).find(function(c){ return c.clave==='pf_asesor'; });
+      if (!r) return {};
+      try { return JSON.parse(r.valor) || {}; } catch(e) { return {}; }
+    })();
+    var _asesorBusyPF = false, _asesorFalloPF = null;
+    function guardarAsesorEstPF(patch) {
+      Object.assign(asesorEstPF, patch);
+      return sbFetch('panel_config?on_conflict=clave', {method:'POST', body:{clave:'pf_asesor', valor:JSON.stringify(asesorEstPF)}, prefer:'resolution=merge-duplicates,return=minimal'}).catch(function(){});
+    }
+    function hashAsesorPF(o) { var s2 = JSON.stringify(o), h = 5381; for (var i=0;i<s2.length;i++) h = ((h<<5)+h+s2.charCodeAt(i))|0; return String(h); }
+    function fmtFechaHoraPF(ts) { var d = new Date(ts); return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+
+    // Llama a la Edge Function asesor-pf. o: {efectivo, diaDS, pregunta, modo:'completo'|'gasto', gastoNuevo}
+    function llamarAsesorPF(m, o) {
+      var tok = window._authToken;
+      if (!tok) return Promise.reject(new Error('Sesión no válida. Ingresá de nuevo al panel.'));
+      var ing = Number(o.ingreso)||0;
+      var datos = datosAsesorPF(m, Number(o.efectivo||0) + ing, o.diaDS);
+      var hash = hashAsesorPF(datos);
+      if (ing > 0) { datos.ingreso_nuevo = ing; datos.efectivo_antes_del_ingreso = Number(o.efectivo||0); }
+      if (asesorEstPF.efectivo_ts) datos.efectivo_informado_hace_horas = Math.round((Date.now()-asesorEstPF.efectivo_ts)/360000)/10;
+      return fetch(SB_URL+'/functions/v1/asesor-pf', {
+        method:'POST',
+        headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+tok},
+        body:JSON.stringify({pregunta:o.pregunta||'', modo:o.modo||'completo', gasto_nuevo:o.gastoNuevo||null, datos:datos})
+      }).then(function(r) {
+        return r.json().catch(function(){ return {}; }).then(function(d){ d._status=r.status; return d; });
+      }).then(function(d) {
+        if (d.error || !d.texto) throw new Error(d.error || d.message || ('error '+d._status));
+        d._hash = hash; return d;
+      });
+    }
+
+    // Aviso flotante (abajo a la derecha)
+    function toastAsesorPF(titulo) {
+      var old = document.getElementById('asesor-toast-pf'); if (old) old.remove();
+      var t = el('div',{id:'asesor-toast-pf',style:'position:fixed;right:16px;bottom:16px;width:min(390px,calc(100vw - 32px));max-height:70vh;overflow:auto;background:#fff;border:1px solid #CBD5E1;border-radius:12px;box-shadow:0 8px 28px rgba(15,23,42,.18);padding:14px 16px;z-index:9999'});
+      var hd = el('div',{style:'display:flex;justify-content:space-between;gap:8px;align-items:flex-start;margin-bottom:8px'});
+      hd.appendChild(el('div',{style:'font-weight:700;font-size:13px;color:#1a2e4a'},titulo));
+      var x = el('button',{class:'btn btnsm',style:'padding:1px 8px'},'×'); x.onclick = function(){ t.remove(); };
+      hd.appendChild(x); t.appendChild(hd);
+      var body = el('div',{}); t.appendChild(body);
+      document.body.appendChild(t);
+      return {box:t, body:body};
+    }
+    function irAAsesorPF() {
+      var tt = document.getElementById('asesor-toast-pf'); if (tt) tt.remove();
+      tabActual = 'asesor-pf'; _finUIState.tabActual = tabActual; renderTabs(); renderAll();
+    }
+    // Al cargar un gasto pendiente: el asesor dice que hacer con ese gasto
+    function avisoAsesorPF(g) {
+      if (!g || g.pagado) return;
+      var m = getMesPF(g.mes_id) || getMesPF(mesSeleccionadoPF);
+      if (!m) return;
+      var tt = toastAsesorPF('🤖 Asesor · ' + (g.concepto || 'gasto nuevo'));
+      if (asesorEstPF.efectivo == null) {
+        tt.body.appendChild(el('div',{style:'font-size:13px;color:#64748B;line-height:1.5;margin-bottom:10px'},'Para decirte qué hacer necesito saber cuánto efectivo tenés hoy. Cargalo una vez en la pestaña Asesor y desde ahí te aviso solo.'));
+        var bIr = el('button',{class:'btn btnp btnsm'},'Ir al Asesor'); bIr.onclick = irAAsesorPF; tt.body.appendChild(bIr);
+        return;
+      }
+      tt.body.appendChild(el('div',{style:'font-size:13px;color:#64748B'},'Revisando cómo impacta en tu calendario de caja…'));
+      llamarAsesorPF(m, {efectivo:asesorEstPF.efectivo, diaDS:asesorEstPF.dia_ds||10, modo:'gasto',
+        gastoNuevo:{concepto:g.concepto, monto_ars:Number(g.monto||0), monto_usd:Number(g.monto_usd||0), fecha:g.fecha||null}})
+      .then(function(d) {
+        if (!tt.box.isConnected) return;
+        tt.body.innerHTML = '';
+        tt.body.appendChild(textoAsesorPF(d.texto));
+        var bf = el('button',{class:'btn btnsm',style:'margin-top:10px'},'Ver análisis completo'); bf.onclick = irAAsesorPF; tt.body.appendChild(bf);
+      }).catch(function(e) {
+        if (!tt.box.isConnected) return;
+        tt.body.innerHTML = '';
+        tt.body.appendChild(el('div',{style:'font-size:13px;color:#A32D2D'},'No pude consultar al asesor: '+e.message));
+      });
+    }
+
     function renderAsesorIAPF(m) {
       var box = el('div',{class:'card',style:'padding:20px;margin-bottom:14px;background:#fff'});
-      box.appendChild(el('div',{style:'font-weight:700;font-size:15px;color:#1a2e4a;margin-bottom:4px'},'🤖 Consultar al asesor IA'));
+      box.appendChild(el('div',{style:'font-weight:700;font-size:15px;color:#1a2e4a;margin-bottom:4px'},'🤖 Asesor IA'));
       box.appendChild(el('div',{style:'font-size:12px;color:#64748B;margin-bottom:14px;line-height:1.5'},
-        'Lee el mes cargado en el panel (gastos pendientes con fecha, tarjetas, DS pendiente, cobros, deudas) y arma el calendario de caja. Usa los créditos de API del plan.'));
+        'Ya tiene tus gastos con fecha, tarjetas, DS pendiente, cobros y préstamos. Solo necesita saber cuánto efectivo tenés hoy. Se actualiza solo cuando cambian los datos, y cuando cargás un gasto te avisa qué hacer.'));
       var iSt = 'padding:8px 10px;border:1px solid #CBD5E1;border-radius:8px;font-size:13px;background:#fff;color:#1a2e4a;box-sizing:border-box;';
-      var row = el('div',{style:'display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px'});
+      var row = el('div',{style:'display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px'});
       var c1 = el('div',{}); c1.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-bottom:4px'},'Efectivo disponible hoy ($)'));
-      var inpEfe = el('input',{type:'number',placeholder:'0',style:iSt+'width:190px'}); c1.appendChild(inpEfe);
+      var inpEfe = el('input',{type:'number',placeholder:'0',style:iSt+'width:190px'});
+      if (asesorEstPF.efectivo != null) inpEfe.value = asesorEstPF.efectivo;
+      c1.appendChild(inpEfe);
       var c2 = el('div',{}); c2.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-bottom:4px'},'Día que llega la distri'));
-      var inpDia = el('input',{type:'number',value:'10',min:'1',max:'31',style:iSt+'width:110px'}); c2.appendChild(inpDia);
-      row.appendChild(c1); row.appendChild(c2); box.appendChild(row);
+      var inpDia = el('input',{type:'number',min:'1',max:'31',style:iSt+'width:110px'}); inpDia.value = asesorEstPF.dia_ds || 10; c2.appendChild(inpDia);
+      var c3 = el('div',{}); c3.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-bottom:4px'},'Me ingresó plata ($, opcional)'));
+      var inpIng = el('input',{type:'number',placeholder:'Ej: 500000',style:iSt+'width:190px'}); c3.appendChild(inpIng);
+      row.appendChild(c1); row.appendChild(c2); row.appendChild(c3); box.appendChild(row);
+      if (asesorEstPF.efectivo_ts) {
+        var horas = (Date.now()-asesorEstPF.efectivo_ts)/3600000;
+        box.appendChild(el('div',{style:'font-size:11px;margin-bottom:10px;color:'+(horas>36?'#A32D2D':'#94a3b8')},
+          'Efectivo informado el '+fmtFechaHoraPF(asesorEstPF.efectivo_ts)+(horas>36?' — puede estar desactualizado, actualizalo':'')));
+      }
       box.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-bottom:4px'},'Pregunta (opcional)'));
-      var txt = el('textarea',{rows:'2',placeholder:'Ej: ¿y si la distri llega el 6? ¿qué difiero primero?',style:iSt+'width:100%;resize:vertical;margin-bottom:10px;font-family:inherit'});
+      var txt = el('textarea',{rows:'2',placeholder:'Ej: me ingresaron $500.000, ¿qué pago primero? / ¿y si la distri llega el 6?',style:iSt+'width:100%;resize:vertical;margin-bottom:10px;font-family:inherit'});
       box.appendChild(txt);
-      var btn = el('button',{class:'btn btnp'},'Consultar');
+      var btn = el('button',{class:'btn btnp'},'Actualizar y consultar');
       box.appendChild(btn);
       var out = el('div',{style:'margin-top:14px'});
       box.appendChild(out);
 
-      btn.onclick = function() {
-        var tok = window._authToken;
-        if (!tok) { out.innerHTML=''; out.appendChild(el('div',{style:'color:#A32D2D;font-size:13px'},'Sesión no válida. Ingresá de nuevo al panel.')); return; }
-        if (inpEfe.value==='' || isNaN(Number(inpEfe.value))) { out.innerHTML=''; out.appendChild(el('div',{style:'color:#A32D2D;font-size:13px'},'Ingresá el efectivo que tenés hoy (puede ser 0).')); return; }
-        var datos = datosAsesorPF(m, Number(inpEfe.value), Number(inpDia.value)||10);
-        btn.disabled = true; btn.textContent = 'Analizando...';
-        out.innerHTML=''; out.appendChild(el('div',{style:'color:#64748B;font-size:13px'},'Armando el análisis, puede tardar unos segundos…'));
-        fetch(SB_URL+'/functions/v1/asesor-pf', {
-          method:'POST',
-          headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+tok},
-          body:JSON.stringify({pregunta:txt.value.trim(), datos:datos})
-        }).then(function(r) {
-          return r.json().catch(function(){ return {}; }).then(function(d){ d._status=r.status; return d; });
-        }).then(function(d) {
-          out.innerHTML='';
-          if (d.error || !d.texto) {
-            out.appendChild(el('div',{style:'color:#A32D2D;font-size:13px'},'No se pudo consultar: '+(d.error||d.message||('error '+d._status))));
+      // Calendario de caja en vivo (sin IA): cambia solo al tocar efectivo / dia / ingreso y con cada gasto cargado
+      var vivo = el('div',{style:'margin:8px 0 14px'});
+      box.insertBefore(vivo, txt.previousSibling);
+      function pintarVivo() {
+        vivo.innerHTML = '';
+        var efe = Number(inpEfe.value)||0, ing = Number(inpIng.value)||0, dia = Number(inpDia.value)||10;
+        var d = datosAsesorPF(m, efe+ing, dia);
+        var cal = d.calendario_caja;
+        var entra = cal.reduce(function(a,r){ return a+r.entra; },0);
+        var sale = cal.reduce(function(a,r){ return a+r.sale_sin_tarjetas; },0);
+        var tarj = d.tarjetas_pendientes.reduce(function(a,g){ return a+g.saldo_ars; },0);
+        var cierre = cal.length ? cal[cal.length-1].saldo_sin_tarjetas : (efe+ing);
+        var kp = el('div',{style:'display:flex;gap:20px;flex-wrap:wrap;margin-bottom:10px'});
+        function kpi(l,v,c){ var x=el('div',{}); x.appendChild(el('div',{style:'font-size:11px;color:#64748B'},l)); x.appendChild(el('div',{style:'font-size:15px;font-weight:700;color:'+c},v)); kp.appendChild(x); }
+        kpi('Efectivo'+(ing>0?' + ingreso':''), fmt(Math.round(efe+ing)), '#0B9EDA');
+        kpi('Sale (sin tarjetas)', fmt(Math.round(sale)), '#A32D2D');
+        kpi('Entra esperado', fmt(Math.round(entra)), '#3D8A32');
+        kpi('Saldo al cierre', fmt(Math.round(cierre)), cierre>=0?'#3D8A32':'#A32D2D');
+        kpi('Tarjetas (aparte)', fmt(Math.round(tarj)), '#854F0B');
+        vivo.appendChild(kp);
+        var neg = cal.filter(function(r){ return r.saldo_sin_tarjetas < 0; })[0];
+        vivo.appendChild(el('div',{style:'font-size:12px;margin-bottom:8px;font-weight:600;color:'+(neg?'#A32D2D':'#3D8A32')},
+          neg ? 'Primer día en negativo: '+fdate(neg.fecha)+' (saldo '+fmt(neg.saldo_sin_tarjetas)+')' : 'Con estos datos no queda ningún día en negativo (sin contar tarjetas).'));
+        if (!cal.length) return;
+        var tw = el('div',{style:'overflow-x:auto'});
+        var tb = el('table',{class:'tbl',style:'font-size:12px'});
+        tb.appendChild(elH('thead',{},'<tr><th>Fecha</th><th style="text-align:right">Entra</th><th style="text-align:right">Sale</th><th style="text-align:right">Saldo</th><th>Detalle</th></tr>'));
+        var tbd = el('tbody');
+        cal.forEach(function(r) {
+          var tr = el('tr',{});
+          tr.appendChild(el('td',{style:'white-space:nowrap'},fdate(r.fecha)));
+          tr.appendChild(el('td',{style:'text-align:right;color:#3D8A32'},r.entra?fmt(Math.round(r.entra)):'-'));
+          tr.appendChild(el('td',{style:'text-align:right;color:#A32D2D'},r.sale_sin_tarjetas?fmt(Math.round(r.sale_sin_tarjetas)):'-'));
+          tr.appendChild(el('td',{style:'text-align:right;font-weight:700;color:'+(r.saldo_sin_tarjetas<0?'#A32D2D':'#1a2e4a')},fmt(r.saldo_sin_tarjetas)));
+          tr.appendChild(el('td',{style:'color:#64748B;font-size:11px'},r.detalle.map(function(x){ return x.replace(/^[-+]\d+ /,''); }).join(' · ')));
+          tbd.appendChild(tr);
+        });
+        tb.appendChild(tbd); tw.appendChild(tb); vivo.appendChild(tw);
+      }
+      inpEfe.oninput = pintarVivo; inpDia.oninput = pintarVivo; inpIng.oninput = pintarVivo;
+      pintarVivo();
+
+      function pintarGuardado() {
+        out.innerHTML = '';
+        if (!asesorEstPF.texto) {
+          out.appendChild(el('div',{style:'font-size:13px;color:#64748B'},'Cargá tu efectivo de hoy y tocá "Actualizar y consultar". Después se actualiza solo.'));
+          return;
+        }
+        out.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-bottom:8px'},
+          'Análisis del '+fmtFechaHoraPF(asesorEstPF.texto_ts)+(asesorEstPF.pregunta?' · respuesta a: «'+asesorEstPF.pregunta+'»':'')));
+        out.appendChild(textoAsesorPF(asesorEstPF.texto));
+        if (asesorEstPF.tokens_in) out.appendChild(el('div',{style:'margin-top:12px;font-size:11px;color:#94a3b8'},(asesorEstPF.modelo||'')+' · '+asesorEstPF.tokens_in+' tokens de entrada, '+asesorEstPF.tokens_out+' de salida'));
+      }
+      function ejecutar(manual, hashActual) {
+        if (_asesorBusyPF) return;
+        var efe = manual ? Number(inpEfe.value) : asesorEstPF.efectivo;
+        if (manual && (inpEfe.value==='' || isNaN(efe))) { out.innerHTML=''; out.appendChild(el('div',{style:'color:#A32D2D;font-size:13px'},'Ingresá el efectivo que tenés hoy (puede ser 0).')); return; }
+        var dia = Number(inpDia.value) || asesorEstPF.dia_ds || 10;
+        var ing = manual ? (Number(inpIng.value)||0) : 0;
+        var pregunta = manual ? txt.value.trim() : '';
+        if (ing > 0 && !pregunta) pregunta = 'Me ingresaron '+fmt(ing)+'. ¿Qué hago con esta plata? Dame las prioridades de pago en orden.';
+        _asesorBusyPF = true; btn.disabled = true; btn.textContent = 'Analizando...';
+        var carga = el('div',{style:'color:#64748B;font-size:13px;margin-bottom:8px'}, manual ? 'Armando el análisis, puede tardar unos segundos…' : 'Los datos cambiaron desde el último análisis, actualizando…');
+        if (manual) out.innerHTML = ''; out.insertBefore(carga, out.firstChild);
+        llamarAsesorPF(m, {efectivo:efe, diaDS:dia, pregunta:pregunta, ingreso:ing}).then(function(d) {
+          _asesorFalloPF = null;
+          if (ing > 0) {
+            // Respuesta puntual sobre una plata que entro: se muestra pero no reemplaza el analisis guardado
+            guardarAsesorEstPF({efectivo:efe, dia_ds:dia, efectivo_ts:Date.now()});
+            if (box.isConnected) {
+              out.innerHTML = '';
+              out.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-bottom:8px'},'Prioridades para los '+fmt(ing)+' que ingresaron'));
+              out.appendChild(textoAsesorPF(d.texto));
+            }
             return;
           }
-          out.appendChild(textoAsesorPF(d.texto));
-          if (d.tokens_in) out.appendChild(el('div',{style:'margin-top:12px;font-size:11px;color:#94a3b8'},(d.modelo||'')+' · '+d.tokens_in+' tokens de entrada, '+d.tokens_out+' de salida'));
+          var patch = {efectivo:efe, dia_ds:dia, texto:d.texto, texto_ts:Date.now(), hash:d._hash, mes_id:m.id, modelo:d.modelo, tokens_in:d.tokens_in, tokens_out:d.tokens_out, pregunta:pregunta||null};
+          if (manual) patch.efectivo_ts = Date.now();
+          guardarAsesorEstPF(patch);
+          if (box.isConnected) pintarGuardado();
         }).catch(function(e) {
-          out.innerHTML='';
-          out.appendChild(el('div',{style:'color:#A32D2D;font-size:13px'},'No se pudo consultar: '+e.message));
-        }).then(function(){ btn.disabled=false; btn.textContent='Consultar'; });
-      };
+          if (!manual) _asesorFalloPF = hashActual;
+          if (box.isConnected) { carga.remove(); out.appendChild(el('div',{style:'color:#A32D2D;font-size:13px;margin-top:6px'},'No se pudo consultar: '+e.message)); }
+        }).then(function(){ _asesorBusyPF = false; btn.disabled = false; btn.textContent = 'Actualizar y consultar'; });
+      }
+      btn.onclick = function(){ ejecutar(true); };
+      pintarGuardado();
+      // Si ya hay efectivo guardado y los datos cambiaron desde el ultimo analisis, se actualiza solo
+      if (asesorEstPF.efectivo != null && !_asesorBusyPF) {
+        var h = hashAsesorPF(datosAsesorPF(m, asesorEstPF.efectivo, asesorEstPF.dia_ds || 10));
+        if ((h !== asesorEstPF.hash || asesorEstPF.mes_id !== m.id) && h !== _asesorFalloPF) ejecutar(false, h);
+      }
       content.appendChild(box);
     }
 
+    function fmtR(n) { return fmt(Math.round(Number(n)||0)); }
     function renderAsesorPF() {
       var m=getMesPF(mesSeleccionadoPF);
       if(!m){ content.appendChild(el('div',{class:'card'},[el('div',{class:'emp'},'No hay mes seleccionado')])); return; }
@@ -5670,16 +5824,16 @@ function vFinanzas() {
       var cuotasTerm=cuotasPF.filter(function(c){ if(!c.activa) return false; var num=numeroCuotaPF(c,m.year,m.month); return num&&c.total_cuotas&&(c.total_cuotas-num)<=3&&(c.total_cuotas-num)>=0; });
       var deudaP=deudasPF.filter(function(d){ return d.estado==='pendiente'; }).reduce(function(s,d){ return s+Number(d.monto); },0);
       var sug=[];
-      if(bal>=0) sug.push({emoji:'✅',titulo:'Balance positivo',detalle:'Cerrás el mes con '+fmt(bal)+' de superávit. Tus gastos son el '+pct+'% de tus ingresos.'});
-      else sug.push({emoji:'🔴',titulo:'Déficit este mes',detalle:'Gastos superan ingresos por '+fmt(Math.abs(bal))+'. Los gastos son el '+pct+'% de tus ingresos.'});
-      if(dsP>500) sug.push({emoji:'💰',titulo:'DS pendiente',detalle:'Tenés '+fmt(dsP)+' que la empresa todavía te debe.'});
-      else if(dsP<0) sug.push({emoji:'🏢',titulo:'DS saldado',detalle:'Ya cobraste todo. Te adelantaron '+fmt(Math.abs(dsP))+'.'});
-      cuotasTerm.forEach(function(c){ var num=numeroCuotaPF(c,m.year,m.month); var q=c.total_cuotas-num; sug.push({emoji:'🎉',titulo:'Cuota por terminar: '+c.nombre,detalle:(q===0?'Última cuota.':c.nombre+' termina en '+q+' cuota'+(q!==1?'s':'')+' más.')+' Liberás '+fmt(Number(c.monto))+'/mes.'}); });
+      if(bal>=0) sug.push({emoji:'✅',titulo:'Balance positivo',detalle:'Cerrás el mes con '+fmtR(bal)+' de superávit. Tus gastos son el '+pct+'% de tus ingresos.'});
+      else sug.push({emoji:'🔴',titulo:'Déficit este mes',detalle:'Gastos superan ingresos por '+fmtR(Math.abs(bal))+'. Los gastos son el '+pct+'% de tus ingresos.'});
+      if(dsP>500) sug.push({emoji:'💰',titulo:'DS pendiente',detalle:'Tenés '+fmtR(dsP)+' que la empresa todavía te debe.'});
+      else if(dsP<0) sug.push({emoji:'🏢',titulo:'DS saldado',detalle:'Ya cobraste todo. Te adelantaron '+fmtR(Math.abs(dsP))+'.'});
+      cuotasTerm.forEach(function(c){ var num=numeroCuotaPF(c,m.year,m.month); var q=c.total_cuotas-num; sug.push({emoji:'🎉',titulo:'Cuota por terminar: '+c.nombre,detalle:(q===0?'Última cuota.':c.nombre+' termina en '+q+' cuota'+(q!==1?'s':'')+' más.')+' Liberás '+fmtR(Number(c.monto))+'/mes.'}); });
       var gMax=null,gMaxV=0,rG=gastosPF.filter(function(g){ return g.mes_id===m.id; }).slice();
       agruparGastosPF(rG).forEach(function(gr){ if(gr.tot>gMaxV){ gMaxV=gr.tot; gMax=gr.nombre; } });
-      if(gMax&&gMaxV>0){ var pG=totalGas>0?Math.round(gMaxV/totalGas*100):0; sug.push({emoji:'📊',titulo:'Mayor gasto: '+gMax,detalle:gMax+' representa el '+pG+'% de tus gastos con '+fmt(gMaxV)+'.'}); }
+      if(gMax&&gMaxV>0){ var pG=totalGas>0?Math.round(gMaxV/totalGas*100):0; sug.push({emoji:'📊',titulo:'Mayor gasto: '+gMax,detalle:gMax+' representa el '+pG+'% de tus gastos con '+fmtR(gMaxV)+'.'}); }
       if(cuotasA.length>0) sug.push({emoji:'📋',titulo:cuotasA.length+' cuotas activas',detalle:'Tenés '+cuotasA.length+' cuotas corriendo en paralelo.'});
-      if(deudaP>0) sug.push({emoji:'👤',titulo:'Deuda pendiente a cobrar',detalle:'Tenés '+fmt(deudaP)+' en deudas pendientes.'});
+      if(deudaP>0) sug.push({emoji:'👤',titulo:'Deuda pendiente a cobrar',detalle:'Tenés '+fmtR(deudaP)+' en deudas pendientes.'});
       sug.forEach(function(s){ var row=el('div',{style:'display:flex;gap:14px;align-items:flex-start;padding:14px 0;border-bottom:.5px solid #F1F5F9'}); var ico=el('div',{style:'font-size:28px;flex-shrink:0;width:40px;text-align:center'},s.emoji); var bod=el('div',{style:'flex:1'}); bod.appendChild(el('div',{style:'font-weight:600;font-size:14px;color:#1a2e4a;margin-bottom:4px'},s.titulo)); bod.appendChild(el('div',{style:'font-size:13px;color:#64748B;line-height:1.5'},s.detalle)); row.appendChild(ico); row.appendChild(bod); card.appendChild(row); });
       if(!sug.length) card.appendChild(el('div',{class:'emp'},'Sin datos suficientes.'));
       content.appendChild(card);
