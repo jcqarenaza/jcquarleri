@@ -5536,7 +5536,7 @@ function vFinanzas() {
       // Ingresos esperados con fecha
       if (dsPend > 500) {
         var dd = Math.min(31, Math.max(1, Number(diaDS)||10));
-        ev.push({fecha:aHoy(mesStr+'-'+String(dd).padStart(2,'0')), entra:dsPend, sale:0, tarjeta:false, detalle:'DS pendiente de la distri (estimado dia '+dd+')'});
+        ev.push({fecha:aHoy(mesStr+'-'+String(dd).padStart(2,'0')), entra:dsPend, sale:0, tarjeta:false, detalle:'DS pendiente de la distri (tope: llega como maximo el dia '+dd+')'});
       }
       var finMes = mesStr+'-31';
       var porCobrar = cobrosPendientes.map(function(c){
@@ -5565,7 +5565,7 @@ function vFinanzas() {
       return {
         hoy:hoyStr, mes:mesStr, tc_usd:tcUSD, efectivo_hoy:Number(efectivo)||0,
         ingresos_cargados_mes: ingMes.map(function(i){ return {concepto:i.concepto, categoria:i.categoria, monto:Number(i.monto), fecha:i.fecha}; }),
-        liquidacion: {sueldo_bruto:Math.round(t.totalBruto), sueldo_depositado:Math.round(t.juanSueldo), ds_pendiente:dsPend, dia_estimado_llegada_ds:Number(diaDS)||10},
+        liquidacion: {sueldo_bruto:Math.round(t.totalBruto), sueldo_depositado:Math.round(t.juanSueldo), ds_pendiente:dsPend, dia_tope_llegada_ds:Number(diaDS)||10, nota_ds:'El DS pendiente entra a mas tardar ese dia (peor caso). Si llega antes, Juan lo carga como Transferencia interna y el DS pendiente baja solo.'},
         gastos_pendientes: pend,
         tarjetas_pendientes: pend.filter(function(g){ return g.categoria==='Tarjetas'; }),
         calendario_caja: calendario,
@@ -5712,7 +5712,7 @@ function vFinanzas() {
         'Ya tiene tus gastos con fecha, tarjetas, DS pendiente, cobros y préstamos. La caja de hoy la calcula solo del panel (sueldo depositado + ingresos + cobros del negocio − pagos hechos). Se actualiza solo cuando cambian los datos, y cuando cargás un gasto te avisa qué hacer.'));
       var iSt = 'padding:8px 10px;border:1px solid #CBD5E1;border-radius:8px;font-size:13px;background:#fff;color:#1a2e4a;box-sizing:border-box;';
       var row = el('div',{style:'display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px'});
-      var c2 = el('div',{}); c2.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-bottom:4px'},'Día que llega la distri'));
+      var c2 = el('div',{}); c2.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-bottom:4px'},'Distri llega como máximo el día'));
       var inpDia = el('input',{type:'number',min:'1',max:'31',style:iSt+'width:110px'}); inpDia.value = asesorEstPF.dia_ds || 10; c2.appendChild(inpDia);
       row.appendChild(c2); box.appendChild(row);
       var lineaTab = el('div',{style:'font-size:11px;margin-bottom:10px;color:#94a3b8'}, lineaEfectivoPF()); box.appendChild(lineaTab);
@@ -5911,8 +5911,8 @@ function vFinanzas() {
       hb.appendChild(bClr); hb.appendChild(bMin); hd.appendChild(hb); panel.appendChild(hd);
 
       var er = el('div',{style:'padding:8px 14px 4px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap'});
-      var cd = el('div',{}); cd.appendChild(el('div',{style:'font-size:10px;color:#64748B;margin-bottom:2px'},'Día distri'));
-      var inD = el('input',{type:'number',min:'1',max:'31',style:iSt+'width:64px'}); inD.value = asesorEstPF.dia_ds || 10; cd.appendChild(inD);
+      var cd = el('div',{}); cd.appendChild(el('div',{style:'font-size:10px;color:#64748B;margin-bottom:2px'},'Distri llega hasta el día'));
+      var inD = el('input',{type:'number',min:'1',max:'31',title:'Fecha tope: la plata de la distri entra a mas tardar ese dia. Si entra antes, cargala como Transferencia interna.',style:iSt+'width:64px'}); inD.value = asesorEstPF.dia_ds || 10; cd.appendChild(inD);
       er.appendChild(cd); panel.appendChild(er);
       var linea = el('div',{style:'padding:0 14px 4px;font-size:10px;color:#94a3b8;line-height:1.4'}); panel.appendChild(linea);
       var estado = el('div',{style:'padding:2px 14px 8px;font-size:11px;font-weight:600;border-bottom:1px solid #F1F5F9;line-height:1.4'}); panel.appendChild(estado);
