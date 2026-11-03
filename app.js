@@ -1808,6 +1808,10 @@ function filtrar(f) {
   });
 }
 function mRegistrarPago(c) {
+  sbFetch('panel_pf_cuentas?select=id,nombre,moneda,tipo,reservada,ingreso_default&activa=eq.true&order=orden.asc').catch(function(){ return []; })
+  .then(function(cts){ mRegistrarPagoUI(c, (cts||[]).filter(function(x){ return x.moneda!=='USD' && !x.reservada && x.tipo!=='tarjeta'; })); });
+}
+function mRegistrarPagoUI(c, cts) {
   var saldo = saldoDe(c);
   openM(makeModal('Registrar pago', function(body) {
     body.appendChild(el('div', {class:'ibox'}, (c._cli.nombre||'-') + ' — ' + (c.descripcion||c.tipo_cobro||'-')));
@@ -1841,6 +1845,10 @@ function mRegistrarPago(c) {
     var lbl = el('label',{style:'font-size:12px;color:#64748b;display:flex;align-items:center;gap:6px'});
     lbl.appendChild(chk); lbl.appendChild(document.createTextNode('Generar recibo de este pago'));
     lg.appendChild(lbl); body.appendChild(lg);
+    if (cts.length) {
+      var defCta = (cts.find(function(x){ return x.ingreso_default; }) || cts[0]).id;
+      addFg(body, '¿A qué cuenta entró?', mkSelect('rp-cuenta', cts.map(function(x){ return [x.id, x.nombre]; }), defCta));
+    }
   }, function(foot) {
     foot.appendChild(cancelBtn());
     var ok = el('button', {class:'btn btnp'}, 'Registrar pago');
@@ -1853,7 +1861,9 @@ function mRegistrarPago(c) {
       if (!fecha) { alert('Ingresa la fecha'); return; }
       ok.disabled = true; ok.textContent = 'Guardando...';
       var quiereRecibo = ge('rp-recibo') && ge('rp-recibo').checked;
-      dbIns('panel_pagos', {cobro_id: c.id, monto: monto, fecha: fecha, medio: medio, notas: gv('rp-notas')||null})
+      var rowPago = {cobro_id: c.id, monto: monto, fecha: fecha, medio: medio, notas: gv('rp-notas')||null};
+      if (cts.length) rowPago.cuenta_id = gv('rp-cuenta')||null;
+      dbIns('panel_pagos', rowPago)
       .then(function(rows){
         var totalPagado = pagadoDe(c) + monto;
         var completo = totalPagado >= Number(c.monto||0) - 0.01;
@@ -1874,7 +1884,7 @@ function mRegistrarPago(c) {
           }
         });
       })
-      .catch(function(e){ ok.disabled=false; ok.textContent='Registrar pago'; alert('Error: ' + e.message); });
+      .catch(function(e){ ok.disabled=false; ok.textContent='Registrar pago'; alert('Error: ' + e.message + (cts.length ? '\n\nSi dice que no existe la columna cuenta_id, falta correr el SQL de cuentas.' : '')); });
     };
     foot.appendChild(ok);
   }));
@@ -3199,12 +3209,13 @@ function vFinanzas() {
 
   // Fetches con NOMBRE — agregar uno nuevo es agregar una línea acá, sin correr índices
   var FIN_Q = {
-    cobros:             sbFetch('panel_cobros?estado=eq.pagado&select=monto,fecha_pago,tipo_cobro,descripcion,asignacion_id&order=fecha_pago.desc').catch(function(){ return []; }),
+    cobros:             sbFetch('panel_cobros?estado=eq.pagado&select=id,monto,fecha_pago,tipo_cobro,descripcion,asignacion_id&order=fecha_pago.desc').catch(function(){ return []; }),
     cobrosPendientes:   sbFetch('panel_cobros?estado=eq.pendiente&select=monto,fecha_vencimiento,tipo_cobro,descripcion,asignacion_id&order=fecha_vencimiento.asc').catch(function(){ return []; }),
     gastos:             sbFetch('panel_gastos?select=*&order=activo.desc,nombre.asc').catch(function(){ return []; }),
     ingresos:           sbFetch('panel_ingresos?select=*&order=fecha.desc').catch(function(){ return []; }),
     sistemas:           sbFetch('panel_sistemas?select=id,nombre').catch(function(){ return []; }),
     clientes:           sbFetch('panel_clientes?select=id,nombre,es_demo,eliminado').catch(function(){ return []; }),
+    pagosCobroPF:       sbFetch('panel_pagos?select=cobro_id,monto,fecha,created_at,cuenta_id').catch(function(){ return []; }),
     cuentasPF:          sbFetch('panel_pf_cuentas?select=*&activa=eq.true&order=orden.asc,created_at.asc').catch(function(){ return []; }),
     movimientosPF:      sbFetch('panel_pf_movimientos?select=*&order=created_at.asc').catch(function(){ return []; }),
     asignacionesFin:    sbFetch('panel_asignaciones?select=id,cliente_id').catch(function(){ return []; }),
@@ -5849,7 +5860,7 @@ function vFinanzas() {
 
 
     // ---- CUENTAS: cada cuenta arranca con un saldo base (con hora) y se mueve con los pagos, ingresos y movimientos posteriores ----
-    var cuentasPF = (R.cuentasPF||[]), movimientosPF = (R.movimientosPF||[]);
+    var cuentasPF = (R.cuentasPF||[]), movimientosPF = (R.movimientosPF||[]), pagosCobroPF = (R.pagosCobroPF||[]);
     function fechaLocalPF(ts) { var d = new Date(ts); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
     function convPF(monto, de, a) { de = de||'ARS'; a = a||'ARS'; if (de===a) return monto; return de==='USD' ? monto*tcUSD : monto/tcUSD; }
     function montoGastoEnCuentaPF(g, c) {
@@ -5864,9 +5875,17 @@ function vFinanzas() {
     function movimientosCuentaPF(c) {
       var ts = new Date(c.saldo_inicial_ts||0).getTime(), out = [];
       ingresosPF.forEach(function(i){ if (i.cuenta_id===c.id && i.created_at && new Date(i.created_at).getTime()>ts) out.push({t:new Date(i.created_at).getTime(), monto:convPF(Number(i.monto||0),'ARS',c.moneda), det:'Ingreso: '+(i.concepto||i.categoria||'')}); });
-      if (c.ingreso_default && c.moneda !== 'USD') {
-        var dTs = fechaLocalPF(ts);
-        cobros.forEach(function(co){ if (co.fecha_pago && String(co.fecha_pago).slice(0,10) > dTs && String(co.fecha_pago).slice(0,10) <= fechaLocalPF(Date.now())) out.push({t:new Date(co.fecha_pago+'T12:00:00').getTime(), monto:Number(co.monto||0), det:'Cobro: '+(co.descripcion||co.tipo_cobro||'')}); });
+      if (c.moneda !== 'USD') {
+        var defId = cuentaDefaultIngresoPF(), conPagos = {};
+        pagosCobroPF.forEach(function(pg){
+          conPagos[pg.cobro_id] = true;
+          var dest = pg.cuenta_id || defId;
+          if (dest===c.id && pg.created_at && new Date(pg.created_at).getTime()>ts) out.push({t:new Date(pg.created_at).getTime(), monto:Number(pg.monto||0), det:'Cobro del negocio'});
+        });
+        if (c.ingreso_default) {
+          var dTs = fechaLocalPF(ts);
+          cobros.forEach(function(co){ if (!co.id || conPagos[co.id]) return; if (co.fecha_pago && String(co.fecha_pago).slice(0,10) > dTs && String(co.fecha_pago).slice(0,10) <= fechaLocalPF(Date.now())) out.push({t:new Date(co.fecha_pago+'T12:00:00').getTime(), monto:Number(co.monto||0), det:'Cobro: '+(co.descripcion||co.tipo_cobro||'')}); });
+        }
       }
       gastosPF.forEach(function(g){
         if (g.pagado && g.cuenta_id===c.id && g.pagado_at && new Date(g.pagado_at).getTime()>ts) { var a = montoGastoEnCuentaPF(g, c); if (a > 0) out.push({t:new Date(g.pagado_at).getTime(), monto:-a, det:'Pago: '+(g.concepto||'')}); }
@@ -6228,6 +6247,33 @@ function vFinanzas() {
       var boxCta = el('div',{style:'display:none'});
       panel.appendChild(bCta);
       bCta.onclick = function(){ tabActual = 'cuentas-pf'; _finUIState.tabActual = tabActual; renderTabs(); renderAll(); };
+      var estado = el('div',{style:'padding:2px 14px 8px;font-size:11px;font-weight:600;border-bottom:1px solid #F1F5F9;line-height:1.4'}); panel.appendChild(estado);
+
+      var lista = el('div',{style:'flex:1;overflow:auto;padding:12px 14px'}); panel.appendChild(lista);
+
+      var chips = el('div',{style:'padding:6px 14px 0;display:flex;gap:6px;flex-wrap:wrap'});
+      function chip(txt, fn) { var b = el('button',{class:'btn btnsm',style:'font-size:11px'},txt); b.onclick = fn; chips.appendChild(b); }
+      chip('¿Cómo viene el mes?', function(){ enviarChatPF('¿Cómo viene el mes? Dame el análisis completo.'); });
+      chip('¿Qué pago esta semana?', function(){ enviarChatPF('¿Qué tengo que pagar esta semana y en qué orden?'); });
+      chip('💰 Entró plata', function(){ enviarChatPF('Entró plata nueva que ya cargué en el panel. ¿Qué hago con ella? Dame las prioridades de pago en orden.'); });
+      panel.appendChild(chips);
+
+      var fin = el('div',{style:'padding:8px 14px 12px;display:flex;gap:8px;align-items:flex-end'});
+      var txt = el('textarea',{rows:'2',placeholder:'Preguntale al asesor…',style:iSt+'flex:1;resize:none;font-family:inherit;font-size:13px'});
+      var btnSend = el('button',{class:'btn btnp'},'Enviar');
+      fin.appendChild(txt); fin.appendChild(btnSend); panel.appendChild(fin);
+
+      var launcher = el('button',{style:'position:fixed;right:18px;bottom:18px;z-index:800;background:#0B9EDA;color:#fff;border:0;border-radius:26px;padding:11px 18px;font-weight:600;font-size:14px;box-shadow:0 6px 20px rgba(11,158,218,.4);cursor:pointer'},'🤖 Asesor');
+      var badge = el('span',{style:'display:none;margin-left:8px;background:#E24B4A;border-radius:10px;width:10px;height:10px;vertical-align:middle;display:none'});
+      launcher.appendChild(badge);
+
+      chatPF.ui = {linea:linea, root:root, panel:panel, launcher:launcher, lista:lista, estado:estado, btnSend:btnSend, badge:badge};
+      chatPF.mounted = true;
+      root.appendChild(panel); root.appendChild(launcher);
+
+      function enviarDesdeCaja() { var v = txt.value; txt.value = ''; enviarChatPF(v); }
+      btnSend.onclick = enviarDesdeCaja;
+      txt.onkeydown = function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarDesdeCaja(); } };
       bClr.onclick = function() { if (!confirm('Borrar toda la conversación con el asesor?')) return; chatPF.msgs = []; pintarMsgsChatPF(); guardarChatPF(); };
       bMin.onclick = function(){ setAbiertoChatPF(false); };
       launcher.onclick = function(){ setAbiertoChatPF(true); };
