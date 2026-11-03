@@ -4831,7 +4831,7 @@ function vFinanzas() {
           tr.appendChild(el('td',{style:'font-size:12px;color:#64748B;white-space:nowrap'}, g.fecha ? fdate(g.fecha) : '—'));
           var tog=el('label',{class:'tog'});
           var inp=el('input',{type:'checkbox'}); if (g.pagado) inp.checked=true;
-          (function(gg){ inp.onchange=function(){ var checked=this.checked; dbUpd('panel_pf_gastos',gg.id,{pagado:checked}).then(function(){ gg.pagado=checked; }); }; })(g);
+          (function(gg){ inp.onchange=function(){ var checked=this.checked; dbUpd('panel_pf_gastos',gg.id,{pagado:checked}).then(function(){ gg.pagado=checked; return sincPagoPrestamoPF(gg, checked); }).then(function(){ if (gg.prestamo_id) renderAll(); }).catch(function(e){ alert('Error: '+e.message); }); }; })(g);
           tog.appendChild(inp); tog.appendChild(el('span',{class:'sl'}));
           tr.appendChild(el('td',{},[tog]));
           var btnPg=null;
@@ -4934,7 +4934,7 @@ function vFinanzas() {
               g._entregas = (g._entregas||[]).concat(rows && rows[0] ? [rows[0]] : [{monto:monto,fecha:fecha,moneda:(mon==='USD'?'USD':undefined)}]);
               // Pagado al cubrir TODAS las monedas del gasto
               var completo = (!hayARS || entregadoPF(g) >= Number(g.monto||0) - 0.01) && (!hayUSD || entregadoUSDPF(g) >= usdTotalPF(g) - 0.01);
-              var fin = completo ? dbUpd('panel_pf_gastos', g.id, {pagado:true}).then(function(){ g.pagado=true; }) : Promise.resolve();
+              var fin = completo ? dbUpd('panel_pf_gastos', g.id, {pagado:true}).then(function(){ g.pagado=true; return sincPagoPrestamoPF(g, true, fecha); }) : Promise.resolve();
               return fin.then(function(){ closeM(); renderAll(); });
             })
             .catch(function(e){ ok.disabled=false; ok.textContent='Registrar entrega'; alert('Error: '+e.message+(mon==='USD'?'\n\nSi dice que no existe la columna "moneda", falta correr el SQL de panel_pf_entregas.':'')); });
@@ -5046,6 +5046,33 @@ function vFinanzas() {
       return pagosDePrestamoPF(p).filter(function(pg){ return pg.cuenta_para_saldo!==false; }).reduce(function(s,pg){ return s+Number(pg.monto); }, 0);
     }
 
+    // Gasto vinculado a un prestamo: al marcarlo pagado se crea el pago del prestamo (descuenta el saldo);
+    // al desmarcarlo se borra. Asi un pago "programado" avisa como un vencimiento y no descuenta antes de tiempo.
+    function sincPagoPrestamoPF(g, pagado, fecha) {
+      if (!g || !g.prestamo_id) return Promise.resolve();
+      var pr = prestamosPF.find(function(x){ return x.id===g.prestamo_id; });
+      if (!pr) return Promise.resolve();
+      var ex = prestamosPagosPF.find(function(pg){ return pg.gasto_id===g.id; });
+      if (pagado && !ex) {
+        var usd = pr.moneda==='USD';
+        var monto = usd ? Number(g.prestamo_monto||0) : Number(g.monto||0);
+        if (!(monto>0)) return Promise.resolve();
+        var row = {prestamo_id:pr.id, monto:monto, fecha:fecha||new Date().toISOString().slice(0,10), cuenta_para_saldo:true, gasto_id:g.id};
+        if (usd && Number(g.monto)>0) row.tc = Math.round(Number(g.monto)/monto*100)/100;
+        return dbIns('panel_pf_prestamos_pagos', row).then(function(r){
+          if (r && r[0]) prestamosPagosPF.push(r[0]);
+          if (pr.activo && Number(pr.monto_total)-pagadoPrestamoPF(pr) <= 0.01) { pr.activo=false; dbUpd('panel_pf_prestamos', pr.id, {activo:false}); }
+        });
+      }
+      if (!pagado && ex) {
+        return sbFetch('panel_pf_prestamos_pagos?id=eq.'+ex.id,{method:'DELETE',prefer:'return=minimal'}).then(function(){
+          var ix = prestamosPagosPF.indexOf(ex); if (ix>=0) prestamosPagosPF.splice(ix,1);
+          if (!pr.activo && Number(pr.monto_total)-pagadoPrestamoPF(pr) > 0.01) { pr.activo=true; dbUpd('panel_pf_prestamos', pr.id, {activo:true}); }
+        });
+      }
+      return Promise.resolve();
+    }
+
     function renderPrestamosPF() {
       var sh=el('div',{class:'sh'});
       sh.appendChild(el('span',{class:'st'},'Prestamos (monto total + pagos parciales)'));
@@ -5076,11 +5103,12 @@ function vFinanzas() {
         left.appendChild(el('div',{style:'font-size:12px;color:#64748B;margin-top:2px'}, fmtMon(pagado,p.moneda)+' pagado de '+fmtMon(p.monto_total,p.moneda)+(p.fecha?' · al '+fdate(p.fecha):'')));
         head.appendChild(left);
         var right = el('div',{style:'display:flex;gap:6px;flex-shrink:0'});
-        var btnPago = el('button',{class:'btn btns btnsm'},'+ Registrar pago');
+        var btnPago = el('button',{class:'btn btns btnsm'},'+ Registrar / programar pago');
         btnPago.onclick = function(){ mPagoPrestamoPF(p, function(nuevoPago, nuevoGasto){
-          prestamosPagosPF.push(nuevoPago);
+          if (nuevoPago) prestamosPagosPF.push(nuevoPago);
           if (nuevoGasto) gastosPF.push(nuevoGasto);
-          if (saldo - Number(nuevoPago.monto) <= 0.01) { p.activo = false; dbUpd('panel_pf_prestamos', p.id, {activo:false}); }
+          if (nuevoGasto && !nuevoGasto._entregas) nuevoGasto._entregas = [];
+          if (nuevoPago && saldo - Number(nuevoPago.monto) <= 0.01) { p.activo = false; dbUpd('panel_pf_prestamos', p.id, {activo:false}); }
           renderAll();
         }); };
         right.appendChild(btnPago);
@@ -5145,33 +5173,57 @@ function vFinanzas() {
     }
     function mPagoPrestamoPF(p, cb) {
       var saldo = Math.max(0, Number(p.monto_total) - pagadoPrestamoPF(p));
+      var esUSD = p.moneda==='USD';
+      var tcDef = Math.round(tcUSD);
+      var mMes = esUSD ? /USD\s*([0-9]+)\s*x\s*mes/i.exec(p.notas||'') : null;
+      var montoDef = mMes ? Number(mMes[1]) : saldo;
       openM(makeModal('Registrar pago — '+p.nombre, function(body) {
         body.appendChild(el('div',{class:'ibox'}, 'Saldo actual: '+fmtMon(saldo,p.moneda)));
-        mkRow2(body, mkFg('Monto del pago', mkInput('pgp-monto','number',saldo)), mkFg('Fecha', mkInput('pgp-fecha','date',new Date().toISOString().slice(0,10))));
-        if (p.moneda!=='USD') {
-          addFg(body, 'Mes (para que cuente como gasto de ese mes)', mkSelect('pgp-mes', mesesPF.map(function(mm){ return [mm.id, MESES[mm.month-1]+' '+mm.year]; }), mesSeleccionadoPF));
-        } else {
-          body.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-top:4px'},'En USD: este pago no se suma a los gastos en pesos del mes, solo descuenta del saldo del prestamo.'));
+        var selEst = mkSelect('pgp-est', [['pagado','Ya lo pagué'],['programado','Programar: avisarme (no descuenta hasta marcarlo pagado)']], 'pagado');
+        addFg(body, 'Estado', selEst);
+        var hint = el('div',{style:'font-size:11px;color:#94a3b8;margin:-4px 0 10px;line-height:1.4'});
+        function pintarHint() {
+          var prog = gv('pgp-est')==='programado';
+          hint.textContent = prog
+            ? 'Queda como gasto pendiente en ese mes, con su vencimiento, como cualquier otro. Recién descuenta del préstamo cuando lo marcás pagado.'
+            : 'Se descuenta del préstamo ahora y queda como gasto pagado en el mes elegido.';
         }
+        selEst.onchange = pintarHint; pintarHint();
+        var montoInp = mkInput('pgp-monto','number',montoDef);
+        mkRow2(body, mkFg('Monto'+(esUSD?' (USD)':''), montoInp), mkFg('Fecha (pago o vencimiento)', mkInput('pgp-fecha','date',new Date().toISOString().slice(0,10))));
+        if (esUSD) {
+          var tcInp = mkInput('pgp-tc','number',tcDef);
+          addFg(body, 'Precio del dólar ($ por USD) — al que los compraste, o estimado si lo programás', tcInp);
+          var totBox = el('div',{style:'font-size:12px;color:#1a2e4a;font-weight:600;margin:-4px 0 10px'});
+          function pintarTot() { totBox.textContent = 'En pesos: ' + fmt(Math.round(Number(gv('pgp-monto')||montoDef) * Number(gv('pgp-tc')||tcDef))); }
+          body.appendChild(totBox);
+          tcInp.oninput = pintarTot; montoInp.oninput = pintarTot;
+          pintarTot();
+          body.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin:-4px 0 10px'},'El gasto del mes queda en pesos (USD x precio) y el préstamo descuenta los USD.'));
+        }
+        addFg(body, 'Mes (para que cuente como gasto de ese mes)', mkSelect('pgp-mes', mesesPF.map(function(mm){ return [mm.id, MESES[mm.month-1]+' '+mm.year]; }), mesSeleccionadoPF));
         addFg(body, 'Notas', mkInput('pgp-notas','text',''));
       }, function(foot) {
         foot.appendChild(cancelBtn());
-        var ok = el('button', {class:'btn btnp'}, 'Registrar');
+        var ok = el('button', {class:'btn btnp'}, 'Guardar');
         ok.onclick = function() {
           var monto = Number(gv('pgp-monto')||0); if (monto<=0) { alert('Monto invalido'); return; }
           var fecha = gv('pgp-fecha')||null, notas = gv('pgp-notas')||null;
-          if (p.moneda!=='USD') {
-            var mesId = gv('pgp-mes');
-            dbIns('panel_pf_gastos', {mes_id:mesId, concepto:p.nombre, monto:monto, categoria:'Créditos', tipo:'varios', fecha:fecha, prestamo_id:p.id, pagado:true})
-              .then(function(rg) {
-                var gastoRow = (rg&&rg[0])||null;
-                return dbIns('panel_pf_prestamos_pagos', {prestamo_id:p.id, monto:monto, fecha:fecha, cuenta_para_saldo:true, notas:notas, gasto_id:gastoRow?gastoRow.id:null})
-                  .then(function(rp){ closeM(); cb((rp&&rp[0])||null, gastoRow); });
-              });
-          } else {
-            dbIns('panel_pf_prestamos_pagos', {prestamo_id:p.id, monto:monto, fecha:fecha, cuenta_para_saldo:true, notas:notas})
-              .then(function(rp){ closeM(); cb((rp&&rp[0])||null, null); });
-          }
+          var prog = gv('pgp-est')==='programado';
+          var mesId = gv('pgp-mes');
+          var tc = esUSD ? Number(gv('pgp-tc')||0) : 0;
+          if (esUSD && !(tc>0)) { alert('Ingresá el precio del dólar'); return; }
+          var gastoBody = {mes_id:mesId, categoria:'Créditos', tipo:'varios', fecha:fecha, prestamo_id:p.id, pagado:!prog};
+          if (esUSD) { gastoBody.concepto = p.nombre+' (USD '+monto+')'; gastoBody.monto = Math.round(monto*tc); gastoBody.prestamo_monto = monto; }
+          else { gastoBody.concepto = p.nombre; gastoBody.monto = monto; }
+          ok.disabled = true; ok.textContent = 'Guardando...';
+          dbIns('panel_pf_gastos', gastoBody).then(function(rg) {
+            var gastoRow = (rg&&rg[0])||null;
+            if (prog) { closeM(); cb(null, gastoRow); return; }
+            var rowPago = {prestamo_id:p.id, monto:monto, fecha:fecha, cuenta_para_saldo:true, notas:notas, gasto_id:gastoRow?gastoRow.id:null};
+            if (esUSD) rowPago.tc = tc;
+            return dbIns('panel_pf_prestamos_pagos', rowPago).then(function(rp){ closeM(); cb((rp&&rp[0])||null, gastoRow); });
+          }).catch(function(e){ ok.disabled=false; ok.textContent='Guardar'; alert('Error: '+e.message+'\n\nSi dice que no existe la columna "tc" o "prestamo_monto", falta correr el SQL de préstamos.'); });
         };
         foot.appendChild(ok);
       }));
@@ -5187,7 +5239,10 @@ function vFinanzas() {
           if (pg.notas) l.appendChild(el('div',{style:'font-size:11px;color:#94a3b8'},pg.notas + (pg.cuenta_para_saldo===false?' (historico, no descuenta del saldo)':'')));
           else if (pg.cuenta_para_saldo===false) l.appendChild(el('div',{style:'font-size:11px;color:#94a3b8'},'Historico, no descuenta del saldo'));
           row.appendChild(l);
-          row.appendChild(el('div',{style:'font-weight:600'}, fmtMon(pg.monto,p.moneda)));
+          var derH = el('div',{style:'text-align:right'});
+          derH.appendChild(el('div',{style:'font-weight:600'}, fmtMon(pg.monto,p.moneda)));
+          if (pg.tc) derH.appendChild(el('div',{style:'font-size:11px;color:#94a3b8'}, 'a '+fmt(pg.tc)+' = '+fmt(Math.round(Number(pg.monto)*Number(pg.tc)))));
+          row.appendChild(derH);
           body.appendChild(row);
         });
       }, function(foot) {
@@ -5447,10 +5502,158 @@ function vFinanzas() {
       }));
     }
 
+    // ---- ASESOR IA (Claude via Edge Function asesor-pf) ----
+    // Arma el resumen del mes: pendientes con fecha, calendario de caja, tarjetas, cobros y deudas
+    function datosAsesorPF(m, efectivo, diaDS) {
+      var hoy = new Date();
+      var hoyStr = hoy.getFullYear()+'-'+String(hoy.getMonth()+1).padStart(2,'0')+'-'+String(hoy.getDate()).padStart(2,'0');
+      var mesStr = m.year+'-'+String(m.month).padStart(2,'0');
+      function aHoy(f) { return (f && f < hoyStr) ? hoyStr : f; }
+      var j = juanPF.find(function(x){ return x.mes_id===m.id; })||{};
+      var t = calcJuanTotalsPF(j, m.month);
+      var ingMes = ingresosPF.filter(function(i){ return i.mes_id===m.id; });
+      var transI = ingMes.filter(function(i){ return i.categoria==='Transferencia interna'; }).reduce(function(s,i){ return s+Number(i.monto); },0);
+      var dsPend = Math.max(0, Math.round(t.juanDS - transI));
+
+      var pend = gastosPF.filter(function(g){ return g.mes_id===m.id && !g.pagado; }).map(function(g){
+        return {concepto:g.concepto, categoria:g.categoria, fecha:g.fecha, saldo_ars:Math.round(saldoPF(g)), saldo_usd:Math.round(saldoUSDPF(g)*100)/100};
+      }).filter(function(g){ return g.saldo_ars>0 || g.saldo_usd>0; });
+
+      var ev = [];
+      pend.forEach(function(g){
+        ev.push({fecha:aHoy(g.fecha), entra:0, sale:Math.round(g.saldo_ars + g.saldo_usd*tcUSD), tarjeta:g.categoria==='Tarjetas', detalle:g.concepto});
+      });
+      // Pagos mensuales fijos en USD que no estan como gasto del mes (ej: Susana, "USD 400 x mes")
+      prestamosPF.filter(function(p){ return p.activo && p.moneda==='USD'; }).forEach(function(p){
+        var mm = /USD\s*([0-9]+)\s*x\s*mes/i.exec(p.notas||''); if(!mm) return;
+        var yaPago = pagosDePrestamoPF(p).some(function(pg){ return (pg.fecha||'').slice(0,7)===mesStr; }) || gastosPF.some(function(g){ return g.mes_id===m.id && g.prestamo_id===p.id; });
+        if (yaPago) return;
+        var dia = (p.fecha||'').slice(8,10) || '15';
+        ev.push({fecha:aHoy(mesStr+'-'+dia), entra:0, sale:Math.round(Number(mm[1])*tcUSD), tarjeta:false, detalle:p.nombre+' (USD '+mm[1]+', no figura en los gastos del mes)'});
+      });
+      // Ingresos esperados con fecha
+      if (dsPend > 500) {
+        var dd = Math.min(31, Math.max(1, Number(diaDS)||10));
+        ev.push({fecha:aHoy(mesStr+'-'+String(dd).padStart(2,'0')), entra:dsPend, sale:0, tarjeta:false, detalle:'DS pendiente de la distri (estimado dia '+dd+')'});
+      }
+      var finMes = mesStr+'-31';
+      var porCobrar = cobrosPendientes.map(function(c){
+        var venc = c.fecha_vencimiento ? c.fecha_vencimiento.slice(0,10) : null;
+        var vencido = !!venc && venc < hoyStr;
+        if (venc && !vencido && venc <= finMes && venc >= mesStr+'-01') {
+          ev.push({fecha:venc, entra:Number(c.monto), sale:0, tarjeta:false, detalle:'Cobro: '+(c.descripcion||c.tipo_cobro||'')});
+        }
+        return {descripcion:c.descripcion||c.tipo_cobro, monto:Number(c.monto), vencimiento:venc, vencido:vencido};
+      });
+
+      var porFecha = {};
+      ev.forEach(function(e){ var k=e.fecha||hoyStr; (porFecha[k]=porFecha[k]||[]).push(e); });
+      var saldo = Number(efectivo)||0;
+      var calendario = Object.keys(porFecha).sort().map(function(f){
+        var entra=0, sale=0, saleTarj=0, det=[];
+        porFecha[f].forEach(function(e){
+          entra += e.entra;
+          if (e.tarjeta) saleTarj += e.sale; else sale += e.sale;
+          det.push((e.entra?'+':'-')+(e.entra||e.sale)+' '+e.detalle+(e.tarjeta?' [tarjeta, no incluida en el saldo]':''));
+        });
+        saldo += entra - sale;
+        return {fecha:f, entra:entra, sale_sin_tarjetas:sale, sale_tarjetas:saleTarj, saldo_sin_tarjetas:Math.round(saldo), detalle:det};
+      });
+
+      return {
+        hoy:hoyStr, mes:mesStr, tc_usd:tcUSD, efectivo_hoy:Number(efectivo)||0,
+        ingresos_cargados_mes: ingMes.map(function(i){ return {concepto:i.concepto, categoria:i.categoria, monto:Number(i.monto), fecha:i.fecha}; }),
+        liquidacion: {sueldo_bruto:Math.round(t.totalBruto), sueldo_depositado:Math.round(t.juanSueldo), ds_pendiente:dsPend, dia_estimado_llegada_ds:Number(diaDS)||10},
+        gastos_pendientes: pend,
+        tarjetas_pendientes: pend.filter(function(g){ return g.categoria==='Tarjetas'; }),
+        calendario_caja: calendario,
+        por_cobrar_negocio: porCobrar,
+        deudas_a_cobrar: deudasPF.filter(function(d){ return d.estado==='pendiente'; }).map(function(d){ return {nombre:d.nombre, concepto:d.concepto, monto:Number(d.monto)}; }),
+        prestamos: prestamosPF.filter(function(p){ return p.activo; }).map(function(p){ return {nombre:p.nombre, moneda:p.moneda, saldo:Math.max(0, Number(p.monto_total)-pagadoPrestamoPF(p)), notas:p.notas||null}; })
+      };
+    }
+
+    // Texto del asesor -> nodos (sin innerHTML): **negrita**, listas "- " y titulos "#"
+    function textoAsesorPF(txt) {
+      var wrap = el('div',{style:'font-size:13px;color:#1a2e4a;line-height:1.6'});
+      var ul = null;
+      function inline(parent, str) {
+        str.split(/(\*\*[^*]+\*\*)/).forEach(function(part){
+          if (!part) return;
+          if (part.length>4 && part.slice(0,2)==='**' && part.slice(-2)==='**') parent.appendChild(el('b',{},part.slice(2,-2)));
+          else parent.appendChild(document.createTextNode(part));
+        });
+      }
+      String(txt||'').split('\n').forEach(function(line){
+        var l = line.replace(/^\s+/,'');
+        var mb = /^[-•*]\s+(.*)$/.exec(l);
+        var mh = /^#{1,4}\s+(.*)$/.exec(l);
+        if (mb) {
+          if (!ul) { ul = el('ul',{style:'margin:4px 0 8px 18px;padding:0'}); wrap.appendChild(ul); }
+          var li = el('li',{style:'margin:2px 0'}); inline(li, mb[1]); ul.appendChild(li); return;
+        }
+        ul = null;
+        if (!l.trim()) return;
+        var p = el('div',{style:'margin:'+(mh?'14px 0 4px':'6px 0')+';'+(mh?'font-weight:700;font-size:14px;':'')});
+        inline(p, mh ? mh[1] : l); wrap.appendChild(p);
+      });
+      return wrap;
+    }
+
+    function renderAsesorIAPF(m) {
+      var box = el('div',{class:'card',style:'padding:20px;margin-bottom:14px;background:#fff'});
+      box.appendChild(el('div',{style:'font-weight:700;font-size:15px;color:#1a2e4a;margin-bottom:4px'},'🤖 Consultar al asesor IA'));
+      box.appendChild(el('div',{style:'font-size:12px;color:#64748B;margin-bottom:14px;line-height:1.5'},
+        'Lee el mes cargado en el panel (gastos pendientes con fecha, tarjetas, DS pendiente, cobros, deudas) y arma el calendario de caja. Usa los créditos de API del plan.'));
+      var iSt = 'padding:8px 10px;border:1px solid #CBD5E1;border-radius:8px;font-size:13px;background:#fff;color:#1a2e4a;box-sizing:border-box;';
+      var row = el('div',{style:'display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px'});
+      var c1 = el('div',{}); c1.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-bottom:4px'},'Efectivo disponible hoy ($)'));
+      var inpEfe = el('input',{type:'number',placeholder:'0',style:iSt+'width:190px'}); c1.appendChild(inpEfe);
+      var c2 = el('div',{}); c2.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-bottom:4px'},'Día que llega la distri'));
+      var inpDia = el('input',{type:'number',value:'10',min:'1',max:'31',style:iSt+'width:110px'}); c2.appendChild(inpDia);
+      row.appendChild(c1); row.appendChild(c2); box.appendChild(row);
+      box.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-bottom:4px'},'Pregunta (opcional)'));
+      var txt = el('textarea',{rows:'2',placeholder:'Ej: ¿y si la distri llega el 6? ¿qué difiero primero?',style:iSt+'width:100%;resize:vertical;margin-bottom:10px;font-family:inherit'});
+      box.appendChild(txt);
+      var btn = el('button',{class:'btn btnp'},'Consultar');
+      box.appendChild(btn);
+      var out = el('div',{style:'margin-top:14px'});
+      box.appendChild(out);
+
+      btn.onclick = function() {
+        var tok = window._authToken;
+        if (!tok) { out.innerHTML=''; out.appendChild(el('div',{style:'color:#A32D2D;font-size:13px'},'Sesión no válida. Ingresá de nuevo al panel.')); return; }
+        if (inpEfe.value==='' || isNaN(Number(inpEfe.value))) { out.innerHTML=''; out.appendChild(el('div',{style:'color:#A32D2D;font-size:13px'},'Ingresá el efectivo que tenés hoy (puede ser 0).')); return; }
+        var datos = datosAsesorPF(m, Number(inpEfe.value), Number(inpDia.value)||10);
+        btn.disabled = true; btn.textContent = 'Analizando...';
+        out.innerHTML=''; out.appendChild(el('div',{style:'color:#64748B;font-size:13px'},'Armando el análisis, puede tardar unos segundos…'));
+        fetch(SB_URL+'/functions/v1/asesor-pf', {
+          method:'POST',
+          headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+tok},
+          body:JSON.stringify({pregunta:txt.value.trim(), datos:datos})
+        }).then(function(r) {
+          return r.json().catch(function(){ return {}; }).then(function(d){ d._status=r.status; return d; });
+        }).then(function(d) {
+          out.innerHTML='';
+          if (d.error || !d.texto) {
+            out.appendChild(el('div',{style:'color:#A32D2D;font-size:13px'},'No se pudo consultar: '+(d.error||d.message||('error '+d._status))));
+            return;
+          }
+          out.appendChild(textoAsesorPF(d.texto));
+          if (d.tokens_in) out.appendChild(el('div',{style:'margin-top:12px;font-size:11px;color:#94a3b8'},(d.modelo||'')+' · '+d.tokens_in+' tokens de entrada, '+d.tokens_out+' de salida'));
+        }).catch(function(e) {
+          out.innerHTML='';
+          out.appendChild(el('div',{style:'color:#A32D2D;font-size:13px'},'No se pudo consultar: '+e.message));
+        }).then(function(){ btn.disabled=false; btn.textContent='Consultar'; });
+      };
+      content.appendChild(box);
+    }
+
     function renderAsesorPF() {
       var m=getMesPF(mesSeleccionadoPF);
       if(!m){ content.appendChild(el('div',{class:'card'},[el('div',{class:'emp'},'No hay mes seleccionado')])); return; }
       content.appendChild(el('div',{class:'sh',style:'margin-bottom:16px'},[el('span',{class:'st'},'🤖 Asesor — '+MESES[m.month-1]+' '+m.year)]));
+      renderAsesorIAPF(m);
       var card=el('div',{class:'card',style:'padding:20px'});
       var j=juanPF.find(function(x){ return x.mes_id===m.id; })||{};
       var t=calcJuanTotalsPF(j,m.month);
