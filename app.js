@@ -3428,7 +3428,7 @@ function vFinanzas() {
     function tabsForModo() {
       return modoFin === 'negocio'
         ? [['resumen','Resumen'],['ingresos','Ingresos'],['gastos','Gastos']]
-        : [['resumen-pf','Resumen'],['ingresos-pf','Ingresos'],['gastos-pf','Gastos'],['cuotas','Cuotas'],['prestamos-pf','Prestamos'],['auto-pf','Auto'],['deudas-pf','Deudas'],['pedrito-pf','👶 Pedrito'],['juntada-pf','🎲 Juntada'],['asesor-pf','🤖 Asesor']];
+        : [['resumen-pf','Resumen'],['ingresos-pf','Ingresos'],['gastos-pf','Gastos'],['cuotas','Cuotas'],['prestamos-pf','Prestamos'],['auto-pf','Auto'],['deudas-pf','Deudas'],['pedrito-pf','👶 Pedrito'],['juntada-pf','🎲 Juntada']];
     }
     function renderTabs() {
       tabsEl.innerHTML = '';
@@ -3468,7 +3468,7 @@ function vFinanzas() {
         else if (tabActual === 'juntada-pf') renderJuntada();
         else if (tabActual === 'prestamos-pf') renderPrestamosPF();
         else if (tabActual === 'auto-pf') renderAutoPF();
-        else if (tabActual === 'asesor-pf') renderAsesorPF();
+        else if (tabActual === 'asesor-pf') { tabActual = 'resumen-pf'; _finUIState.tabActual = tabActual; renderTabs(); renderResumenPF(); }
         else renderDeudasPF();
       }
       if (typeof actualizarEstadoChatPF === 'function') actualizarEstadoChatPF();
@@ -5625,16 +5625,18 @@ function vFinanzas() {
       var sueldo = Number(calcJuanTotalsPF(j, m.month).juanSueldo)||0;
       var ing = ingresosPF.filter(function(i){ return i.mes_id===m.id && (!i.fecha || String(i.fecha).slice(0,10) <= hoy); })
         .reduce(function(a,i){ return a + Number(i.monto||0); }, 0);
+      var cob = (cobros||[]).filter(function(c){ return c.fecha_pago && String(c.fecha_pago).slice(0,7)===(m.year+'-'+String(m.month).padStart(2,'0')) && String(c.fecha_pago).slice(0,10) <= hoy; })
+        .reduce(function(a,c){ return a + Number(c.monto||0); }, 0);
       var pag = gastosPF.filter(function(g){ return g.mes_id===m.id; }).reduce(function(a,g){
         if (g.pagado) return a + Number(g.monto||0) + Number(g.monto_usd||0)*tcUSD;
         return a + Math.max(0, Number(g.monto||0) - saldoPF(g)) + Math.max(0, usdTotalPF(g) - saldoUSDPF(g))*tcUSD;
       }, 0);
-      return {valor:sueldo+ing-pag, sueldo:sueldo, ing:ing, pag:pag};
+      return {valor:sueldo+ing+cob-pag, sueldo:sueldo, ing:ing, cob:cob, pag:pag};
     }
     function efectivoPF(m) { var d = efectivoDetallePF(m); return d ? Math.round(d.valor) : 0; }
     function lineaEfectivoPF() {
       var d = efectivoDetallePF(); if (!d) return '';
-      return 'Caja según el panel: sueldo depositado '+fmt(d.sueldo)+' + ingresos cargados '+fmt(d.ing)+' − pagos hechos '+fmt(d.pag)+' = '+fmt(d.valor)+'. No incluye saldo de meses anteriores.';
+      return 'Caja según el panel: sueldo depositado '+fmt(d.sueldo)+' + ingresos cargados '+fmt(d.ing)+' + cobros del negocio '+fmt(d.cob)+' − pagos hechos '+fmt(d.pag)+' = '+fmt(d.valor)+'. No incluye saldo de meses anteriores.';
     }
 
     // Llama a la Edge Function asesor-pf. o: {efectivo, diaDS, pregunta, modo:'completo'|'gasto', gastoNuevo}
@@ -5645,7 +5647,7 @@ function vFinanzas() {
       var datos = datosAsesorPF(m, Number(o.efectivo||0), o.diaDS);
       var hash = hashAsesorPF(datos);
       if (ing > 0) { datos.ingreso_nuevo = ing; datos.efectivo_antes_del_ingreso = Number(o.efectivo||0) - ing; }
-      datos.efectivo_origen = 'Calculado por el panel: sueldo depositado + ingresos cargados - pagos hechos del mes. No incluye saldo de meses anteriores ni plata que no este cargada en el panel.';
+      datos.efectivo_origen = 'Calculado por el panel: sueldo depositado + ingresos personales cargados + cobros del negocio cobrados - pagos hechos del mes. No incluye saldo de meses anteriores ni plata que no este cargada en el panel.';
       return fetch(SB_URL+'/functions/v1/asesor-pf', {
         method:'POST',
         headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+tok},
@@ -5672,7 +5674,8 @@ function vFinanzas() {
     }
     function irAAsesorPF() {
       var tt = document.getElementById('asesor-toast-pf'); if (tt) tt.remove();
-      tabActual = 'asesor-pf'; _finUIState.tabActual = tabActual; renderTabs(); renderAll();
+      if (modoFin !== 'personal') return;
+      setAbiertoChatPF(true);
     }
     // Al cargar un gasto pendiente: el asesor dice que hacer con ese gasto
     function avisoAsesorPF(g) {
@@ -5706,7 +5709,7 @@ function vFinanzas() {
       var box = el('div',{class:'card',style:'padding:20px;margin-bottom:14px;background:#fff'});
       box.appendChild(el('div',{style:'font-weight:700;font-size:15px;color:#1a2e4a;margin-bottom:4px'},'🤖 Asesor IA'));
       box.appendChild(el('div',{style:'font-size:12px;color:#64748B;margin-bottom:14px;line-height:1.5'},
-        'Ya tiene tus gastos con fecha, tarjetas, DS pendiente, cobros y préstamos. La caja de hoy la calcula solo del panel (sueldo depositado + ingresos cargados − pagos hechos). Se actualiza solo cuando cambian los datos, y cuando cargás un gasto te avisa qué hacer.'));
+        'Ya tiene tus gastos con fecha, tarjetas, DS pendiente, cobros y préstamos. La caja de hoy la calcula solo del panel (sueldo depositado + ingresos + cobros del negocio − pagos hechos). Se actualiza solo cuando cambian los datos, y cuando cargás un gasto te avisa qué hacer.'));
       var iSt = 'padding:8px 10px;border:1px solid #CBD5E1;border-radius:8px;font-size:13px;background:#fff;color:#1a2e4a;box-sizing:border-box;';
       var row = el('div',{style:'display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px'});
       var c2 = el('div',{}); c2.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-bottom:4px'},'Día que llega la distri'));
