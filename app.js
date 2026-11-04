@@ -5668,7 +5668,7 @@ function vFinanzas() {
         mkRow2(body, mkFg('Concepto', mkInput('gr-conc','text',sel.k)), mkFg('Monto ($)', mkInput('gr-monto','number','','0')));
         var cuentasOk = cuentasPF.filter(function(c){ return !c.reservada && c.moneda!=='USD'; });
         if (cuentasOk.length) {
-          addFg(body, '¿De qué cuenta sale?', mkSelect('gr-cuenta', cuentasOk.map(function(c){ return [c.id, etiqCtaPF(c)]; }).concat([['__tarjeta','💳 Con tarjeta (queda a pagar)']]), cuentaDefaultIngresoPF() || cuentasOk[0].id));
+          addFg(body, '¿De qué cuenta sale?', mkSelect('gr-cuenta', cuentasOk.map(function(c){ return [c.id, etiqCtaPF(c)]; }), cuentaDefaultIngresoPF() || cuentasOk[0].id));
         }
         mkRow2(body, mkFg('Fecha', mkInput('gr-fecha','date',new Date().toISOString().slice(0,10))), mkFg('Nota (opcional)', mkInput('gr-nota','text','')));
         setTimeout(function(){ var m = document.getElementById('gr-monto'); if (m) m.focus(); }, 50);
@@ -5704,6 +5704,7 @@ function vFinanzas() {
     var cuentasAbiertasPF = {};
     function marcaCtaPF(k) {
       var n = String(k||'');
+      if (/^tarjetas$/i.test(n)) return {c:'#6B4FBB', t:'💳'};
       if (/mercado/i.test(n)) return {c:'#00B1EA', t:'MP'};
       if (/naranja/i.test(n)) return {c:'#FF6A00', t:'NX'};
       if (/naci[oó]n/i.test(n)) return {c:'#0B5CA8', t:'BN'};
@@ -5740,14 +5741,15 @@ function vFinanzas() {
         g.items.sort(function(a,b){ return (a.moneda==='USD'?1:0) - (b.moneda==='USD'?1:0); });
         var card = el('div',{style:'border:1px solid #E2E8F0;border-radius:12px;padding:0 14px;margin-bottom:10px;background:#fff'});
         var bm = marcaCtaPF(g.k);
-        var sumArs = 0, sumUsd = 0, resArs = 0, resUsd = 0;
-        g.items.forEach(function(c){ var v = saldoCuentaPF(c); if (c.tipo==='tarjeta') return; if (c.moneda==='USD') { if (c.reservada) resUsd += v; else sumUsd += v; } else { if (c.reservada) resArs += v; else sumArs += v; } });
+        var sumArs = 0, sumUsd = 0, resArs = 0, resUsd = 0, deudaTj = 0, esTj = g.items.every(function(c){ return c.tipo==='tarjeta'; });
+        g.items.forEach(function(c){ var v = saldoCuentaPF(c); if (c.tipo==='tarjeta') { deudaTj += convPF(Math.max(0,-v), c.moneda==='USD'?'USD':'ARS', 'ARS'); return; } if (c.moneda==='USD') { if (c.reservada) resUsd += v; else sumUsd += v; } else { if (c.reservada) resArs += v; else sumArs += v; } });
         var cab = el('div',{style:'display:flex;align-items:center;gap:12px;padding:12px 0;cursor:pointer;user-select:none'});
         cab.appendChild(el('div',{style:'width:36px;height:36px;border-radius:50%;background:'+bm.c+';color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:'+(bm.t.length>2?'13':'15')+'px;flex:0 0 auto'}, bm.t));
         cab.appendChild(el('div',{style:'font-weight:700;font-size:14px;color:#1a2e4a;flex:1;min-width:90px'}, g.k));
         var resu = el('div',{style:'display:flex;gap:14px;align-items:baseline;flex-wrap:wrap;justify-content:flex-end'});
-        resu.appendChild(el('span',{style:'font-size:14px;font-weight:700;color:'+(sumArs<0?'#A32D2D':'#1a2e4a')}, fmt(Math.round(sumArs))));
-        if (g.items.some(function(c){ return c.moneda==='USD' && !c.reservada; })) resu.appendChild(el('span',{style:'font-size:14px;font-weight:700;color:#0B9EDA'}, 'USD '+(Math.round(sumUsd*100)/100)));
+        if (esTj) resu.appendChild(el('span',{style:'font-size:14px;font-weight:700;color:'+(deudaTj>0?'#854F0B':'#64748B')}, 'Debés '+fmt(Math.round(deudaTj))));
+        else resu.appendChild(el('span',{style:'font-size:14px;font-weight:700;color:'+(sumArs<0?'#A32D2D':'#1a2e4a')}, fmt(Math.round(sumArs))));
+        if (!esTj && g.items.some(function(c){ return c.moneda==='USD' && !c.reservada; })) resu.appendChild(el('span',{style:'font-size:14px;font-weight:700;color:#0B9EDA'}, 'USD '+(Math.round(sumUsd*100)/100)));
         if (resArs>0 || resUsd>0) resu.appendChild(el('span',{style:'font-size:12px;font-weight:600;color:#854F0B'}, '🔒 '+[resArs>0?fmt(Math.round(resArs)):'', resUsd>0?'USD '+(Math.round(resUsd*100)/100):''].filter(Boolean).join(' + ')));
         cab.appendChild(resu);
         var chev = el('span',{style:'color:#94a3b8;font-size:12px;width:12px;text-align:center'}, cuentasAbiertasPF[g.k] ? '▾' : '▸');
@@ -5758,7 +5760,7 @@ function vFinanzas() {
           var sa = saldoCuentaPF(c), usd = c.moneda==='USD';
           var fila = el('div',{style:'display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;border-top:1px solid #F1F5F9'});
           var izq = el('div',{style:'min-width:150px'});
-          var rot = c.tipo==='tarjeta' ? 'Tarjeta (lo negativo es lo que debés)' : (usd ? 'Dólares' : 'Pesos');
+          var rot = c.tipo==='tarjeta' ? c.nombre+' · lo negativo es lo que debés' : (usd ? 'Dólares' : 'Pesos');
           if (c.reservada) rot = c.nombre+' · reservada (no disponible)';
           else if (c.nombre!==g.k && c.tipo!=='tarjeta' && !/^dólares$/i.test(c.nombre)) rot += ' · '+c.nombre;
           if (c.ingreso_default) rot += ' · recibe cobros';
@@ -5935,6 +5937,13 @@ function vFinanzas() {
         if (g.pagado && g.cuenta_id===c.id && g.pagado_at && new Date(g.pagado_at).getTime()>ts) { var a = montoGastoEnCuentaPF(g, c); if (a > 0) out.push({t:new Date(g.pagado_at).getTime(), monto:-a, det:'Pago: '+(g.concepto||'')}); }
         (g._entregas||[]).forEach(function(e){ if (e.cuenta_id===c.id && e.created_at && new Date(e.created_at).getTime()>ts) out.push({t:new Date(e.created_at).getTime(), monto:-convPF(Number(e.monto||0), e.moneda==='USD'?'USD':'ARS', c.moneda), det:'Entrega: '+(g.concepto||'')}); });
       });
+      [['Gasto del negocio', R.pagoGastos], ['Gasto personal fijo', R.pagoGastosPers]].forEach(function(par){
+        (par[1]||[]).forEach(function(p){
+          if (!(p.cuenta_id===c.id && p.created_at && new Date(p.created_at).getTime()>ts)) return;
+          var m = (p.moneda||'ARS')===c.moneda ? Number(p.monto||0) : (c.moneda==='USD' ? convPF(Number(p.monto_ars||0),'ARS','USD') : Number(p.monto_ars||0));
+          out.push({t:new Date(p.created_at).getTime(), monto:-m, det:par[0]+': '+((p._gasto&&p._gasto.nombre)||'')});
+        });
+      });
       movimientosPF.forEach(function(mv){
         if (!(mv.created_at && new Date(mv.created_at).getTime()>ts)) return;
         if (mv.cuenta_destino===c.id) out.push({t:new Date(mv.created_at).getTime(), monto:Number(mv.monto_destino||0), det:'Movimiento entrante'+(mv.notas?': '+mv.notas:'')});
@@ -5944,14 +5953,14 @@ function vFinanzas() {
     }
     function saldoCuentaPF(c) { return Number(c.saldo_inicial||0) + movimientosCuentaPF(c).reduce(function(a,x){ return a + x.monto; }, 0); }
     function disponibleArsPF() { return cuentasPF.filter(function(c){ return c.moneda!=='USD' && !c.reservada && c.tipo!=='tarjeta'; }).reduce(function(a,c){ return a + Math.max(0, saldoCuentaPF(c)); }, 0); }
-    function disponibleUsdPF() { return cuentasPF.filter(function(c){ return c.moneda==='USD' && !c.reservada; }).reduce(function(a,c){ return a + Math.max(0, saldoCuentaPF(c)); }, 0); }
+    function disponibleUsdPF() { return cuentasPF.filter(function(c){ return c.moneda==='USD' && !c.reservada && c.tipo!=='tarjeta'; }).reduce(function(a,c){ return a + Math.max(0, saldoCuentaPF(c)); }, 0); }
     function reservadoArsPF() { return cuentasPF.filter(function(c){ return c.moneda!=='USD' && c.reservada && c.tipo!=='tarjeta'; }).reduce(function(a,c){ return a + Math.max(0, saldoCuentaPF(c)); }, 0); }
-    function reservadoUsdPF() { return cuentasPF.filter(function(c){ return c.moneda==='USD' && c.reservada; }).reduce(function(a,c){ return a + Math.max(0, saldoCuentaPF(c)); }, 0); }
-    function consumoTarjetaPF() { return cuentasPF.filter(function(c){ return c.tipo==='tarjeta'; }).reduce(function(a,c){ return a + Math.max(0, -saldoCuentaPF(c)); }, 0); }
+    function reservadoUsdPF() { return cuentasPF.filter(function(c){ return c.moneda==='USD' && c.reservada && c.tipo!=='tarjeta'; }).reduce(function(a,c){ return a + Math.max(0, saldoCuentaPF(c)); }, 0); }
+    function consumoTarjetaPF() { return cuentasPF.filter(function(c){ return c.tipo==='tarjeta'; }).reduce(function(a,c){ return a + convPF(Math.max(0, -saldoCuentaPF(c)), c.moneda==='USD'?'USD':'ARS', 'ARS'); }, 0); }
     function descubiertoPF() { return cuentasPF.filter(function(c){ return c.moneda!=='USD' && c.tipo!=='tarjeta'; }).reduce(function(a,c){ return a + Math.min(0, saldoCuentaPF(c)); }, 0); }
-    function instCtaPF(c) { return c.institucion || c.nombre; }
+    function instCtaPF(c) { return c.tipo==='tarjeta' ? 'Tarjetas' : (c.institucion || c.nombre); }
     function etiqCtaPF(c) {
-      if (c.tipo==='tarjeta') return c.nombre+' (tarjeta)';
+      if (c.tipo==='tarjeta') return '💳 '+c.nombre;
       var inst = instCtaPF(c), mon = c.moneda==='USD' ? 'USD' : 'pesos';
       if (c.reservada) return c.nombre+' ('+inst+' '+mon+', reservada)';
       return inst+' · '+mon;
@@ -5961,8 +5970,8 @@ function vFinanzas() {
     function ultimaCuentaPF(concepto) { try { var mp = JSON.parse(localStorage.getItem('qp_ultima_cuenta')||'{}'); var id = mp[claveCtaPF(concepto)]; if (id && cuentasPF.some(function(c){ return c.id===id; })) return id; } catch(e) {} return ''; }
     function recordarCuentaPF(concepto, id) { try { var mp = JSON.parse(localStorage.getItem('qp_ultima_cuenta')||'{}'); mp[claveCtaPF(concepto)] = id||''; localStorage.setItem('qp_ultima_cuenta', JSON.stringify(mp)); } catch(e) {} }
     function cuentaDefaultIngresoPF() { var c = cuentasPF.find(function(x){ return x.ingreso_default; }); return c ? c.id : ''; }
-    function cuentaUsdPF() { var us = cuentasPF.filter(function(x){ return x.moneda==='USD' && !x.reservada; }); var c = us.find(function(x){ return /santander|r[ií]o/i.test(instCtaPF(x)); }) || us[0]; return c ? c.id : ''; }
-    function cuentaCompraUsdPF() { var us = cuentasPF.filter(function(x){ return x.moneda==='USD' && !x.reservada; }); var c = us.find(function(x){ return /naranja/i.test(instCtaPF(x)) && x.tipo!=='tarjeta'; }) || us[0]; return c ? c.id : ''; }
+    function cuentaUsdPF() { var us = cuentasPF.filter(function(x){ return x.moneda==='USD' && !x.reservada && x.tipo!=='tarjeta'; }); var c = us.find(function(x){ return /santander|r[ií]o/i.test(instCtaPF(x)); }) || us[0]; return c ? c.id : ''; }
+    function cuentaCompraUsdPF() { var us = cuentasPF.filter(function(x){ return x.moneda==='USD' && !x.reservada && x.tipo!=='tarjeta'; }); var c = us.find(function(x){ return /naranja/i.test(instCtaPF(x)) && x.tipo!=='tarjeta'; }) || us[0]; return c ? c.id : ''; }
     // Marcar un gasto como pagado pidiendo la cuenta
     function mMarcarPagadoPF(g, onDone) {
       var defId = (Number(g.prestamo_monto||0)>0 || (usdTotalPF(g)>0 && Number(g.monto||0)===0)) ? (cuentaUsdPF() || cuentaDefaultIngresoPF()) : cuentaDefaultIngresoPF();
@@ -6887,7 +6896,26 @@ function mEditarGasto(g, cb) {
   }));
 }
 
-function registrarPagoGasto(g, cb) {
+
+function cargarCuentasGastoPF() {
+  return sbFetch('panel_pf_cuentas?select=id,nombre,institucion,moneda,tipo,reservada&activa=eq.true&order=orden.asc').catch(function(){ return []; })
+    .then(function(cts){ return (cts||[]).filter(function(x){ return !x.reservada; }); });
+}
+function selCuentaGastoPF(cts, id, gasto) {
+  var opts = [['','(sin asignar)']].concat(cts.map(function(c){
+    return [c.id, c.tipo==='tarjeta' ? '💳 '+c.nombre : (c.institucion||c.nombre)+' · '+(c.moneda==='USD'?'USD':'pesos')];
+  }));
+  var def = '';
+  try { def = localStorage.getItem('qp_cta_gasto_'+gasto.id) || ''; } catch(e) {}
+  if (!cts.some(function(c){ return c.id===def; })) {
+    var mon = gasto.moneda==='USD' ? 'USD' : 'ARS';
+    var tj = cts.find(function(c){ return c.tipo==='tarjeta' && c.moneda===mon; });
+    def = tj ? tj.id : '';
+  }
+  return mkSelect(id, opts, def);
+}
+function registrarPagoGasto(g, cb) { cargarCuentasGastoPF().then(function(cts){ registrarPagoGastoUI(g, cb, cts); }); }
+function registrarPagoGastoUI(g, cb, cts) {
   if (!g.fecha_proximo_pago) { alert('Sin fecha de proximo pago configurada'); return; }
   var fecha = new Date(g.fecha_proximo_pago);
   if (g.frecuencia==='mensual') fecha.setMonth(fecha.getMonth()+1);
@@ -6908,6 +6936,7 @@ function registrarPagoGasto(g, cb) {
         var inp = document.getElementById('rp-tc'); if (inp) inp.value = d.venta || 1200;
       }).catch(function(){ var inp = document.getElementById('rp-tc'); if (inp) inp.value = 1200; });
     }
+    if (cts.length) addFg(body, '¿Con qué pagaste? (tarjeta o cuenta)', selCuentaGastoPF(cts, 'rp-cuenta', g));
     addFg(body, 'Notas', mkInput('rp-notas','text','','Ej: Factura #123'));
     body.appendChild(el('div', {style:'font-size:11px;color:#94a3b8;margin-top:4px'}, 'Proximo pago quedara en: '+nuevaFecha));
   }, function(foot) {
@@ -6919,14 +6948,14 @@ function registrarPagoGasto(g, cb) {
       var moneda = document.getElementById('rp-mon') ? gv('rp-mon') : g.moneda;
       var montoARS = moneda==='USD' ? monto*tc : monto;
       Promise.all([
-        dbIns('panel_gastos_pagos', {
+        dbIns('panel_gastos_pagos', Object.assign({
           gasto_id: g.id, fecha: gv('rp-fecha'),
           monto: monto, moneda: moneda,
           tipo_cambio: tc, monto_ars: montoARS,
           notas: gv('rp-notas')||null
-        }),
+        }, cts.length ? {cuenta_id: gv('rp-cuenta')||null} : {})),
         dbUpd('panel_gastos', g.id, {fecha_proximo_pago: nuevaFecha})
-      ]).then(function(){ closeM(); cb(); });
+      ]).then(function(){ try { if (cts.length) localStorage.setItem('qp_cta_gasto_'+g.id, gv('rp-cuenta')||''); } catch(e) {} closeM(); cb(); }).catch(function(e){ alert('Error: '+e.message+(cts.length ? '\n\nSi dice que no existe la columna cuenta_id, falta correr el SQL de tarjetas.' : '')); });
     };
     foot.appendChild(ok);
   }));
@@ -6983,7 +7012,8 @@ function mEditarGastoPersonal(g, cb) {
   }));
 }
 
-function registrarPagoGastoPersonal(g, cb) {
+function registrarPagoGastoPersonal(g, cb) { cargarCuentasGastoPF().then(function(cts){ registrarPagoGastoPersonalUI(g, cb, cts); }); }
+function registrarPagoGastoPersonalUI(g, cb, cts) {
   if (!g.fecha_proximo_pago) { alert('Sin fecha de proximo pago configurada'); return; }
   var fecha = new Date(g.fecha_proximo_pago);
   if (g.frecuencia==='mensual') fecha.setMonth(fecha.getMonth()+1);
@@ -7004,6 +7034,7 @@ function registrarPagoGastoPersonal(g, cb) {
         var inp = document.getElementById('rpp-tc'); if (inp) inp.value = d.venta || 1200;
       }).catch(function(){ var inp = document.getElementById('rpp-tc'); if (inp) inp.value = 1200; });
     }
+    if (cts.length) addFg(body, '¿Con qué pagaste? (tarjeta o cuenta)', selCuentaGastoPF(cts, 'rpp-cuenta', g));
     addFg(body, 'Notas', mkInput('rpp-notas','text','','Ej: Factura'));
     body.appendChild(el('div', {style:'font-size:11px;color:#94a3b8;margin-top:4px'}, 'Proximo pago quedara en: '+nuevaFecha));
   }, function(foot) {
@@ -7015,12 +7046,12 @@ function registrarPagoGastoPersonal(g, cb) {
       var moneda = document.getElementById('rpp-mon') ? gv('rpp-mon') : g.moneda;
       var montoARS = moneda==='USD' ? monto*tc : monto;
       Promise.all([
-        dbIns('panel_gastos_personales_pagos', {
+        dbIns('panel_gastos_personales_pagos', Object.assign({
           gasto_id: g.id, fecha: gv('rpp-fecha'),
           monto: monto, moneda: moneda,
           tipo_cambio: tc, monto_ars: montoARS,
           notas: gv('rpp-notas')||null
-        }),
+        }, cts.length ? {cuenta_id: gv('rpp-cuenta')||null} : {})),
         dbUpd('panel_gastos_personales', g.id, {fecha_proximo_pago: nuevaFecha})
       ]).then(function(){ closeM(); cb(); });
     };
