@@ -6047,6 +6047,20 @@ function vFinanzas() {
       Object.assign(asesorEstPF, patch);
       return sbFetch('panel_config?on_conflict=clave', {method:'POST', body:{clave:'pf_asesor', valor:JSON.stringify(asesorEstPF)}, prefer:'resolution=merge-duplicates,return=minimal'}).catch(function(){});
     }
+    // ---- Consumo de tokens del asesor (panel_config, clave 'pf_asesor_uso') ----
+    var usoAsesorPF = (function(){ var r = (config||[]).find(function(c){ return c.clave==='pf_asesor_uso'; }); if (!r) return {}; try { return JSON.parse(r.valor)||{}; } catch(e) { return {}; } })();
+    function registrarUsoAsesorPF(d) {
+      var k = new Date().toISOString().slice(0,7), u = usoAsesorPF[k] = usoAsesorPF[k] || {calls:0, tin:0, tout:0};
+      u.calls += 1; u.tin += Number(d.tokens_in||0); u.tout += Number(d.tokens_out||0);
+      sbFetch('panel_config?on_conflict=clave', {method:'POST', body:{clave:'pf_asesor_uso', valor:JSON.stringify(usoAsesorPF)}, prefer:'resolution=merge-duplicates,return=minimal'}).catch(function(){});
+      try { var el2 = document.getElementById('asesor-uso-pf'); if (el2) el2.textContent = textoUsoAsesorPF(); } catch(e) {}
+    }
+    function textoUsoAsesorPF() {
+      var k = new Date().toISOString().slice(0,7), u = usoAsesorPF[k];
+      function f(n){ return n>=1000 ? (Math.round(n/100)/10)+'k' : String(n); }
+      if (!u || !u.calls) return 'Consumo del asesor este mes: sin consultas todavía';
+      return 'Consumo del asesor este mes: '+u.calls+' consulta'+(u.calls!==1?'s':'')+' · '+f(u.tin)+' tokens de entrada · '+f(u.tout)+' de salida';
+    }
     function hashAsesorPF(o) { var s2 = JSON.stringify(o), h = 5381; for (var i=0;i<s2.length;i++) h = ((h<<5)+h+s2.charCodeAt(i))|0; return String(h); }
     function fmtFechaHoraPF(ts) { var d = new Date(ts); return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
 
@@ -6197,7 +6211,7 @@ function vFinanzas() {
         return r.json().catch(function(){ return {}; }).then(function(d){ d._status=r.status; return d; });
       }).then(function(d) {
         if (d.error || !d.texto) throw new Error(d.error || d.message || ('error '+d._status));
-        d._hash = hash; return d;
+        d._hash = hash; registrarUsoAsesorPF(d); return d;
       });
     }
 
@@ -6417,6 +6431,9 @@ function vFinanzas() {
       var u = chatPF.ui, m = getMesPF(mesSeleccionadoPF);
       if (!m) return;
       u.linea.textContent = lineaEfectivoPF();
+      var uso = document.getElementById('asesor-uso-pf');
+      if (!uso && u.estado && u.estado.parentNode) { uso = el('div',{id:'asesor-uso-pf',style:'font-size:10px;color:#94a3b8;padding:2px 12px 4px'}); u.estado.parentNode.insertBefore(uso, u.estado.nextSibling); }
+      if (uso) uso.textContent = textoUsoAsesorPF();
       var d = datosAsesorPF(m, efectivoPF(m), asesorEstPF.dia_ds || 10);
       var cal = d.calendario_caja;
       var neg = cal.filter(function(r){ return r.saldo_sin_tarjetas < 0; })[0];
