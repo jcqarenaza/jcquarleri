@@ -6,6 +6,70 @@ function getAuthKey() { return (window._authToken || SB_KEY); }
 function isSuperAdmin() { return !window._currentUser || window._currentUser.rol === 'superadmin'; }
 function getRevendedorId() { return window._currentUser && window._currentUser.revendedor_id || null; }
 
+// ── Mensajes del sistema: reemplazan alert / confirm / prompt del navegador ──
+(function(){
+  var nativeConfirm = window.confirm;
+  function mk(tag, css, txt) { var e = document.createElement(tag); if (css) e.style.cssText = css; if (txt != null) e.textContent = txt; return e; }
+  // Avisos (alert): tarjeta arriba al centro, se cierra sola
+  function toast(msg) {
+    msg = String(msg == null ? '' : msg);
+    var cont = document.getElementById('qp-toasts');
+    if (!cont) { cont = mk('div', 'position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:100000;display:flex;flex-direction:column;gap:8px;width:min(460px,calc(100vw - 24px));pointer-events:none'); cont.id = 'qp-toasts'; document.body.appendChild(cont); }
+    var err = /^(error|no se pudo|no pude|fall[oó]|falta|sesi[oó]n)/i.test(msg.trim());
+    var t = mk('div', 'pointer-events:auto;background:#fff;border:1px solid '+(err?'#F5C2C2':'#CBD5E1')+';border-left:4px solid '+(err?'#A32D2D':'#0B9EDA')+';border-radius:10px;box-shadow:0 8px 28px rgba(15,23,42,.18);padding:12px 14px;display:flex;gap:10px;align-items:flex-start;font-size:13px;color:#1a2e4a;line-height:1.45');
+    t.appendChild(mk('div', 'flex:1;white-space:pre-wrap;word-break:break-word', msg));
+    var x = mk('button', 'border:none;background:none;color:#94a3b8;font-size:18px;line-height:1;cursor:pointer;padding:0 2px', '×');
+    x.onclick = function(){ t.remove(); };
+    t.appendChild(x); cont.appendChild(t);
+    setTimeout(function(){ if (t.parentNode) t.remove(); }, err ? 14000 : 7000);
+  }
+  // Dialogo (confirmar / pedir texto)
+  function dialogo(o) {
+    var ov = mk('div', 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100001;display:flex;align-items:center;justify-content:center;padding:16px');
+    var box = mk('div', 'background:#fff;border-radius:14px;box-shadow:0 20px 50px rgba(15,23,42,.3);padding:20px 22px;width:min(420px,100%);font-family:inherit');
+    box.appendChild(mk('div', 'font-weight:700;font-size:15px;color:#1a2e4a;margin-bottom:8px', o.titulo || 'QP C&IA'));
+    box.appendChild(mk('div', 'font-size:13px;color:#475569;line-height:1.5;white-space:pre-wrap;margin-bottom:14px', o.msg));
+    var inp = null;
+    if (o.input) {
+      inp = mk('input', 'width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;margin-bottom:14px');
+      inp.type = o.password ? 'password' : 'text'; inp.value = o.def || ''; box.appendChild(inp);
+    }
+    var fila = mk('div', 'display:flex;justify-content:flex-end;gap:8px');
+    var bNo = mk('button', 'padding:8px 16px;border:1px solid #CBD5E1;background:#fff;color:#334155;border-radius:8px;font-size:13px;cursor:pointer', o.no || 'Cancelar');
+    var peligro = !o.input && /elimin|borrar|baja|quitar|desactivar|forzar/i.test(o.msg);
+    var bSi = mk('button', 'padding:8px 16px;border:none;background:'+(peligro?'#A32D2D':'#0B9EDA')+';color:#fff;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer', o.si || (peligro ? 'Confirmar' : 'Aceptar'));
+    fila.appendChild(bNo); fila.appendChild(bSi); box.appendChild(fila); ov.appendChild(box); document.body.appendChild(ov);
+    function cerrar() { document.removeEventListener('keydown', teclas, true); ov.remove(); }
+    function teclas(e) { if (e.key === 'Escape') { e.stopPropagation(); cerrar(); o.cancel && o.cancel(); } else if (e.key === 'Enter') { e.stopPropagation(); e.preventDefault(); bSi.click(); } }
+    bNo.onclick = function(){ cerrar(); o.cancel && o.cancel(); };
+    bSi.onclick = function(){ var v = inp ? inp.value : true; cerrar(); o.ok(v); };
+    document.addEventListener('keydown', teclas, true);
+    setTimeout(function(){ (inp || bSi).focus(); if (inp) inp.select(); }, 30);
+  }
+  // confirm()/prompt() son sincronos y el codigo viejo espera la respuesta en el momento:
+  // se muestra el dialogo, se devuelve "no", y al aceptar se repite el click original ya aprobado.
+  var aprob = {}, abrioNuevo = false;
+  function pedir(clave, o, vacio) {
+    if (Object.prototype.hasOwnProperty.call(aprob, clave)) return aprob[clave];
+    var ev = window.event, tgt = ev && ev.target;
+    if (!tgt || !tgt.isConnected) { if (o.input) return vacio; return nativeConfirm.call(window, o.msg); }
+    abrioNuevo = true;
+    o.cancel = function(){ aprob = {}; };
+    o.ok = function(v){
+      aprob[clave] = v; abrioNuevo = false;
+      try { tgt.click(); } finally { if (!abrioNuevo) aprob = {}; }
+    };
+    dialogo(o);
+    return vacio;
+  }
+  window.alert = function(m){ toast(m); };
+  window.confirm = function(m){ m = String(m); return pedir('C:'+m, {msg:m}, false); };
+  window.prompt = function(m, def){ m = String(m); return pedir('P:'+m, {msg:m, input:true, def:def, password:/contrase|password/i.test(m)}, null); };
+  // Version con callback (para codigo asincrono): qpConfirm('mensaje', function(){ ... }, {si:'Generar', no:'No'})
+  window.qpConfirm = function(m, onYes, lbl) { lbl = lbl || {}; dialogo({msg:String(m), si:lbl.si, no:lbl.no, ok:function(){ onYes && onYes(); }}); };
+  window.qpToast = toast;
+})();
+
 // Logo
 var logoEl = document.getElementById('logo');
 var logoData = document.getElementById('logo-data');
@@ -2852,7 +2916,7 @@ function mCobrar(a, cl, si, fee, totI, saldoI) {
       dbIns('panel_cobros', {asignacion_id:aid, tipo_cobro:tipo, fase_id:faseId, descripcion:desc, monto:monto, metodo:met, fecha_vencimiento:fecha, fecha_pago:estado==='pagado'?fecha:null, estado:estado})
       .then(function(r) {
         closeM();
-        if (estado==='pagado' && confirm('Generar recibo?')) mRecibo({cli:cl, sis:si, desc:desc, monto:monto, met:met, fecha:fecha, estado:estado, num:(r[0]||{}).id?(r[0].id.slice(-4)):'0001', cobro_id:(r[0]||{}).id});
+        if (estado==='pagado') qpConfirm('Generar recibo?', function(){ mRecibo({cli:cl, sis:si, desc:desc, monto:monto, met:met, fecha:fecha, estado:estado, num:(r[0]||{}).id?(r[0].id.slice(-4)):'0001', cobro_id:(r[0]||{}).id}); }, {si:'Generar', no:'No'});
         vCobros();
       });
     };
@@ -2875,7 +2939,7 @@ function mCobrarFee(aid, cl, si, monto, mes, anio) {
       dbIns('panel_cobros', {asignacion_id:aid, tipo_cobro:'fee', descripcion:gv('cfd'), monto:mon, metodo:gv('cfmet'), fecha_pago:estado==='pagado'?fecha:null, fecha_vencimiento:fecha, estado:estado})
       .then(function(r) {
         closeM();
-        if (estado==='pagado' && confirm('Generar recibo?')) mRecibo({cli:cl, sis:si, desc:gv('cfd'), monto:mon, met:gv('cfmet'), fecha:fecha, estado:estado, num:(r[0]||{}).id?r[0].id.slice(-4):'0001', cobro_id:(r[0]||{}).id});
+        if (estado==='pagado') { var cfd_ = gv('cfd'), cfmet_ = gv('cfmet'); qpConfirm('Generar recibo?', function(){ mRecibo({cli:cl, sis:si, desc:cfd_, monto:mon, met:cfmet_, fecha:fecha, estado:estado, num:(r[0]||{}).id?r[0].id.slice(-4):'0001', cobro_id:(r[0]||{}).id}); }, {si:'Generar', no:'No'}); }
         vAlertas();
       });
     };
@@ -2916,7 +2980,7 @@ function mEntrega(a, cl, si, saldo) {
       dbIns('panel_cobros', {asignacion_id:aid, tipo_cobro:'implementacion', fase_id:faseId, descripcion:gv('ced'), monto:mon, metodo:gv('cemet'), fecha_pago:estado==='pagado'?fecha:null, fecha_vencimiento:fecha, estado:estado})
       .then(function(r) {
         closeM();
-        if (estado==='pagado' && confirm('Generar recibo?')) mRecibo({cli:cl, sis:si, desc:gv('ced'), monto:mon, met:gv('cemet'), fecha:fecha, estado:estado, num:(r[0]||{}).id?r[0].id.slice(-4):'0001', cobro_id:(r[0]||{}).id});
+        if (estado==='pagado') { var ced_ = gv('ced'), cemet_ = gv('cemet'); qpConfirm('Generar recibo?', function(){ mRecibo({cli:cl, sis:si, desc:ced_, monto:mon, met:cemet_, fecha:fecha, estado:estado, num:(r[0]||{}).id?r[0].id.slice(-4):'0001', cobro_id:(r[0]||{}).id}); }, {si:'Generar', no:'No'}); }
         vAlertas();
       });
     };
@@ -2978,9 +3042,9 @@ function mCobrarRapido() {
       dbIns('panel_cobros', {asignacion_id:sel.value, tipo_cobro:tipo, fase_id:faseId, descripcion:desc, monto:monto, metodo:met, fecha_vencimiento:fecha, fecha_pago:estado==='pagado'?fecha:null, estado:estado})
       .then(function(r) {
         closeM();
-        if (estado==='pagado' && confirm('Generar recibo?')) {
+        if (estado==='pagado') qpConfirm('Generar recibo?', function(){
           mostrarReciboModal({cli:cl, sis:si, desc:desc, monto:monto, met:met, fecha:fecha, estado:estado, cobro_id:(r[0]||{}).id});
-        }
+        }, {si:'Generar', no:'No'});
         vCobros();
       });
     };
