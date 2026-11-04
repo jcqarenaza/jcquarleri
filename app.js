@@ -1871,6 +1871,7 @@ function mRegistrarPagoUI(c, cts) {
         if (completo) upd.fecha_pago = fecha;
         return dbUpd('panel_cobros', c.id, upd).then(function(){
           closeM(); _D = null;
+          vCobros();
           if (quiereRecibo) {
             mostrarReciboModal({
               cli: (c._cli.nombre||'') + (c._cli.empresa ? ' (' + c._cli.empresa + ')' : ''),
@@ -1879,8 +1880,6 @@ function mRegistrarPagoUI(c, cts) {
               monto: monto, fecha: fecha, met: medio,
               cobro_id: c.id, nuevoRecibo: true
             });
-          } else {
-            vCobros();
           }
         });
       })
