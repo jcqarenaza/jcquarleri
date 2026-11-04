@@ -5235,6 +5235,18 @@ function vFinanzas() {
         bar.appendChild(el('div',{style:'height:6px;border-radius:4px;background:'+(saldo<=0?'#5BBD4E':'#0B9EDA')+';width:'+pct+'%'}));
         card.appendChild(bar);
         card.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-top:4px'}, saldo>0 ? 'Saldo: '+fmtMon(saldo,p.moneda) : 'Pagado en su totalidad'));
+        var pend = gastosPF.filter(function(g){ return g.prestamo_id===p.id && !g.pagado; }).sort(function(x,y){ return String(x.fecha||'').localeCompare(String(y.fecha||'')); });
+        if (pend.length) {
+          card.appendChild(el('div',{style:'font-weight:600;font-size:12px;color:#854F0B;margin:12px 0 4px'},'Pagos programados (pendientes)'));
+          pend.forEach(function(g) {
+            var f = el('div',{style:'display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;padding:6px 0;border-top:1px solid #F1F5F9'});
+            var usdG = p.moneda==='USD' && Number(g.prestamo_monto||0)>0;
+            f.appendChild(el('span',{}, (g.fecha ? fdate(g.fecha) : 'sin fecha')+' · '+(usdG ? fmtMon(g.prestamo_monto,'USD')+(Number(g.monto)>0 ? ' (≈ '+fmt(g.monto)+')' : '') : fmt(g.monto))));
+            var bP = el('button',{class:'btn btnp btnsm'},'Marcar pagado');
+            bP.onclick = function(){ mMarcarPagadoPF(g, function(){ renderAll(); }); };
+            f.appendChild(bP); card.appendChild(f);
+          });
+        }
         if (p.notas) card.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-top:4px;white-space:pre-wrap'}, p.notas));
         content.appendChild(card);
       });
