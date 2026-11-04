@@ -5718,6 +5718,39 @@ function vFinanzas() {
 
     // ---- Tarjetas: consumo por mes y resumen real (panel_config 'pf_resumenes_tarjeta') ----
     var resumenesTjPF = (function(){ var r = (config||[]).find(function(c){ return c.clave==='pf_resumenes_tarjeta'; }); if (!r) return {}; try { return JSON.parse(r.valor)||{}; } catch(e) { return {}; } })();
+    var cicloTjPF = (function(){ var r = (config||[]).find(function(c){ return c.clave==='pf_tarjetas_ciclo'; }); if (!r) return {}; try { return JSON.parse(r.valor)||{}; } catch(e) { return {}; } })();
+    function guardarCicloTjPF(cid, cierre, venc) {
+      cicloTjPF[cid] = Object.assign({}, cicloTjPF[cid]||{}, {cierre:cierre||0, venc:venc||0});
+      return guardarCfgCicloPF();
+    }
+    function guardarFechasCicloTjPF(cid, k, cf, vf) {
+      var o = cicloTjPF[cid] = cicloTjPF[cid] || {}; o.fechas = o.fechas || {};
+      if (cf || vf) o.fechas[k] = {c:cf||'', v:vf||''}; else delete o.fechas[k];
+      return guardarCfgCicloPF();
+    }
+    function guardarCfgCicloPF() {
+      return sbFetch('panel_config?on_conflict=clave', {method:'POST', body:{clave:'pf_tarjetas_ciclo', valor:JSON.stringify(cicloTjPF)}, prefer:'resolution=merge-duplicates,return=minimal'}).catch(function(e){ alert('No se pudo guardar: '+e.message); });
+    }
+    function cfgTjPF(c) { var x = cicloTjPF[c.id] || {}; return (x.cierre>0 && x.venc>0) ? x : null; }
+    function diasMesPF(k) { return new Date(Number(k.slice(0,4)), Number(k.slice(5,7)), 0).getDate(); }
+    function pad2PF(n) { return String(n).padStart(2,'0'); }
+    function cierreFechaTjPF(c, k) { var cfg = cfgTjPF(c); if (!cfg) return null; var ov = ((cicloTjPF[c.id]||{}).fechas||{})[k]; if (ov && ov.c) return ov.c; return k+'-'+pad2PF(Math.min(cfg.cierre, diasMesPF(k))); }
+    function vencFechaTjPF(c, k) { var cfg = cfgTjPF(c); if (!cfg) return null; var ov = ((cicloTjPF[c.id]||{}).fechas||{})[k]; if (ov && ov.v) return ov.v; var km = cfg.venc > cfg.cierre ? k : ymSumaPF(k,1); return km+'-'+pad2PF(Math.min(cfg.venc, diasMesPF(km))); }
+    function cicloKeyTjPF(c, fecha) {
+      var f = String(fecha).slice(0,10), ym = f.slice(0,7);
+      if (!cfgTjPF(c)) return ym;
+      var k = ymSumaPF(ym,-1);
+      for (var i=0; i<4 && cierreFechaTjPF(c,k) < f; i++) k = ymSumaPF(k,1);
+      return k;
+    }
+    function pagoKeyTjPF(c, fecha) {
+      var f = String(fecha).slice(0,10), ym = f.slice(0,7);
+      if (!cfgTjPF(c)) return ym;
+      var best = null, bd = 1e18;
+      [ymSumaPF(ym,-2), ymSumaPF(ym,-1), ym].forEach(function(k){ var d = Math.abs(new Date(vencFechaTjPF(c,k)+'T12:00:00') - new Date(f+'T12:00:00')); if (d < bd) { bd = d; best = k; } });
+      return best;
+    }
+    function ddmmPF(f) { return f ? f.slice(8,10)+'/'+f.slice(5,7) : '?'; }
     function guardarResumenTjPF(cid, key, monto) {
       resumenesTjPF[cid] = resumenesTjPF[cid] || {};
       if (monto > 0) resumenesTjPF[cid][key] = monto; else delete resumenesTjPF[cid][key];
@@ -5731,18 +5764,18 @@ function vFinanzas() {
       var ts = new Date(c.saldo_inicial_ts||0).getTime(), mp = {};
       function b(k){ return mp[k] || (mp[k] = {cons:0, pag:0}); }
       gastosPF.forEach(function(g){
-        if (g.pagado && g.cuenta_id===c.id && g.pagado_at && new Date(g.pagado_at).getTime()>ts) { var a = montoGastoEnCuentaPF(g, c); if (a>0) b(String(g.fecha||g.pagado_at).slice(0,7)).cons += a; }
-        (g._entregas||[]).forEach(function(e){ if (e.cuenta_id===c.id && e.created_at && new Date(e.created_at).getTime()>ts) b(String(e.fecha||e.created_at).slice(0,7)).cons += convPF(Number(e.monto||0), e.moneda==='USD'?'USD':'ARS', c.moneda); });
+        if (g.pagado && g.cuenta_id===c.id && g.pagado_at && new Date(g.pagado_at).getTime()>ts) { var a = montoGastoEnCuentaPF(g, c); if (a>0) b(cicloKeyTjPF(c, g.fecha||g.pagado_at)).cons += a; }
+        (g._entregas||[]).forEach(function(e){ if (e.cuenta_id===c.id && e.created_at && new Date(e.created_at).getTime()>ts) b(cicloKeyTjPF(c, e.fecha||e.created_at)).cons += convPF(Number(e.monto||0), e.moneda==='USD'?'USD':'ARS', c.moneda); });
       });
       [R.pagoGastos, R.pagoGastosPers].forEach(function(arr){ (arr||[]).forEach(function(p){
         if (!(p.cuenta_id===c.id && p.created_at && new Date(p.created_at).getTime()>ts)) return;
         var m = (p.moneda||'ARS')===c.moneda ? Number(p.monto||0) : (c.moneda==='USD' ? convPF(Number(p.monto_ars||0),'ARS','USD') : Number(p.monto_ars||0));
-        b(String(p.fecha||p.created_at).slice(0,7)).cons += m;
+        b(cicloKeyTjPF(c, p.fecha||p.created_at)).cons += m;
       }); });
       movimientosPF.forEach(function(mv){
         if (!(mv.created_at && new Date(mv.created_at).getTime()>ts)) return;
-        if (mv.cuenta_destino===c.id) b(String(mv.fecha||mv.created_at).slice(0,7)).pag += Number(mv.monto_destino||0);
-        if (mv.cuenta_origen===c.id) b(String(mv.fecha||mv.created_at).slice(0,7)).cons += Number(mv.monto_origen||0);
+        if (mv.cuenta_destino===c.id) b(pagoKeyTjPF(c, mv.fecha||mv.created_at)).pag += Number(mv.monto_destino||0);
+        if (mv.cuenta_origen===c.id) b(cicloKeyTjPF(c, mv.fecha||mv.created_at)).cons += Number(mv.monto_origen||0);
       });
       return mp;
     }
@@ -5750,19 +5783,36 @@ function vFinanzas() {
     function renderTarjetasMesPF(box) {
       var tjs = cuentasPF.filter(function(c){ return c.tipo==='tarjeta'; });
       if (!tjs.length) return;
-      var hoyK = ymKeyPF(new Date()), keys = [hoyK, ymSumaPF(hoyK,-1), ymSumaPF(hoyK,-2)];
-      box.appendChild(el('div',{style:'font-weight:700;font-size:14px;color:#1a2e4a;margin:18px 0 4px'},'💳 Tarjetas por mes'));
-      box.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-bottom:8px;line-height:1.5'},'Lo consumido en un mes se paga el mes siguiente. Anotá el total del resumen real del banco para ver si te falta cargar algo.'));
+      var hoyF = fechaLocalPF(Date.now());
+      box.appendChild(el('div',{style:'font-weight:700;font-size:14px;color:#1a2e4a;margin:18px 0 4px'},'💳 Tarjetas por ciclo'));
+      box.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-bottom:8px;line-height:1.5'},'Poné el día habitual de cierre y vencimiento de cada tarjeta; después, en cada ciclo, corregí las fechas exactas del mes (cambian de un mes a otro). Los consumos se agrupan hasta el cierre y se pagan en el vencimiento.'));
       tjs.forEach(function(c){
-        var mp = tjMesesPF(c);
-        box.appendChild(el('div',{style:'font-weight:600;font-size:13px;color:#1a2e4a;margin:10px 0 4px'},'💳 '+c.nombre+' · debés '+fmtTjPF(c, Math.max(0,-saldoCuentaPF(c)))));
+        var mp = tjMesesPF(c), hoyK = cicloKeyTjPF(c, hoyF), keys = [hoyK, ymSumaPF(hoyK,-1), ymSumaPF(hoyK,-2)];
+        var cab2 = el('div',{style:'display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0 4px'});
+        cab2.appendChild(el('div',{style:'font-weight:600;font-size:13px;color:#1a2e4a'},'💳 '+c.nombre+' · debés '+fmtTjPF(c, Math.max(0,-saldoCuentaPF(c)))));
+        var cf = cicloTjPF[c.id] || {};
+        var iCi = el('input',{type:'number',min:'1',max:'31',value:cf.cierre||'',placeholder:'19',style:'width:48px;padding:3px 5px;border:1px solid #CBD5E1;border-radius:6px;text-align:center;font-size:12px'});
+        var iVe = el('input',{type:'number',min:'1',max:'31',value:cf.venc||'',placeholder:'2',style:'width:48px;padding:3px 5px;border:1px solid #CBD5E1;border-radius:6px;text-align:center;font-size:12px'});
+        function guardaCfg(){ guardarCicloTjPF(c.id, Number(iCi.value||0), Number(iVe.value||0)).then(function(){ renderAll(); }); }
+        iCi.onchange = guardaCfg; iVe.onchange = guardaCfg;
+        var cfgBox = el('span',{style:'font-size:11px;color:#64748B'}); cfgBox.appendChild(document.createTextNode('Cierra el día ')); cfgBox.appendChild(iCi); cfgBox.appendChild(document.createTextNode(' · vence el día ')); cfgBox.appendChild(iVe);
+        cab2.appendChild(cfgBox); box.appendChild(cab2);
         var tw = el('div',{style:'overflow-x:auto'}), tb = el('table',{class:'tbl',style:'font-size:12px'});
-        tb.appendChild(elH('thead',{},'<tr><th>Mes</th><th style="text-align:right">Consumo cargado</th><th style="text-align:right">Pagos a la tarjeta</th><th style="text-align:right">Resumen real</th><th style="text-align:right">Diferencia</th></tr>'));
+        tb.appendChild(elH('thead',{},'<tr><th>Ciclo</th><th style="text-align:right">Consumo cargado</th><th style="text-align:right">Pagos a la tarjeta</th><th style="text-align:right">Resumen real</th><th style="text-align:right">Diferencia</th></tr>'));
         var tbd = el('tbody');
         keys.forEach(function(k){
           var x = mp[k] || {cons:0, pag:0}, real = (resumenesTjPF[c.id]||{})[k];
           var tr = el('tr',{});
-          tr.appendChild(el('td',{style:'font-weight:600'}, ymEtiqPF(k)+(k===hoyK?' (en curso)':'')));
+          var tdc = el('td',{style:'font-weight:600;white-space:nowrap'});
+          if (cfgTjPF(c)) {
+            var dC = el('input',{type:'date',value:cierreFechaTjPF(c,k),style:'padding:2px 4px;border:1px solid #CBD5E1;border-radius:6px;font-size:11px'});
+            var dV = el('input',{type:'date',value:vencFechaTjPF(c,k),style:'padding:2px 4px;border:1px solid #CBD5E1;border-radius:6px;font-size:11px'});
+            function gf(){ guardarFechasCicloTjPF(c.id, k, dC.value, dV.value).then(function(){ renderAll(); }); }
+            dC.onchange = gf; dV.onchange = gf;
+            tdc.appendChild(document.createTextNode('Cierra ')); tdc.appendChild(dC); tdc.appendChild(document.createTextNode(' · vence ')); tdc.appendChild(dV);
+            if (k===hoyK) tdc.appendChild(document.createTextNode(' (en curso)'));
+          } else tdc.appendChild(document.createTextNode(ymEtiqPF(k)+(k===hoyK?' (en curso)':'')));
+          tr.appendChild(tdc);
           tr.appendChild(el('td',{style:'text-align:right'}, fmtTjPF(c, x.cons)));
           tr.appendChild(el('td',{style:'text-align:right'}, x.pag>0 ? fmtTjPF(c, x.pag) : '—'));
           var td = el('td',{style:'text-align:right'}), inp = el('input',{type:'number',value:real||'',placeholder:'total resumen',style:'width:110px;padding:4px 6px;border:1px solid #CBD5E1;border-radius:6px;text-align:right;font-size:12px'});
@@ -5777,28 +5827,35 @@ function vFinanzas() {
     }
     function renderProxMesPF() {
       var tjs = cuentasPF.filter(function(c){ return c.tipo==='tarjeta'; });
-      var hoyK = ymKeyPF(new Date()), sigK = ymSumaPF(hoyK,1);
+      var hoyF = fechaLocalPF(Date.now()), hoyK = ymKeyPF(new Date()), sigK = ymSumaPF(hoyK,1);
       var card = el('div',{class:'card',style:'padding:16px;margin-top:14px'});
-      card.appendChild(el('div',{class:'st',style:'margin-bottom:4px'},'A pagar en '+ymEtiqPF(sigK)));
-      card.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-bottom:10px'},'Tarjetas: lo consumido en '+ymEtiqPF(hoyK)+' (si cargaste el resumen real, se usa ese). Más los gastos ya cargados del mes siguiente.'));
-      var total = 0;
-      function fila(txt, ars, nota) {
+      card.appendChild(el('div',{class:'st',style:'margin-bottom:4px'},'Tarjetas y gastos a pagar'));
+      card.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-bottom:10px'},'Por vencimiento de cada tarjeta (si cargaste el resumen real, se usa ese) y los gastos sin pagar del mes siguiente.'));
+      var total = 0, hayFila = false;
+      function fila(txt, valTxt) {
+        hayFila = true;
         var f = el('div',{style:'display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:5px 0;border-bottom:1px solid #F1F5F9'});
-        f.appendChild(el('span',{}, txt+(nota?' ':'')+(nota?'':'') )); f.appendChild(el('b',{}, nota ? nota : fmt(Math.round(ars)))); card.appendChild(f);
+        f.appendChild(el('span',{}, txt)); f.appendChild(el('b',{}, valTxt)); card.appendChild(f);
       }
       tjs.forEach(function(c){
-        var x = tjMesesPF(c)[hoyK] || {cons:0}, real = (resumenesTjPF[c.id]||{})[hoyK], base = real || x.cons;
-        var ars = convPF(base, c.moneda==='USD'?'USD':'ARS', 'ARS'); total += ars;
-        fila('💳 '+c.nombre+(real?' (resumen real)':''), ars, c.moneda==='USD' ? 'USD '+(Math.round(base*100)/100)+' ≈ '+fmt(Math.round(ars)) : null);
+        var mp = tjMesesPF(c), cfg = cfgTjPF(c), mon = c.moneda==='USD'?'USD':'ARS';
+        var keys = cfg ? [ymSumaPF(cicloKeyTjPF(c, hoyF),-1), cicloKeyTjPF(c, hoyF)] : [hoyK];
+        keys.forEach(function(k){
+          var venc = cfg ? vencFechaTjPF(c,k) : null;
+          if (venc && venc < hoyF) return;
+          var x = mp[k] || {cons:0, pag:0}, real = (resumenesTjPF[c.id]||{})[k], base = real || Math.max(0, x.cons - x.pag);
+          if (!(base > 0) && !real) return;
+          var ars = convPF(base, mon, 'ARS'); total += ars;
+          fila('💳 '+c.nombre+' · '+(cfg ? 'vence '+ddmmPF(venc) : 'consumo de '+ymEtiqPF(k))+(real?' (resumen real)':''), c.moneda==='USD' ? 'USD '+(Math.round(base*100)/100)+' ≈ '+fmt(Math.round(ars)) : fmt(Math.round(ars)));
+        });
+        if (!cfg) card.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;padding:2px 0 4px'},'Cargá cierre y vencimiento de '+c.nombre+' en Cuentas para ver la fecha exacta.'));
       });
       var mSig = mesesPF.find(function(x){ return ymKeyPF(new Date(x.year, x.month-1, 1))===sigK; });
       if (mSig) {
         var pend = gastosPF.filter(function(g){ return g.mes_id===mSig.id && !g.pagado; });
         var sum = pend.reduce(function(a,g){ return a + saldoPF(g) + Math.max(0, Number(g.monto_usd||0) - entregadoUSDPF(g))*tcUSD; }, 0);
-        total += sum; fila('Gastos cargados de '+ymEtiqPF(sigK)+' ('+pend.length+')', sum);
-      } else {
-        var f2 = el('div',{style:'font-size:12px;color:#94a3b8;padding:5px 0'},'Todavía no está generado el mes siguiente.'); card.appendChild(f2);
-      }
+        total += sum; fila('Gastos cargados de '+ymEtiqPF(sigK)+' ('+pend.length+')', fmt(Math.round(sum)));
+      } else card.appendChild(el('div',{style:'font-size:12px;color:#94a3b8;padding:5px 0'},'Todavía no está generado el mes siguiente.'));
       var ft = el('div',{style:'display:flex;justify-content:space-between;font-size:14px;padding-top:8px'}); ft.appendChild(el('b',{},'Total estimado')); ft.appendChild(el('b',{style:'color:#854F0B'}, fmt(Math.round(total)))); card.appendChild(ft);
       content.appendChild(card);
     }
