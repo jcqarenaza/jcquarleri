@@ -5731,11 +5731,11 @@ function vFinanzas() {
     function guardarCfgCicloPF() {
       return sbFetch('panel_config?on_conflict=clave', {method:'POST', body:{clave:'pf_tarjetas_ciclo', valor:JSON.stringify(cicloTjPF)}, prefer:'resolution=merge-duplicates,return=minimal'}).catch(function(e){ alert('No se pudo guardar: '+e.message); });
     }
-    function cfgTjPF(c) { var x = cicloTjPF[c.id] || {}; return (x.cierre>0 && x.venc>0) ? x : null; }
+    function cfgTjPF(c) { var x = cicloTjPF[c.id] || {}; return (x.cierre>0) ? x : null; }
     function diasMesPF(k) { return new Date(Number(k.slice(0,4)), Number(k.slice(5,7)), 0).getDate(); }
     function pad2PF(n) { return String(n).padStart(2,'0'); }
     function cierreFechaTjPF(c, k) { var cfg = cfgTjPF(c); if (!cfg) return null; var ov = ((cicloTjPF[c.id]||{}).fechas||{})[k]; if (ov && ov.c) return ov.c; return k+'-'+pad2PF(Math.min(cfg.cierre, diasMesPF(k))); }
-    function vencFechaTjPF(c, k) { var cfg = cfgTjPF(c); if (!cfg) return null; var ov = ((cicloTjPF[c.id]||{}).fechas||{})[k]; if (ov && ov.v) return ov.v; var km = cfg.venc > cfg.cierre ? k : ymSumaPF(k,1); return km+'-'+pad2PF(Math.min(cfg.venc, diasMesPF(km))); }
+    function vencFechaTjPF(c, k) { var cfg = cfgTjPF(c); if (!cfg) return null; var ov = ((cicloTjPF[c.id]||{}).fechas||{})[k]; if (ov && ov.v) return ov.v; if (!(cfg.venc>0)) return null; var km = cfg.venc > cfg.cierre ? k : ymSumaPF(k,1); return km+'-'+pad2PF(Math.min(cfg.venc, diasMesPF(km))); }
     function cicloKeyTjPF(c, fecha) {
       var f = String(fecha).slice(0,10), ym = f.slice(0,7);
       if (!cfgTjPF(c)) return ym;
@@ -5745,7 +5745,7 @@ function vFinanzas() {
     }
     function pagoKeyTjPF(c, fecha) {
       var f = String(fecha).slice(0,10), ym = f.slice(0,7);
-      if (!cfgTjPF(c)) return ym;
+      if (!cfgTjPF(c) || !(cfgTjPF(c).venc>0)) return ym;
       var best = null, bd = 1e18;
       [ymSumaPF(ym,-2), ymSumaPF(ym,-1), ym].forEach(function(k){ var d = Math.abs(new Date(vencFechaTjPF(c,k)+'T12:00:00') - new Date(f+'T12:00:00')); if (d < bd) { bd = d; best = k; } });
       return best;
@@ -5785,9 +5785,10 @@ function vFinanzas() {
       if (!tjs.length) return;
       var hoyF = fechaLocalPF(Date.now());
       box.appendChild(el('div',{style:'font-weight:700;font-size:14px;color:#1a2e4a;margin:18px 0 4px'},'💳 Tarjetas por ciclo'));
-      box.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-bottom:8px;line-height:1.5'},'Poné el día habitual de cierre y vencimiento de cada tarjeta; después, en cada ciclo, corregí las fechas exactas del mes (cambian de un mes a otro). Los consumos se agrupan hasta el cierre y se pagan en el vencimiento.'));
+      box.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-bottom:8px;line-height:1.5'},'Poné el día habitual de cierre y vencimiento de cada tarjeta; después, en cada ciclo, corregí las fechas exactas del mes (cambian de un mes a otro). Se muestra el ciclo en curso y los anteriores que todavía no están pagos.'));
       tjs.forEach(function(c){
-        var mp = tjMesesPF(c), hoyK = cicloKeyTjPF(c, hoyF), keys = [hoyK, ymSumaPF(hoyK,-1), ymSumaPF(hoyK,-2)];
+        var mp = tjMesesPF(c), hoyK = cicloKeyTjPF(c, hoyF), keys = [hoyK];
+        for (var qi=1; qi<=4; qi++) { var qk = ymSumaPF(hoyK,-qi), qx = mp[qk] || {cons:0,pag:0}, qreal = (resumenesTjPF[c.id]||{})[qk]; if (((qreal||qx.cons) - qx.pag) > 0.5) keys.push(qk); }
         var cab2 = el('div',{style:'display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0 4px'});
         cab2.appendChild(el('div',{style:'font-weight:600;font-size:13px;color:#1a2e4a'},'💳 '+c.nombre+' · debés '+fmtTjPF(c, Math.max(0,-saldoCuentaPF(c)))));
         var cf = cicloTjPF[c.id] || {};
@@ -5806,7 +5807,7 @@ function vFinanzas() {
           var tdc = el('td',{style:'font-weight:600;white-space:nowrap'});
           if (cfgTjPF(c)) {
             var dC = el('input',{type:'date',value:cierreFechaTjPF(c,k),style:'padding:2px 4px;border:1px solid #CBD5E1;border-radius:6px;font-size:11px'});
-            var dV = el('input',{type:'date',value:vencFechaTjPF(c,k),style:'padding:2px 4px;border:1px solid #CBD5E1;border-radius:6px;font-size:11px'});
+            var dV = el('input',{type:'date',value:vencFechaTjPF(c,k)||'',style:'padding:2px 4px;border:1px solid #CBD5E1;border-radius:6px;font-size:11px'});
             function gf(){ guardarFechasCicloTjPF(c.id, k, dC.value, dV.value).then(function(){ renderAll(); }); }
             dC.onchange = gf; dV.onchange = gf;
             tdc.appendChild(document.createTextNode('Cierra ')); tdc.appendChild(dC); tdc.appendChild(document.createTextNode(' · vence ')); tdc.appendChild(dV);
