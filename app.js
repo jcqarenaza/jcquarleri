@@ -6055,6 +6055,19 @@ function vFinanzas() {
       sbFetch('panel_config?on_conflict=clave', {method:'POST', body:{clave:'pf_asesor_uso', valor:JSON.stringify(usoAsesorPF)}, prefer:'resolution=merge-duplicates,return=minimal'}).catch(function(){});
       try { var el2 = document.getElementById('asesor-uso-pf'); if (el2) el2.textContent = textoUsoAsesorPF(); } catch(e) {}
     }
+    var gastoRealAsesorPF = null;
+    function consultarGastoRealPF(el2) {
+      var tok = window._authToken; if (!tok) return;
+      el2.textContent = 'Consultando gasto real...';
+      fetch(SB_URL+'/functions/v1/asesor-pf', {method:'POST', headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+tok}, body:JSON.stringify({modo:'uso'})})
+        .then(function(r){ return r.json().catch(function(){ return {}; }); })
+        .then(function(d){
+          if (d.error) { el2.textContent = 'Gasto real: '+d.error; return; }
+          gastoRealAsesorPF = d;
+          var det = Object.keys(d.por_modelo||{}).filter(function(k){ return d.por_modelo[k] > 0; }).map(function(k){ return k+' US$ '+d.por_modelo[k].toFixed(2); }).join(' · ');
+          el2.textContent = 'Gasto real de la API este mes (toda la cuenta): US$ '+Number(d.total_usd||0).toFixed(2)+(det ? ' · '+det : '');
+        }).catch(function(e){ el2.textContent = 'Gasto real: '+e.message; });
+    }
     function textoUsoAsesorPF() {
       var k = new Date().toISOString().slice(0,7), u = usoAsesorPF[k];
       function f(n){ return n>=1000 ? (Math.round(n/100)/10)+'k' : String(n); }
@@ -6430,10 +6443,18 @@ function vFinanzas() {
       setAbiertoChatPF(chatPF.abierto);
       var u = chatPF.ui, m = getMesPF(mesSeleccionadoPF);
       if (!m) return;
-      u.linea.textContent = lineaEfectivoPF();
+      u.linea.textContent = cuentasPF.length
+        ? 'Disponible '+fmt(Math.round(disponibleArsPF()))+(disponibleUsdPF()>0 ? ' · USD '+(Math.round(disponibleUsdPF()*100)/100) : '')+(descubiertoPF()<0 ? ' · descubierto '+fmt(Math.round(descubiertoPF())) : '')+(consumoTarjetaPF()>0 ? ' · tarjetas '+fmt(Math.round(consumoTarjetaPF())) : '')
+        : lineaEfectivoPF();
       var uso = document.getElementById('asesor-uso-pf');
       if (!uso && u.estado && u.estado.parentNode) { uso = el('div',{id:'asesor-uso-pf',style:'font-size:10px;color:#94a3b8;padding:2px 12px 4px'}); u.estado.parentNode.insertBefore(uso, u.estado.nextSibling); }
       if (uso) uso.textContent = textoUsoAsesorPF();
+      var real = document.getElementById('asesor-real-pf');
+      if (!real && uso && uso.parentNode) {
+        real = el('div',{id:'asesor-real-pf',style:'font-size:10px;color:#0B9EDA;padding:0 12px 4px;cursor:pointer;text-decoration:underline'},'Ver gasto real en dólares');
+        real.onclick = function(){ consultarGastoRealPF(real); };
+        uso.parentNode.insertBefore(real, uso.nextSibling);
+      }
       var d = datosAsesorPF(m, efectivoPF(m), asesorEstPF.dia_ds || 10);
       var cal = d.calendario_caja;
       var neg = cal.filter(function(r){ return r.saldo_sin_tarjetas < 0; })[0];
