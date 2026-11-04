@@ -118,12 +118,14 @@ var SUPABASE_URL = 'https://tviiikkdskucmgcmtswu.supabase.co';
 var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR2aWlpa2tkc2t1Y21nY210c3d1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1MTM2OTQsImV4cCI6MjA5MjA4OTY5NH0.TtmNyaOd1gKVUmbBf0e1Epj8V3J6W5R64yPp9uLiDDg';
 var RP_ID = 'jcquarleri.vercel.app';
 var _authToken = null;
+var _refreshToken = null;
 var _currentUser = null;
 
-function unlockPanel(token, usuario) {
+function unlockPanel(token, usuario, refresh) {
   _authToken = token;
+  _refreshToken = refresh || null;
   _currentUser = usuario;
-  sessionStorage.setItem('qp_auth', JSON.stringify({ token: token, usuario: usuario, ts: Date.now() }));
+  sessionStorage.setItem('qp_auth', JSON.stringify({ token: token, refresh: _refreshToken, usuario: usuario, ts: Date.now() }));
   var esPartner = usuario && usuario.rol === 'partner';
   var esSuperAdmin = usuario && usuario.rol === 'superadmin';
   if (!esPartner && !esSuperAdmin) {
@@ -181,7 +183,7 @@ async function doLogin() {
     var usuario = Array.isArray(profData) && profData[0] ? profData[0] : { rol: 'superadmin', nombre: 'Admin' };
     usuario.email = email;
 
-    unlockPanel(token, usuario);
+    unlockPanel(token, usuario, authData.refresh_token);
 
   } catch(e) {
     showErr('Error de conexión: ' + e.message);
@@ -196,6 +198,7 @@ async function doLogin() {
       var edadMin = data.ts ? (Date.now() - data.ts) / 60000 : 999;
       if (data.token && data.usuario && edadMin < 50) {
         _authToken = data.token;
+        _refreshToken = data.refresh || null;
         _currentUser = data.usuario;
         // Ocultar hasta que app.js resuelva el rol
         document.body.classList.add('qp-loading');

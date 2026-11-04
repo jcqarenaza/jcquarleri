@@ -6,6 +6,27 @@ function getAuthKey() { return (window._authToken || SB_KEY); }
 function isSuperAdmin() { return !window._currentUser || window._currentUser.rol === 'superadmin'; }
 function getRevendedorId() { return window._currentUser && window._currentUser.revendedor_id || null; }
 
+// ── Renovación automática de la sesión (el token de acceso dura ~1 hora) ──
+function qpTokenExp(t) { try { return JSON.parse(atob(String(t).split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).exp * 1000; } catch(e) { return 0; } }
+function qpRefrescarSesion(forzar) {
+  var rt = window._refreshToken;
+  if (!rt) return Promise.resolve(false);
+  if (!forzar && window._authToken && qpTokenExp(window._authToken) - Date.now() > 5*60000) return Promise.resolve(true);
+  if (window._qpRefrescando) return window._qpRefrescando;
+  window._qpRefrescando = fetch(SB_URL + '/auth/v1/token?grant_type=refresh_token', {method:'POST', headers:{apikey:SB_KEY,'Content-Type':'application/json'}, body:JSON.stringify({refresh_token:rt})})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (!d || !d.access_token) return false;
+      window._authToken = d.access_token; window._refreshToken = d.refresh_token || rt;
+      try { var sv = JSON.parse(sessionStorage.getItem('qp_auth')||'{}'); sv.token = d.access_token; sv.refresh = window._refreshToken; sv.ts = Date.now(); sessionStorage.setItem('qp_auth', JSON.stringify(sv)); } catch(e) {}
+      return true;
+    })
+    .catch(function(){ return false; })
+    .then(function(ok){ window._qpRefrescando = null; return ok; });
+  return window._qpRefrescando;
+}
+setInterval(function(){ if (window._refreshToken) qpRefrescarSesion(false); }, 4*60000);
+
 // ── Mensajes del sistema: reemplazan alert / confirm / prompt del navegador ──
 (function(){
   var nativeConfirm = window.confirm;
@@ -6135,7 +6156,7 @@ function vFinanzas() {
     function consultarGastoRealPF(el2) {
       var tok = window._authToken; if (!tok) return;
       el2.textContent = 'Consultando gasto real...';
-      fetch(SB_URL+'/functions/v1/asesor-pf', {method:'POST', headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+tok}, body:JSON.stringify({modo:'uso'})})
+      qpRefrescarSesion(false).then(function(){ return fetch(SB_URL+'/functions/v1/asesor-pf', {method:'POST', headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+window._authToken}, body:JSON.stringify({modo:'uso'})}); })
         .then(function(r){ return r.json().catch(function(){ return {}; }); })
         .then(function(d){
           if (d.error) { el2.textContent = 'Gasto real: '+d.error; return; }
@@ -6292,13 +6313,22 @@ function vFinanzas() {
       var dc = efectivoDetallePF(m);
       if (dc) datos.caja_detalle = {sueldo_depositado:Math.round(dc.sueldo), ingresos_personales_cargados:Math.round(dc.ing), pagos_hechos_del_mes:Math.round(dc.pag),
         cobros_negocio_ya_cobrados_este_mes:dc.cobL.map(function(c){ return {descripcion:c.descripcion||c.tipo_cobro, monto:Number(c.monto), fecha_pago:c.fecha_pago}; })};
-      return fetch(SB_URL+'/functions/v1/asesor-pf', {
-        method:'POST',
-        headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+tok},
-        body:JSON.stringify({pregunta:o.pregunta||'', modo:o.modo||'completo', gasto_nuevo:o.gastoNuevo||null, mensajes:o.historial||[], datos:datos})
-      }).then(function(r) {
-        return r.json().catch(function(){ return {}; }).then(function(d){ d._status=r.status; return d; });
+      function enviarAsesor() {
+        return fetch(SB_URL+'/functions/v1/asesor-pf', {
+          method:'POST',
+          headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+window._authToken},
+          body:JSON.stringify({pregunta:o.pregunta||'', modo:o.modo||'completo', gasto_nuevo:o.gastoNuevo||null, mensajes:o.historial||[], datos:datos})
+        }).then(function(r) {
+          return r.json().catch(function(){ return {}; }).then(function(d){ d._status=r.status; return d; });
+        });
+      }
+      return qpRefrescarSesion(false).then(enviarAsesor).then(function(d) {
+        if (d._status===401 || /jwt/i.test(String(d.error||d.message||''))) {
+          return qpRefrescarSesion(true).then(function(ok){ return ok ? enviarAsesor() : d; });
+        }
+        return d;
       }).then(function(d) {
+        if (/jwt/i.test(String(d.error||d.message||''))) throw new Error('Tu sesión venció. Recargá la página e ingresá de nuevo.');
         if (d.error || !d.texto) throw new Error(d.error || d.message || ('error '+d._status));
         d._hash = hash; registrarUsoAsesorPF(d); return d;
       });
