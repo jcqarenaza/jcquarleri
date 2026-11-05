@@ -6729,7 +6729,8 @@ function vFinanzas() {
         var tbl2 = el('table',{class:'tbl'});
         tbl2.appendChild(elH('thead',{},'<tr><th>Qui\xE9n</th><th>Fecha</th><th style="text-align:right">Importe</th><th style="text-align:right">Subtotal</th><th></th></tr>'));
         var tb2 = el('tbody');
-        juntadaParticipantes.filter(function(p){return p.activo;}).forEach(function(part){
+        var _totJ = {}; juntadaPagos.forEach(function(p){ _totJ[p.participante_id] = (_totJ[p.participante_id]||0) + Number(p.importe); });
+        juntadaParticipantes.filter(function(p){return p.activo;}).sort(function(x,y){ return (_totJ[y.id]||0) - (_totJ[x.id]||0) || String(x.nombre).localeCompare(String(y.nombre)); }).forEach(function(part){
           var pagosP2 = juntadaPagos.filter(function(p){return p.participante_id===part.id;}).sort(function(a,b){return new Date(a.fecha)-new Date(b.fecha);});
           var subtotal2 = pagosP2.reduce(function(s,p){return s+Number(p.importe);},0);
           var isC = checkCollapsed(part.id);
