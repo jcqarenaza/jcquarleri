@@ -135,6 +135,8 @@ body{overflow-x:clip;-webkit-tap-highlight-color:transparent;touch-action:manipu
   #login-screen>div{width:min(340px,calc(100vw - 32px))!important;padding:28px 22px!important}
   #login-screen input{font-size:16px!important;padding:13px 14px!important}
   #login-screen button{min-height:46px}
+  #login-screen{align-items:flex-start!important;overflow-y:auto;height:100dvh!important;padding-top:max(60px,calc(env(safe-area-inset-top) + 40px))}
+  #login-screen input:-webkit-autofill{-webkit-box-shadow:0 0 0 100px #F0F4F8 inset!important;-webkit-text-fill-color:#1a2540!important}
 }
 body.qp-loading #app { visibility: hidden; }
 body.qp-loading .nav { visibility: hidden; }
@@ -341,7 +343,7 @@ async function doLogin() {
     document.getElementById('login-bio').style.display = 'block';
     setTimeout(function(){ qpBioEntrar(true); }, 350);
   } else {
-    setTimeout(function(){ document.getElementById('login-email').focus(); }, 100);
+    if (window.innerWidth > 600) setTimeout(function(){ document.getElementById('login-email').focus(); }, 100);
   }
 })();
 </script>
