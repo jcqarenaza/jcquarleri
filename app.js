@@ -1517,11 +1517,11 @@ function cargarMetricasSis(s, row) {
   var nombreL = (s.nombre||''). toLowerCase();
   var esPiamonte = nombreL.indexOf('piamonte') >= 0;
     (esPiamonte && s.supabase_url && s.supabase_key
-      // Piamonte: comprobantes tiene RLS solo para authenticated; se lee por RPC agregada (get_metricas_panel) con la anon key
-      ? fetch(s.supabase_url.replace(/\/$/, '') + '/rest/v1/rpc/get_metricas_panel', {
+      // Piamonte: las metricas se piden a la funcion panel-qp del Piamonte con el login del Panel (la anon key ya no alcanza)
+      ? fetch(s.supabase_url.replace(/\/$/, '') + '/functions/v1/panel-qp', {
           method: 'POST',
-          headers: { apikey: s.supabase_key, Authorization: 'Bearer ' + s.supabase_key, 'Content-Type': 'application/json' },
-          body: '{}'
+          headers: { Authorization: 'Bearer ' + getAuthKey(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accion: 'metricas' })
         }).then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
       : fetch('https://tviiikkdskucmgcmtswu.supabase.co/functions/v1/metricas-sistema', {
     method: 'POST',
@@ -7428,10 +7428,12 @@ function mGestionFasesEstructura(s) {
 }
 
 function mFasesElPiamonte() {
-  fetch(PIAMONTE_URL + '/rest/v1/config_sistema?select=fase_habilitada&id=eq.1', {
-    headers: { 'apikey': PIAMONTE_KEY, 'Authorization': 'Bearer ' + PIAMONTE_KEY }
-  }).then(function(r){ return r.json(); }).then(function(data) {
-    var faseActual = (data && data[0]) ? Number(data[0].fase_habilitada) : 1;
+  fetch(PIAMONTE_URL + '/functions/v1/panel-qp', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + getAuthKey(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accion: 'fase_get' })
+  }).then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function(data) {
+    var faseActual = (data && data.fase_habilitada) ? Number(data.fase_habilitada) : 1;
     renderModalFases(faseActual);
   }).catch(function(e) {
     alert('Error al leer configuracion: ' + e.message);
@@ -7495,13 +7497,10 @@ function renderModalFases(faseActual) {
           btnU.onclick = function() {
             if (!confirm('Confirmas desbloquear ' + lbl + ' para El Piamonte?\n\nEsto habilitara los modulos inmediatamente en el sistema del cliente.')) return;
             btnU.textContent = 'Desbloqueando...'; btnU.disabled = true;
-            fetch(PIAMONTE_URL + '/rest/v1/config_sistema?id=eq.1', {
-              method: 'PATCH',
-              headers: {
-                'apikey': PIAMONTE_KEY, 'Authorization': 'Bearer ' + PIAMONTE_KEY,
-                'Content-Type': 'application/json', 'Prefer': 'return=minimal'
-              },
-              body: JSON.stringify({ fase_habilitada: num })
+            fetch(PIAMONTE_URL + '/functions/v1/panel-qp', {
+              method: 'POST',
+              headers: { 'Authorization': 'Bearer ' + getAuthKey(), 'Content-Type': 'application/json' },
+              body: JSON.stringify({ accion: 'fase_set', fase: num })
             }).then(function(r) {
               if (!r.ok) throw new Error('HTTP ' + r.status);
               closeM();
