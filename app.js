@@ -6794,6 +6794,14 @@ function vFinanzas() {
           function esc(t){ return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
           var parts = juntadaParticipantes.filter(function(p){return p.activo && (partId==='todos' || p.id===partId);});
           var granTotal = 0, nEntregas = 0, bloques = '';
+          // de los que más aportaron a los que menos (según el período elegido)
+          var _totP = {};
+          juntadaPagos.forEach(function(p){
+            var f=(p.fecha||'').slice(0,10);
+            if (desde && f<desde) return; if (hasta && f>hasta) return;
+            _totP[p.participante_id] = (_totP[p.participante_id]||0) + Number(p.importe);
+          });
+          parts = parts.slice().sort(function(x,y){ return (_totP[y.id]||0) - (_totP[x.id]||0) || String(x.nombre).localeCompare(String(y.nombre)); });
           parts.forEach(function(part){
             var pagos = juntadaPagos.filter(function(p){
               if (p.participante_id!==part.id) return false;
