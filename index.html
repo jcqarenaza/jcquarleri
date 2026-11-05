@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="QP C&IA">
   <meta name="theme-color" content="#1A7FE8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>QP C&IA</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -96,6 +96,46 @@ textarea.fi{resize:vertical;min-height:64px}
   .top{padding:0 8px;min-height:52px}
   .logo{height:30px;max-width:70px}
 }
+
+/* ── iPhone / móvil (iPhone 14 = 390 x 844) ── */
+html{-webkit-text-size-adjust:100%;overflow-x:hidden}
+body{overflow-x:clip;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+@media(max-width:600px){
+  body{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+  input,select,textarea,.fi{font-size:16px!important}
+  .app{padding:12px 12px calc(88px + env(safe-area-inset-bottom))}
+  .top{position:sticky;top:0;min-height:48px;justify-content:center}
+  .logo{height:30px}
+  /* navegación abajo, al alcance del pulgar */
+  .nav{position:fixed;left:0;right:0;bottom:0;margin:0;z-index:150;background:rgba(255,255,255,.96);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:.5px solid var(--br);padding:6px 8px calc(6px + env(safe-area-inset-bottom));gap:4px}
+  .nb{flex:0 0 auto;min-height:44px;padding:10px 14px;font-size:14px}
+  .btn{min-height:40px}
+  .btn.btnsm{min-height:34px;padding:6px 10px;font-size:12px}
+  .tog{transform:scale(1.15);transform-origin:left center;margin-right:4px}
+  .mets{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .met{padding:12px}
+  .mv{font-size:21px}
+  .card{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .tbl{font-size:12px}
+  .tbl th{padding:8px 10px}
+  .tbl td{padding:10px}
+  .tabs{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{white-space:nowrap;padding:8px 14px;font-size:13px}
+  .r3{grid-template-columns:1fr 1fr}
+  /* ventanas como hoja desde abajo */
+  .ov{align-items:flex-end}
+  .mod{width:100%;max-width:100%;border-radius:18px 18px 0 0;max-height:92vh;max-height:92dvh;padding-bottom:env(safe-area-inset-bottom)}
+  .mbd{padding:16px}
+  .mhd{padding:14px 16px}
+  .mft{padding:12px 16px calc(12px + env(safe-area-inset-bottom))}
+  .qp-asesor-launcher{bottom:calc(78px + env(safe-area-inset-bottom))!important;right:14px!important}
+  /* grillas fijas escritas en el código: 2 columnas en vez de 3-4 */
+  [style*="grid-template-columns:repeat(3,1fr)"],[style*="grid-template-columns:repeat(4,1fr)"],[style*="grid-template-columns:1fr 1fr 1fr"]{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  #login-screen>div{width:min(340px,calc(100vw - 32px))!important;padding:28px 22px!important}
+  #login-screen input{font-size:16px!important;padding:13px 14px!important}
+  #login-screen button{min-height:46px}
+}
 body.qp-loading #app { visibility: hidden; }
 body.qp-loading .nav { visibility: hidden; }
 </style>
@@ -107,8 +147,9 @@ body.qp-loading .nav { visibility: hidden; }
       <div style="font-size:22px;font-weight:700;color:var(--tx)" id="login-title">QP C&IA</div>
       <div style="font-size:13px;color:var(--tx2);margin-bottom:20px" id="login-subtitle">Panel de operaciones</div>
     </div>
-    <input id="login-email" type="email" placeholder="Email" style="width:100%;padding:10px 14px;border:.5px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);color:var(--tx);outline:none;margin-bottom:8px;display:block">
-    <input id="login-pass" type="password" placeholder="Contraseña" style="width:100%;padding:10px 14px;border:.5px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);color:var(--tx);outline:none;margin-bottom:12px;display:block">
+    <button id="login-bio" onclick="qpBioEntrar()" style="display:none;width:100%;padding:14px;background:var(--tx);color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;margin-bottom:14px;font-family:inherit">&#128274; Entrar con Face ID</button>
+    <input id="login-email" type="email" autocomplete="username" autocapitalize="none" placeholder="Email" style="width:100%;padding:10px 14px;border:.5px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);color:var(--tx);outline:none;margin-bottom:8px;display:block">
+    <input id="login-pass" type="password" autocomplete="current-password" placeholder="Contraseña" style="width:100%;padding:10px 14px;border:.5px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);color:var(--tx);outline:none;margin-bottom:12px;display:block">
     <div id="login-err" style="color:#E53E3E;font-size:12px;margin-bottom:8px;display:none"></div>
     <button onclick="doLogin()" style="width:100%;padding:10px;background:var(--ac);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;margin-bottom:10px">Entrar</button>
   </div>
@@ -154,6 +195,76 @@ function showErr(msg) {
 }
 
 
+
+// ── Face ID / huella: el iPhone guarda la sesión y la libera con biometría ──
+var QP_BIO_KEY = 'qp_bio';
+function qpB64(buf) { var s = ''; new Uint8Array(buf).forEach(function(b){ s += String.fromCharCode(b); }); return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
+function qpB64dec(str) { str = str.replace(/-/g,'+').replace(/_/g,'/'); while (str.length % 4) str += '='; var bin = atob(str), a = new Uint8Array(bin.length); for (var i=0;i<bin.length;i++) a[i] = bin.charCodeAt(i); return a.buffer; }
+function qpBioGet() { try { return JSON.parse(localStorage.getItem(QP_BIO_KEY) || 'null'); } catch(e) { return null; } }
+function qpBioSet(o) { try { localStorage.setItem(QP_BIO_KEY, JSON.stringify(o)); } catch(e) {} }
+function qpBioSoportado() { return !!(window.PublicKeyCredential && navigator.credentials && window.crypto && PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable); }
+async function qpBioDisponible() { try { return qpBioSoportado() && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable(); } catch(e) { return false; } }
+function qpBioRegistrar(email, refresh) {
+  // Se llama directo desde un toque del usuario (iOS lo exige)
+  var ch = crypto.getRandomValues(new Uint8Array(32)), uid = crypto.getRandomValues(new Uint8Array(16));
+  return navigator.credentials.create({ publicKey: {
+    challenge: ch, rp: { name: 'QP C&IA', id: location.hostname },
+    user: { id: uid, name: email, displayName: email },
+    pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+    authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'discouraged' },
+    timeout: 60000, attestation: 'none'
+  } }).then(function(cred){ qpBioSet({ cred: qpB64(cred.rawId), email: email, refresh: refresh, ts: Date.now() }); return true; });
+}
+async function qpBioEntrar(auto) {
+  var bio = qpBioGet(); if (!bio || !bio.cred || !bio.refresh) return;
+  try {
+    await navigator.credentials.get({ publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      allowCredentials: [{ type: 'public-key', id: qpB64dec(bio.cred), transports: ['internal'] }],
+      userVerification: 'required', timeout: 60000, rpId: location.hostname
+    } });
+  } catch(e) { if (!auto) showErr('No se pudo verificar con Face ID. Ingresá con tu contraseña.'); return; }
+  try {
+    var r = await fetch(SUPABASE_URL + '/auth/v1/token?grant_type=refresh_token', {
+      method: 'POST', headers: { apikey: SUPABASE_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: bio.refresh })
+    });
+    var d = await r.json();
+    if (!r.ok || !d.access_token) {
+      localStorage.removeItem(QP_BIO_KEY);
+      document.getElementById('login-bio').style.display = 'none';
+      showErr('La sesión guardada venció. Ingresá con tu contraseña y volvé a activar Face ID.');
+      return;
+    }
+    bio.refresh = d.refresh_token || bio.refresh; bio.ts = Date.now(); qpBioSet(bio);
+    var profRes = await fetch(SUPABASE_URL + '/rest/v1/panel_usuarios?user_id=eq.' + d.user.id + '&select=*', { headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY } });
+    var profData = await profRes.json();
+    var usuario = Array.isArray(profData) && profData[0] ? profData[0] : { rol: 'superadmin', nombre: 'Admin' };
+    usuario.email = bio.email;
+    unlockPanel(d.access_token, usuario, bio.refresh);
+  } catch(e) { showErr('Error de conexión: ' + e.message); }
+}
+async function qpBioOfrecer(email, refresh) {
+  var bio = qpBioGet();
+  if (bio) { bio.refresh = refresh; bio.email = email; qpBioSet(bio); return; }   // ya activado: solo actualiza la sesión guardada
+  try { if (localStorage.getItem('qp_bio_no') === '1') return; } catch(e) {}
+  if (!(await qpBioDisponible())) return;
+  var ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100002;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML = '<div style="background:#fff;border-radius:16px;padding:22px;width:min(360px,100%);font-family:inherit;box-shadow:0 20px 50px rgba(15,23,42,.3)"><div style="font-size:17px;font-weight:700;color:#1a2e4a;margin-bottom:8px">&#128274; Entrar con Face ID</div><div style="font-size:14px;color:#475569;line-height:1.5;margin-bottom:16px">Activalo en este dispositivo y la próxima vez entrás con Face ID, sin usuario ni contraseña.</div><button id="qpbio-si" style="width:100%;padding:13px;background:#0B9EDA;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;margin-bottom:8px">Activar Face ID</button><button id="qpbio-no" style="width:100%;padding:11px;background:#fff;color:#64748b;border:1px solid #CBD5E1;border-radius:10px;font-size:14px;margin-bottom:6px">Ahora no</button><button id="qpbio-nunca" style="width:100%;padding:8px;background:none;color:#94a3b8;border:none;font-size:12px">No preguntar más en este dispositivo</button></div>';
+  document.body.appendChild(ov);
+  document.getElementById('qpbio-si').onclick = function() {
+    qpBioRegistrar(email, refresh).then(function(){ ov.remove(); if (window.qpToast) qpToast('Face ID activado. La próxima vez entrás con un toque.'); })
+      .catch(function(){ ov.remove(); if (window.qpToast) qpToast('No se pudo activar Face ID en este dispositivo.'); });
+  };
+  document.getElementById('qpbio-no').onclick = function(){ ov.remove(); };
+  document.getElementById('qpbio-nunca').onclick = function(){ try { localStorage.setItem('qp_bio_no','1'); } catch(e) {} ov.remove(); };
+}
+function qpSalir() {
+  var tok = _authToken;
+  try { if (tok) fetch(SUPABASE_URL + '/auth/v1/logout', { method: 'POST', headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + tok }, keepalive: true }); } catch(e) {}
+  try { sessionStorage.removeItem('qp_auth'); localStorage.removeItem(QP_BIO_KEY); } catch(e) {}
+  location.reload();
+}
+
 async function doLogin() {
   var email = document.getElementById('login-email').value.trim();
   var pass  = document.getElementById('login-pass').value;
@@ -184,6 +295,7 @@ async function doLogin() {
     usuario.email = email;
 
     unlockPanel(token, usuario, authData.refresh_token);
+    qpBioOfrecer(email, authData.refresh_token);
 
   } catch(e) {
     showErr('Error de conexión: ' + e.message);
@@ -224,7 +336,13 @@ async function doLogin() {
   document.body.style.overflow = 'hidden';
   document.getElementById('login-email').addEventListener('keydown', function(e){ if(e.key==='Enter') document.getElementById('login-pass').focus(); });
   document.getElementById('login-pass').addEventListener('keydown', function(e){ if(e.key==='Enter') doLogin(); });
-  setTimeout(function(){ document.getElementById('login-email').focus(); }, 100);
+  var _bio = qpBioGet();
+  if (_bio && _bio.cred && qpBioSoportado()) {
+    document.getElementById('login-bio').style.display = 'block';
+    setTimeout(function(){ qpBioEntrar(true); }, 350);
+  } else {
+    setTimeout(function(){ document.getElementById('login-email').focus(); }, 100);
+  }
 })();
 </script>
 <div style="display:flex;flex-direction:column;min-height:100vh">
@@ -238,6 +356,7 @@ async function doLogin() {
       <button class="nb" id="nb-salud" onclick="go('salud')">Salud &#x2665;</button>
       <button class="nb" id="nb-gastos" onclick="go('gastos')">Finanzas</button>
       <button class="nb" id="nb-partners" onclick="go('partners')" style="display:none">Partners</button>
+      <button class="nb" id="nb-salir" onclick="qpSalir()" style="color:#A32D2D">Salir</button>
     </nav>
   </div>
   <div class="app" id="app">Cargando...</div>

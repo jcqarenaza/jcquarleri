@@ -19,6 +19,7 @@ function qpRefrescarSesion(forzar) {
       if (!d || !d.access_token) return false;
       window._authToken = d.access_token; window._refreshToken = d.refresh_token || rt;
       try { var sv = JSON.parse(sessionStorage.getItem('qp_auth')||'{}'); sv.token = d.access_token; sv.refresh = window._refreshToken; sv.ts = Date.now(); sessionStorage.setItem('qp_auth', JSON.stringify(sv)); } catch(e) {}
+      try { var bio = JSON.parse(localStorage.getItem('qp_bio')||'null'); if (bio) { bio.refresh = window._refreshToken; bio.ts = Date.now(); localStorage.setItem('qp_bio', JSON.stringify(bio)); } } catch(e) {}
       return true;
     })
     .catch(function(){ return false; })
@@ -6587,7 +6588,7 @@ function vFinanzas() {
     }
     function montarChatAsesorPF(root) {
       var iSt = 'padding:6px 8px;border:1px solid #CBD5E1;border-radius:8px;font-size:12px;background:#fff;color:#1a2e4a;box-sizing:border-box;';
-      var panel = el('div',{style:'position:fixed;top:76px;right:14px;bottom:14px;width:min(360px,calc(100vw - 28px));background:#fff;border:1px solid #E2E8F0;border-radius:14px;box-shadow:0 10px 36px rgba(15,23,42,.18);overflow:hidden;z-index:800;display:none;flex-direction:column'});
+      var panel = el('div',{style:'position:fixed;top:max(56px, calc(env(safe-area-inset-top) + 48px));right:14px;bottom:calc(14px + env(safe-area-inset-bottom));width:min(360px,calc(100vw - 28px));background:#fff;border:1px solid #E2E8F0;border-radius:14px;box-shadow:0 10px 36px rgba(15,23,42,.18);overflow:hidden;z-index:800;display:none;flex-direction:column'});
       var hd = el('div',{style:'padding:12px 14px;border-bottom:1px solid #F1F5F9;display:flex;justify-content:space-between;align-items:center;gap:8px'});
       hd.appendChild(el('div',{style:'font-weight:700;font-size:14px;color:#1a2e4a'},'🤖 Asesor · finanzas personales'));
       var hb = el('div',{style:'display:flex;gap:6px'});
@@ -6616,7 +6617,7 @@ function vFinanzas() {
       var btnSend = el('button',{class:'btn btnp'},'Enviar');
       fin.appendChild(txt); fin.appendChild(btnSend); panel.appendChild(fin);
 
-      var launcher = el('button',{style:'position:fixed;right:18px;bottom:18px;z-index:800;background:#0B9EDA;color:#fff;border:0;border-radius:26px;padding:11px 18px;font-weight:600;font-size:14px;box-shadow:0 6px 20px rgba(11,158,218,.4);cursor:pointer'},'🤖 Asesor');
+      var launcher = el('button',{class:'qp-asesor-launcher',style:'position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:800;background:#0B9EDA;color:#fff;border:0;border-radius:26px;padding:11px 18px;font-weight:600;font-size:14px;box-shadow:0 6px 20px rgba(11,158,218,.4);cursor:pointer'},'🤖 Asesor');
       var badge = el('span',{style:'display:none;margin-left:8px;background:#E24B4A;border-radius:10px;width:10px;height:10px;vertical-align:middle;display:none'});
       launcher.appendChild(badge);
 
