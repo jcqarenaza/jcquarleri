@@ -245,11 +245,12 @@ async function qpBioEntrar(auto) {
     unlockPanel(d.access_token, usuario, bio.refresh);
   } catch(e) { showErr('Error de conexión: ' + e.message); }
 }
-async function qpBioOfrecer(email, refresh) {
+async function qpBioOfrecer(email, refresh, manual) {
   var bio = qpBioGet();
-  if (bio) { bio.refresh = refresh; bio.email = email; qpBioSet(bio); return; }   // ya activado: solo actualiza la sesión guardada
-  try { if (localStorage.getItem('qp_bio_no') === '1') return; } catch(e) {}
-  if (!(await qpBioDisponible())) return;
+  if (bio && bio.cred) { bio.refresh = refresh; bio.email = email; qpBioSet(bio); if (manual && window.qpToast) qpToast('Face ID ya está activado en este dispositivo.'); return; }   // ya activado: solo actualiza la sesión guardada
+  if (!manual) { try { if (localStorage.getItem('qp_bio_no') === '1') return; } catch(e) {} }
+  if (!qpBioSoportado() && !window.PublicKeyCredential) { if (manual && window.qpToast) qpToast('Este navegador no permite Face ID. Abrí la app desde Safari.'); return; }
+  if (!refresh) { if (manual && window.qpToast) qpToast('Cerrá sesión y volvé a entrar con tu contraseña para activar Face ID.'); return; }
   var ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100002;display:flex;align-items:center;justify-content:center;padding:16px';
   ov.innerHTML = '<div style="background:#fff;border-radius:16px;padding:22px;width:min(360px,100%);font-family:inherit;box-shadow:0 20px 50px rgba(15,23,42,.3)"><div style="font-size:17px;font-weight:700;color:#1a2e4a;margin-bottom:8px">&#128274; Entrar con Face ID</div><div style="font-size:14px;color:#475569;line-height:1.5;margin-bottom:16px">Activalo en este dispositivo y la próxima vez entrás con Face ID, sin usuario ni contraseña.</div><button id="qpbio-si" style="width:100%;padding:13px;background:#0B9EDA;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;margin-bottom:8px">Activar Face ID</button><button id="qpbio-no" style="width:100%;padding:11px;background:#fff;color:#64748b;border:1px solid #CBD5E1;border-radius:10px;font-size:14px;margin-bottom:6px">Ahora no</button><button id="qpbio-nunca" style="width:100%;padding:8px;background:none;color:#94a3b8;border:none;font-size:12px">No preguntar más en este dispositivo</button></div>';
   document.body.appendChild(ov);
@@ -259,6 +260,10 @@ async function qpBioOfrecer(email, refresh) {
   };
   document.getElementById('qpbio-no').onclick = function(){ ov.remove(); };
   document.getElementById('qpbio-nunca').onclick = function(){ try { localStorage.setItem('qp_bio_no','1'); } catch(e) {} ov.remove(); };
+}
+function qpBioManual() {
+  var u = window._currentUser || (typeof _currentUser !== 'undefined' ? _currentUser : null) || {};
+  qpBioOfrecer(u.email || '', _refreshToken, true);
 }
 function qpSalir() {
   var tok = _authToken;
@@ -327,6 +332,7 @@ async function doLogin() {
           if (btnP) btnP.style.display = (esSuperAdmin2 || esPartner2) ? '' : 'none';
           document.body.classList.remove('qp-loading');
         };
+        setTimeout(function(){ try { var u = _currentUser || {}; if (_refreshToken && !qpBioGet()) qpBioOfrecer(u.email || '', _refreshToken); } catch(e) {} }, 2500);
         return; // sesion valida, app.js toma el control
       }
       // Sesion expirada — limpiar
@@ -358,6 +364,7 @@ async function doLogin() {
       <button class="nb" id="nb-salud" onclick="go('salud')">Salud &#x2665;</button>
       <button class="nb" id="nb-gastos" onclick="go('gastos')">Finanzas</button>
       <button class="nb" id="nb-partners" onclick="go('partners')" style="display:none">Partners</button>
+      <button class="nb" id="nb-bio" onclick="qpBioManual()">Face ID</button>
       <button class="nb" id="nb-salir" onclick="qpSalir()" style="color:#A32D2D">Salir</button>
     </nav>
   </div>
