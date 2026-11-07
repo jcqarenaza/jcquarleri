@@ -1517,11 +1517,11 @@ function cargarMetricasSis(s, row) {
   var nombreL = (s.nombre||''). toLowerCase();
   var esPiamonte = nombreL.indexOf('piamonte') >= 0;
     (esPiamonte && s.supabase_url && s.supabase_key
-      // Piamonte: las metricas se piden a la funcion panel-qp del Piamonte con el login del Panel (la anon key ya no alcanza)
-      ? fetch(s.supabase_url.replace(/\/$/, '') + '/functions/v1/panel-qp', {
+      // Piamonte: comprobantes tiene RLS solo para authenticated; se lee por RPC agregada (get_metricas_panel) con la anon key
+      ? fetch(s.supabase_url.replace(/\/$/, '') + '/rest/v1/rpc/get_metricas_panel', {
           method: 'POST',
-          headers: { Authorization: 'Bearer ' + getAuthKey(), 'Content-Type': 'application/json' },
-          body: JSON.stringify({ accion: 'metricas' })
+          headers: { apikey: s.supabase_key, Authorization: 'Bearer ' + s.supabase_key, 'Content-Type': 'application/json' },
+          body: '{}'
         }).then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
       : fetch('https://tviiikkdskucmgcmtswu.supabase.co/functions/v1/metricas-sistema', {
     method: 'POST',
@@ -3344,6 +3344,15 @@ function vFinanzas() {
     var mesesPF=R.mesesPF||[], gastosPF=R.gastosPF||[], ingresosPF=R.ingresosPF||[], juanPF=R.juanPF||[], daianaPF=R.daianaPF||[], deudasPF=R.deudasPF||[], presupuestoPF=R.presupuestoPF||[];
     var entregasPF=R.entregasPF||[];
     gastosPF.forEach(function(g){ g._entregas = entregasPF.filter(function(e){ return e.gasto_id===g.id; }); });
+    // La categoría "Servicios" pasó a llamarse "Servicios esenciales" (los datos viejos se leen con el nombre nuevo)
+    // Servicios -> Servicios esenciales | Supermercado -> Alimentos | Transporte -> Vehículos
+    var CAT_RENOMBRADAS_PF = {'Servicios':'Servicios esenciales','Supermercado':'Alimentos','Transporte':'Vehículos'};
+    gastosPF.forEach(function(g){ if (CAT_RENOMBRADAS_PF[g.categoria]) g.categoria = CAT_RENOMBRADAS_PF[g.categoria]; });
+    Object.keys(CAT_RENOMBRADAS_PF).forEach(function(viejo){
+      var nuevo = CAT_RENOMBRADAS_PF[viejo];
+      if (presupuestoPF.some(function(p){ return p.categoria===nuevo; })) presupuestoPF = presupuestoPF.filter(function(p){ return p.categoria!==viejo; });
+    });
+    presupuestoPF.forEach(function(p){ if (CAT_RENOMBRADAS_PF[p.categoria]) p.categoria = CAT_RENOMBRADAS_PF[p.categoria]; });
     // Entregas parciales sobre un gasto PF (en ARS, contra la billetera personal del gasto)
     // Las entregas sin moneda (historicas) son ARS; las de dolares llevan moneda:'USD'
     function entregadoPF(g) { return (g._entregas||[]).filter(function(e){ return (e.moneda||'ARS')!=='USD'; }).reduce(function(s,e){ return s+Number(e.monto||0); }, 0); }
@@ -4285,14 +4294,17 @@ function vFinanzas() {
       }
     }
 
+    var _gruposAbiertosPF = {};
     var GASTO_GRUPOS_PF = [
       {nombre:'💳 Tarjetas', match:function(g){ return g.categoria==='Tarjetas'; }},
       {nombre:'🏦 Creditos', match:function(g){ return g.categoria==='Créditos'; }},
-      {nombre:'👶 Pedrito', match:function(g){ return g.categoria==='Pedrito' || g.categoria==='Alimentos'; }},
-      {nombre:'🔌 Servicios', match:function(g){ return g.categoria==='Servicios'; }},
-      {nombre:'🚗 Auto y Transporte', match:function(g){ return g.categoria==='Transporte'; }},
+      {nombre:'👶 Pedrito', match:function(g){ return g.categoria==='Pedrito'; }},
+      {nombre:'🔌 Servicios esenciales', match:function(g){ return g.categoria==='Servicios esenciales'; }},
+      {nombre:'🛒 Alimentos', match:function(g){ return g.categoria==='Alimentos'; }},
       {nombre:'💊 Salud', match:function(g){ return g.categoria==='Salud'; }},
+      {nombre:'🚗 Vehículos', match:function(g){ return g.categoria==='Vehículos'; }},
       {nombre:'🎭 Ocio', match:function(g){ return g.categoria==='Ocio'; }},
+      {nombre:'🛍️ No esenciales', match:function(g){ return g.categoria==='No esenciales'; }},
       {nombre:'📦 Otros', match:function(){ return true; }}
     ];
 
@@ -4708,8 +4720,8 @@ function vFinanzas() {
       }));
     }
 
-    var PF_CAT_ICON = {'Créditos':'💳','Tarjetas':'💰','Personal':'👤','Servicios':'🔌','Educación':'📚','Supermercado':'🛒','Transporte':'🚗','Ocio':'🎭','Salud':'💊','Ropa':'👗','Varios':'📦','Ajuste':'⚖️'};
-    var PF_BUDGET_CATS = ['Supermercado','Transporte','Ocio','Salud','Ropa','Servicios','Educación','Tarjetas','Varios'];
+    var PF_CAT_ICON = {'Créditos':'💳','Tarjetas':'💰','Personal':'👤','Servicios esenciales':'🔌','No esenciales':'🛍️','Alimentos':'🛒','Vehículos':'🚗','Educación':'📚','Supermercado':'🛒','Transporte':'🚗','Ocio':'🎭','Salud':'💊','Ropa':'👗','Varios':'📦','Ajuste':'⚖️'};
+    var PF_BUDGET_CATS = ['Alimentos','Salud','Vehículos','Servicios esenciales','No esenciales','Ocio','Ropa','Educación','Tarjetas','Varios'];
     // GASTO_GRUPOS_PF movido arriba
     // Total (ARS) de un modulo en un mes dado, asignando cada gasto al PRIMER grupo que matchee (igual que al listar)
     function totalesModulosPF(mesId) {
@@ -5075,16 +5087,35 @@ function vFinanzas() {
         var subtotalUSD = deEsteGrupo.reduce(function(s,g){ return s+Number(g.monto_usd||0); }, 0);
         var negAls = deEsteGrupo.reduce(function(s,g){ return s+Number(g.monto_negocio||0); }, 0);
         var negUsd = deEsteGrupo.reduce(function(s,g){ return s+Number(g.monto_usd_negocio||0); }, 0);
-        var ghead = el('div',{style:'display:flex;justify-content:space-between;align-items:center;margin:18px 0 8px'});
-        ghead.appendChild(el('div',{style:'font-size:13px;font-weight:600;color:#334155'}, grupo.nombre + ' (' + deEsteGrupo.length + ')'));
-        var ghr = el('div',{style:'font-size:13px;font-weight:600;color:#64748B'}, fmt(subtotal) + (subtotalUSD>0?' + '+fmtMon(subtotalUSD,'USD'):''));
+        // Cada grupo arranca contraído: muestra cuánto va pagado y cuánto falta; al tocarlo se abre el detalle
+        var pagadoGrp = 0;
+        deEsteGrupo.forEach(function(g){ var m_ = Number(g.monto||0); pagadoGrp += g.pagado ? m_ : Math.min(m_, entregadoPF(g)); });
+        var pendienteGrp = Math.max(0, subtotal - pagadoGrp);
+        var abierto = !!_gruposAbiertosPF[grupo.nombre];
+        var ghead = el('div',{style:'display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:14px 0 8px;padding:12px 14px;background:#fff;border:1px solid #E2E8F0;border-radius:12px;cursor:pointer;user-select:none'});
+        var chev = el('span',{style:'display:inline-block;width:14px;color:#94A3B8;font-size:12px'}, abierto ? '▼' : '▶');
+        var gtit = el('div',{style:'font-size:13px;font-weight:600;color:#334155;flex:1;min-width:140px'});
+        gtit.appendChild(chev); gtit.appendChild(document.createTextNode(' ' + grupo.nombre + ' (' + deEsteGrupo.length + ')'));
+        ghead.appendChild(gtit);
+        var ghr = el('div',{style:'display:flex;gap:14px;align-items:baseline;flex-wrap:wrap;font-size:12px;font-weight:600'});
+        ghr.appendChild(el('span',{style:'color:#3D8A32'}, 'Pagado ' + fmt(Math.round(pagadoGrp))));
+        ghr.appendChild(el('span',{style:'color:'+(pendienteGrp>0?'#A32D2D':'#94A3B8')}, 'Sin pagar ' + fmt(Math.round(pendienteGrp))));
+        ghr.appendChild(el('span',{style:'color:#64748B'}, 'Total ' + fmt(subtotal) + (subtotalUSD>0?' + '+fmtMon(subtotalUSD,'USD'):'')));
         ghead.appendChild(ghr);
         content.appendChild(ghead);
+        var gcuerpo = el('div',{style:abierto ? '' : 'display:none'});
+        ghead.onclick = function(){
+          var ab = gcuerpo.style.display === 'none';
+          gcuerpo.style.display = ab ? '' : 'none';
+          chev.textContent = ab ? '▼' : '▶';
+          _gruposAbiertosPF[grupo.nombre] = ab;
+        };
+        content.appendChild(gcuerpo);
         if (negAls>0 || negUsd>0) {
-          content.appendChild(el('div',{style:'font-size:11px;color:#854F0B;margin:-4px 0 8px'},
+          gcuerpo.appendChild(el('div',{style:'font-size:11px;color:#854F0B;margin:-4px 0 8px'},
             '🏢 Ademas, '+fmt(negAls)+(negUsd>0?' + '+fmtMon(negUsd,'USD'):'')+' de plata del negocio (no es tuyo, ya esta afuera de tu balance personal).'));
         }
-        content.appendChild(tablaGastosPF(deEsteGrupo));
+        gcuerpo.appendChild(tablaGastosPF(deEsteGrupo));
       });
     }
 
@@ -5745,8 +5776,8 @@ function vFinanzas() {
 
     // ---- GASTO RAPIDO ----
     var TIPOS_RAPIDO_PF = [
-      {k:'Combustible', cat:'Transporte', ic:'⛽'},
-      {k:'Súper / Despensa', cat:'Supermercado', ic:'🛒'},
+      {k:'Combustible', cat:'Vehículos', ic:'⛽'},
+      {k:'Súper / Despensa', cat:'Alimentos', ic:'🛒'},
       {k:'Farmacia', cat:'Salud', ic:'💊'},
       {k:'Salidas', cat:'Ocio', ic:'🎭'},
       {k:'Otro', cat:'Varios', ic:'🧾'}
@@ -6911,7 +6942,7 @@ function vFinanzas() {
     // ---- PEDRITO TAB ----
     function renderPedritoPF() {
       var hoy2 = new Date();
-      var esPedrito = function(g) { return g.categoria==='Pedrito' || g.categoria==='Alimentos'; };
+      var esPedrito = function(g) { return g.categoria==='Pedrito'; };
       var gastosPedrito = gastosPF.filter(esPedrito);
       var mesesUnicos = [];
       gastosPedrito.forEach(function(g) { if (g.mes_id && mesesUnicos.indexOf(g.mes_id)<0) mesesUnicos.push(g.mes_id); });
@@ -7428,12 +7459,10 @@ function mGestionFasesEstructura(s) {
 }
 
 function mFasesElPiamonte() {
-  fetch(PIAMONTE_URL + '/functions/v1/panel-qp', {
-    method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + getAuthKey(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ accion: 'fase_get' })
-  }).then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function(data) {
-    var faseActual = (data && data.fase_habilitada) ? Number(data.fase_habilitada) : 1;
+  fetch(PIAMONTE_URL + '/rest/v1/config_sistema?select=fase_habilitada&id=eq.1', {
+    headers: { 'apikey': PIAMONTE_KEY, 'Authorization': 'Bearer ' + PIAMONTE_KEY }
+  }).then(function(r){ return r.json(); }).then(function(data) {
+    var faseActual = (data && data[0]) ? Number(data[0].fase_habilitada) : 1;
     renderModalFases(faseActual);
   }).catch(function(e) {
     alert('Error al leer configuracion: ' + e.message);
@@ -7497,10 +7526,13 @@ function renderModalFases(faseActual) {
           btnU.onclick = function() {
             if (!confirm('Confirmas desbloquear ' + lbl + ' para El Piamonte?\n\nEsto habilitara los modulos inmediatamente en el sistema del cliente.')) return;
             btnU.textContent = 'Desbloqueando...'; btnU.disabled = true;
-            fetch(PIAMONTE_URL + '/functions/v1/panel-qp', {
-              method: 'POST',
-              headers: { 'Authorization': 'Bearer ' + getAuthKey(), 'Content-Type': 'application/json' },
-              body: JSON.stringify({ accion: 'fase_set', fase: num })
+            fetch(PIAMONTE_URL + '/rest/v1/config_sistema?id=eq.1', {
+              method: 'PATCH',
+              headers: {
+                'apikey': PIAMONTE_KEY, 'Authorization': 'Bearer ' + PIAMONTE_KEY,
+                'Content-Type': 'application/json', 'Prefer': 'return=minimal'
+              },
+              body: JSON.stringify({ fase_habilitada: num })
             }).then(function(r) {
               if (!r.ok) throw new Error('HTTP ' + r.status);
               closeM();
