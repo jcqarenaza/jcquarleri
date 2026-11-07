@@ -4783,7 +4783,21 @@ function vFinanzas() {
       if (ultimosMesesEv.length > 1) {
         var totalesPorMes = ultimosMesesEv.map(function(mm){ return {mes:mm, tot:totalesModulosPF(mm.id)}; });
         var evCard = el('div',{class:'card',style:'padding:16px;margin-bottom:14px'});
-        evCard.appendChild(el('div',{class:'st',style:'margin-bottom:12px'},'Evolucion por modulo (ultimos '+ultimosMesesEv.length+' meses) — USD convertidos a ARS'));
+        // Contraída por defecto: se abre tocando el título
+        var evAbierta = !!_finUIState.evolucionAbierta;
+        var evHead = el('div',{class:'st',style:'cursor:pointer;user-select:none;display:flex;align-items:center;gap:8px'});
+        var evChev = el('span',{style:'display:inline-block;width:14px;color:#94A3B8;font-size:12px'}, evAbierta ? '▼' : '▶');
+        evHead.appendChild(evChev);
+        evHead.appendChild(document.createTextNode('Evolucion por modulo (ultimos '+ultimosMesesEv.length+' meses) — USD convertidos a ARS'));
+        var evBody = el('div',{style:'margin-top:12px;'+(evAbierta?'':'display:none')});
+        evHead.onclick = function(){
+          var ab = evBody.style.display === 'none';
+          evBody.style.display = ab ? '' : 'none';
+          evChev.textContent = ab ? '▼' : '▶';
+          _finUIState.evolucionAbierta = ab;
+        };
+        evCard.appendChild(evHead);
+        evCard.appendChild(evBody);
         GASTO_GRUPOS_PF.forEach(function(grupo) {
           var serie = totalesPorMes.map(function(x){ return x.tot[grupo.nombre]||0; });
           if (!serie.some(function(v){ return v>0; })) return; // sin datos en ningun mes, no mostrar fila
@@ -4823,7 +4837,7 @@ function vFinanzas() {
             lblRow.appendChild(el('div',{style:'flex:1;text-align:center;font-size:9px;color:#94a3b8'}, MESES_CORTOS[mm.month-1]));
           });
           row.appendChild(lblRow);
-          evCard.appendChild(row);
+          evBody.appendChild(row);
         });
         content.appendChild(evCard);
       }
@@ -4883,6 +4897,12 @@ function vFinanzas() {
         p.then(function(){
           Object.assign(d, body, {mes_id:m.id});
           if (!daianaPF.includes(d)) daianaPF.push(d);
+          // Si ya está cargado el gasto "Daiana Soledad" del mes y todavía no se pagó, se actualiza con el sueldo nuevo
+          var gDai = gMes.find(function(g){ return g.concepto==='Daiana Soledad'; });
+          var nuevoSueldo = getDaianaSueldoPF(d);
+          if (gDai && !gDai.pagado && nuevoSueldo > 0 && Number(gDai.monto) !== nuevoSueldo) {
+            return dbUpd('panel_pf_gastos', gDai.id, {monto:nuevoSueldo}).then(function(){ gDai.monto = nuevoSueldo; renderAll(); });
+          }
           renderAll();
         });
       };
@@ -4891,7 +4911,7 @@ function vFinanzas() {
       btnApply.onclick = function() {
         var sueldoActual = pintarSueldoDaiPreview();
         var existente = gMes.find(function(g){ return g.concepto==='Daiana Soledad'; });
-        var body = {mes_id:m.id, concepto:'Daiana Soledad', monto:sueldoActual, categoria:'Personal', tipo:'fijos', fecha:m.year+'-'+String(m.month).padStart(2,'0')+'-01', pagado:false};
+        var body = {mes_id:m.id, concepto:'Daiana Soledad', monto:sueldoActual, categoria:'Pedrito', tipo:'fijos', fecha:m.year+'-'+String(m.month).padStart(2,'0')+'-01', pagado:false};
         var p = existente ? dbUpd('panel_pf_gastos', existente.id, body) : dbIns('panel_pf_gastos', body);
         p.then(function(r){
           if (existente) Object.assign(existente, body);
@@ -4900,7 +4920,8 @@ function vFinanzas() {
         });
       };
       dCard.appendChild(btnApply);
-      content.appendChild(dCard);
+      // La card del sueldo de Daiana ya no va arriba: se muestra dentro del grupo Pedrito (contraído)
+      dCard.style.marginBottom = '12px';
 
       var sh=el('div',{class:'sh'});
       sh.appendChild(el('span',{class:'st'},'Gastos del mes ('+gMes.length+')'));
@@ -5083,7 +5104,8 @@ function vFinanzas() {
       GASTO_GRUPOS_PF.forEach(function(grupo) {
         var deEsteGrupo = restantes.filter(grupo.match);
         restantes = restantes.filter(function(g){ return !grupo.match(g); });
-        if (!deEsteGrupo.length) return;
+        var esGrupoPedrito = grupo.nombre.indexOf('Pedrito') >= 0;
+        if (!deEsteGrupo.length && !esGrupoPedrito) return;
         var subtotal = deEsteGrupo.reduce(function(s,g){ return s+Number(g.monto||0); }, 0);
         var subtotalUSD = deEsteGrupo.reduce(function(s,g){ return s+Number(g.monto_usd||0); }, 0);
         var negAls = deEsteGrupo.reduce(function(s,g){ return s+Number(g.monto_negocio||0); }, 0);
@@ -5099,6 +5121,7 @@ function vFinanzas() {
         gtit.appendChild(chev); gtit.appendChild(document.createTextNode(' ' + grupo.nombre + ' (' + deEsteGrupo.length + ')'));
         ghead.appendChild(gtit);
         var ghr = el('div',{style:'display:flex;gap:14px;align-items:baseline;flex-wrap:wrap;font-size:12px;font-weight:600'});
+        if (esGrupoPedrito && sueldoDai > 0) ghr.appendChild(el('span',{style:'color:#0B9EDA'}, 'Sueldo Daiana ' + fmt(sueldoDai)));
         ghr.appendChild(el('span',{style:'color:#3D8A32'}, 'Pagado ' + fmt(Math.round(pagadoGrp))));
         ghr.appendChild(el('span',{style:'color:'+(pendienteGrp>0?'#A32D2D':'#94A3B8')}, 'Sin pagar ' + fmt(Math.round(pendienteGrp))));
         ghr.appendChild(el('span',{style:'color:#64748B'}, 'Total ' + fmt(subtotal) + (subtotalUSD>0?' + '+fmtMon(subtotalUSD,'USD'):'')));
@@ -5116,7 +5139,8 @@ function vFinanzas() {
           gcuerpo.appendChild(el('div',{style:'font-size:11px;color:#854F0B;margin:-4px 0 8px'},
             '🏢 Ademas, '+fmt(negAls)+(negUsd>0?' + '+fmtMon(negUsd,'USD'):'')+' de plata del negocio (no es tuyo, ya esta afuera de tu balance personal).'));
         }
-        gcuerpo.appendChild(tablaGastosPF(deEsteGrupo));
+        if (esGrupoPedrito) gcuerpo.appendChild(dCard);
+        if (deEsteGrupo.length) gcuerpo.appendChild(tablaGastosPF(deEsteGrupo));
       });
     }
 
