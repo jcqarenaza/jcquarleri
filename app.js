@@ -4303,6 +4303,7 @@ function vFinanzas() {
       {nombre:'🛒 Alimentos', match:function(g){ return g.categoria==='Alimentos'; }},
       {nombre:'💊 Salud', match:function(g){ return g.categoria==='Salud'; }},
       {nombre:'🚗 Vehículos', match:function(g){ return g.categoria==='Vehículos'; }},
+      {nombre:'🏠 Hogar (mantenimiento e impuestos)', match:function(g){ return g.categoria==='Hogar'; }},
       {nombre:'🎭 Ocio', match:function(g){ return g.categoria==='Ocio'; }},
       {nombre:'🛍️ No esenciales', match:function(g){ return g.categoria==='No esenciales'; }},
       {nombre:'📦 Otros', match:function(){ return true; }}
@@ -4720,8 +4721,8 @@ function vFinanzas() {
       }));
     }
 
-    var PF_CAT_ICON = {'Créditos':'💳','Tarjetas':'💰','Personal':'👤','Servicios esenciales':'🔌','No esenciales':'🛍️','Alimentos':'🛒','Vehículos':'🚗','Educación':'📚','Supermercado':'🛒','Transporte':'🚗','Ocio':'🎭','Salud':'💊','Ropa':'👗','Varios':'📦','Ajuste':'⚖️'};
-    var PF_BUDGET_CATS = ['Alimentos','Salud','Vehículos','Servicios esenciales','No esenciales','Ocio','Ropa','Educación','Tarjetas','Varios'];
+    var PF_CAT_ICON = {'Créditos':'💳','Tarjetas':'💰','Personal':'👤','Servicios esenciales':'🔌','No esenciales':'🛍️','Alimentos':'🛒','Vehículos':'🚗','Hogar':'🏠','Educación':'📚','Supermercado':'🛒','Transporte':'🚗','Ocio':'🎭','Salud':'💊','Ropa':'👗','Varios':'📦','Ajuste':'⚖️'};
+    var PF_BUDGET_CATS = ['Alimentos','Salud','Vehículos','Hogar','Servicios esenciales','No esenciales','Ocio','Ropa','Educación','Tarjetas','Varios'];
     // GASTO_GRUPOS_PF movido arriba
     // Total (ARS) de un modulo en un mes dado, asignando cada gasto al PRIMER grupo que matchee (igual que al listar)
     function totalesModulosPF(mesId) {
