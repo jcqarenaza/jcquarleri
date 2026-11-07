@@ -4871,8 +4871,14 @@ function vFinanzas() {
       // Card Daiana
       var d = daianaPF.find(function(x){ return x.mes_id===m.id; }) || {};
       var sueldoDai = getDaianaSueldoPF(d);
-      var dCard = el('div',{class:'card',style:'padding:16px;margin-bottom:14px'});
-      dCard.appendChild(el('div',{class:'st',style:'margin-bottom:10px'},'Sueldo Daiana (horas × precio/hora)'));
+      var dCard = el('div',{class:'card',style:'padding:14px 16px;margin-bottom:14px'});
+      // Valor guardado: horas × precio; si no hay, el monto del gasto "Daiana Soledad" del mes
+      var gDaiMes = gMes.find(function(g){ return g.concepto==='Daiana Soledad'; });
+      var sueldoMostrar = sueldoDai > 0 ? sueldoDai : (gDaiMes ? Number(gDaiMes.monto||0) : 0);
+      var dAbierta = !!_finUIState.daianaAbierta;
+      var dBody = dCard;   // la planilla es la propia card: se muestra al tocar la fila "Daiana Soledad"
+      dCard.style.display = dAbierta ? '' : 'none';
+      dCard.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em'},'Sueldo Daiana — horas × precio/hora'));
       var dRow = el('div',{class:'r2'});
       var horasInp = mkInput('dpf-horas','number',d.horas||'');
       var precioInp = mkInput('dpf-precio','number',d.precio_hora||'');
@@ -4887,9 +4893,9 @@ function vFinanzas() {
       }
       horasInp.oninput = pintarSueldoDaiPreview; precioInp.oninput = pintarSueldoDaiPreview;
       dRow.appendChild(mkFg('Horas', horasInp)); dRow.appendChild(mkFg('Precio/hora ($)', precioInp));
-      dCard.appendChild(dRow);
+      dBody.appendChild(dRow);
       pintarSueldoDaiPreview();
-      dCard.appendChild(dSueldoPreview);
+      dBody.appendChild(dSueldoPreview);
       var btnGuardarDai = el('button',{class:'btn btnsm',style:'margin-top:8px'},'Guardar horas/precio');
       btnGuardarDai.onclick = function() {
         var body = {horas:Number(horasInp.value)||null, precio_hora:Number(precioInp.value)||null};
@@ -4906,7 +4912,7 @@ function vFinanzas() {
           renderAll();
         });
       };
-      dCard.appendChild(btnGuardarDai);
+      dBody.appendChild(btnGuardarDai);
       var btnApply = el('button',{class:'btn btns',style:'margin-top:8px;margin-left:6px'},'Aplicar como gasto del mes');
       btnApply.onclick = function() {
         var sueldoActual = pintarSueldoDaiPreview();
@@ -4919,7 +4925,7 @@ function vFinanzas() {
           renderAll();
         });
       };
-      dCard.appendChild(btnApply);
+      dBody.appendChild(btnApply);
       // La card del sueldo de Daiana ya no va arriba: se muestra dentro del grupo Pedrito (contraído)
       dCard.style.marginBottom = '12px';
 
@@ -4951,10 +4957,26 @@ function vFinanzas() {
           }
           return Number(b.monto)-Number(a.monto);
         });
+        var detalleDai = null;
         listaOrd.forEach(function(g){
           var tr=el('tr',{});
           var tieneNegocio = Number(g.monto_negocio)>0 || Number(g.monto_usd_negocio)>0;
-          tr.appendChild(el('td',{style:'font-weight:500'},(PF_CAT_ICON[g.categoria]||'')+' '+g.concepto+(tieneNegocio?' 🏢':'')));
+          var esFilaDaiana = (g === gDaiMes);
+          var tdConc = el('td',{style:'font-weight:500'},(esFilaDaiana ? (dCard.style.display==='none' ? '▶ ' : '▼ ') : '')+(PF_CAT_ICON[g.categoria]||'')+' '+g.concepto+(tieneNegocio?' 🏢':''));
+          if (esFilaDaiana) {
+            tdConc.style.cursor = 'pointer';
+            tdConc.title = 'Tocá para ver / editar horas y precio';
+            tr.style.cursor = 'pointer';
+            tr.onclick = function(ev){
+              if (ev.target.closest('button,label,input')) return;
+              var ab = dCard.style.display === 'none';
+              dCard.style.display = ab ? '' : 'none';
+              detalleDai.style.display = ab ? '' : 'none';
+              tdConc.firstChild.textContent = tdConc.firstChild.textContent.replace(/^[▶▼]/, ab ? '▼' : '▶');
+              _finUIState.daianaAbierta = ab;
+            };
+          }
+          tr.appendChild(tdConc);
           tr.appendChild(el('td',{},[chipClass(g.categoria,'cgr')]));
           tr.appendChild(el('td',{style:'font-size:11px;color:#94a3b8'},g.tipo));
           var tdMonto = el('td',{style:'font-weight:500;color:#A32D2D'});
@@ -5009,6 +5031,7 @@ function vFinanzas() {
           accPF.forEach(function(b,i){ if(i>0) tdAccPF.appendChild(document.createTextNode(' ')); tdAccPF.appendChild(b); });
           tr.appendChild(tdAccPF);
           tb.appendChild(tr);
+          if (esFilaDaiana) { detalleDai = el('tr',{style:dCard.style.display==='none'?'display:none':''}); var tdDet = el('td',{colspan:'7',style:'background:#F8FAFC;padding:10px 14px'}); dCard.style.marginBottom = '0'; dCard.style.boxShadow = 'none'; dCard.style.border = 'none'; dCard.style.background = 'transparent'; dCard.style.padding = '0'; tdDet.appendChild(dCard); detalleDai.appendChild(tdDet); tb.appendChild(detalleDai); }
         });
         tbl.appendChild(tb); card.appendChild(tbl);
         return card;
@@ -5121,7 +5144,7 @@ function vFinanzas() {
         gtit.appendChild(chev); gtit.appendChild(document.createTextNode(' ' + grupo.nombre + ' (' + deEsteGrupo.length + ')'));
         ghead.appendChild(gtit);
         var ghr = el('div',{style:'display:flex;gap:14px;align-items:baseline;flex-wrap:wrap;font-size:12px;font-weight:600'});
-        if (esGrupoPedrito && sueldoDai > 0) ghr.appendChild(el('span',{style:'color:#0B9EDA'}, 'Sueldo Daiana ' + fmt(sueldoDai)));
+        if (esGrupoPedrito && sueldoMostrar > 0) ghr.appendChild(el('span',{style:'color:#0B9EDA'}, 'Sueldo Daiana ' + fmt(sueldoMostrar)));
         ghr.appendChild(el('span',{style:'color:#3D8A32'}, 'Pagado ' + fmt(Math.round(pagadoGrp))));
         ghr.appendChild(el('span',{style:'color:'+(pendienteGrp>0?'#A32D2D':'#94A3B8')}, 'Sin pagar ' + fmt(Math.round(pendienteGrp))));
         ghr.appendChild(el('span',{style:'color:#64748B'}, 'Total ' + fmt(subtotal) + (subtotalUSD>0?' + '+fmtMon(subtotalUSD,'USD'):'')));
@@ -5139,7 +5162,7 @@ function vFinanzas() {
           gcuerpo.appendChild(el('div',{style:'font-size:11px;color:#854F0B;margin:-4px 0 8px'},
             '🏢 Ademas, '+fmt(negAls)+(negUsd>0?' + '+fmtMon(negUsd,'USD'):'')+' de plata del negocio (no es tuyo, ya esta afuera de tu balance personal).'));
         }
-        if (esGrupoPedrito) gcuerpo.appendChild(dCard);
+        if (esGrupoPedrito && !gDaiMes) { dCard.style.display = ''; gcuerpo.appendChild(dCard); }   // sin gasto de Daiana este mes: la planilla queda a la vista
         if (deEsteGrupo.length) gcuerpo.appendChild(tablaGastosPF(deEsteGrupo));
       });
     }
