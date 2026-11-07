@@ -5084,7 +5084,17 @@ function vFinanzas() {
           var inicial = hayARS ? 'ARS' : 'USD';
           if (hayARS && hayUSD) {
             var selMon = mkSelect('epf-mon', [['ARS','Pesos (ARS)'],['USD','Dolares (USD)']], 'ARS');
-            selMon.onchange = function(){ var m = document.getElementById('epf-monto'); if (m) m.value = saldoDe(this.value); };
+            selMon.onchange = function(){
+              var m = document.getElementById('epf-monto'); if (m) m.value = saldoDe(this.value);
+              // al cambiar la moneda de la entrega, la lista de cuentas muestra solo las de esa moneda
+              var cs = document.getElementById('epf-cuenta');
+              if (cs) {
+                var monN = this.value === 'USD' ? 'USD' : 'ARS';
+                var defN = monN==='USD' ? (cuentaUsdPF()||'') : cuentaDefaultIngresoPF();
+                var nuevo = selCuentaPF('epf-cuenta', defN, monN);
+                cs.innerHTML = nuevo.innerHTML; cs.value = nuevo.value;
+              }
+            };
             addFg(body, 'Moneda de la entrega', selMon);
           }
           mkRow2(body,
@@ -5092,7 +5102,7 @@ function vFinanzas() {
             mkFg('Fecha', mkInput('epf-fecha','date',new Date().toISOString().slice(0,10)))
           );
           addFg(body, 'Nota (opcional)', mkInput('epf-notas','text','','ej: primera entrega, efectivo'));
-          if (cuentasPF.length) addFg(body, '¿De qué cuenta sale?', selCuentaPF('epf-cuenta', (inicial==='USD' && !hayARS ? (cuentaUsdPF()||cuentaDefaultIngresoPF()) : cuentaDefaultIngresoPF())));
+          if (cuentasPF.length) addFg(body, '¿De qué cuenta sale?', selCuentaPF('epf-cuenta', (inicial==='USD' && !hayARS ? (cuentaUsdPF()||cuentaDefaultIngresoPF()) : cuentaDefaultIngresoPF()), inicial==='USD' ? 'USD' : 'ARS'));
         }, function(foot) {
           foot.appendChild(cancelBtn());
           var ok = el('button',{class:'btn btnp'},'Registrar entrega');
@@ -5418,7 +5428,7 @@ function vFinanzas() {
         }
         addFg(body, 'Mes (para que cuente como gasto de ese mes)', mkSelect('pgp-mes', mesesPF.map(function(mm){ return [mm.id, MESES[mm.month-1]+' '+mm.year]; }), mesSeleccionadoPF));
         addFg(body, 'Notas', mkInput('pgp-notas','text',''));
-        if (cuentasPF.length) addFg(body, '¿De qué cuenta sale? (solo si ya lo pagaste)', selCuentaPF('pgp-cuenta', esUSD ? (cuentaUsdPF() || cuentaDefaultIngresoPF()) : cuentaDefaultIngresoPF()));
+        if (cuentasPF.length) addFg(body, '¿De qué cuenta sale? (solo si ya lo pagaste)', selCuentaPF('pgp-cuenta', esUSD ? (cuentaUsdPF() || cuentaDefaultIngresoPF()) : cuentaDefaultIngresoPF(), esUSD ? 'USD' : 'ARS'));
       }, function(foot) {
         foot.appendChild(cancelBtn());
         var ok = el('button', {class:'btn btnp'}, 'Guardar');
@@ -6316,7 +6326,13 @@ function vFinanzas() {
       if (c.reservada) return c.nombre+' ('+inst+' '+mon+', reservada)';
       return inst+' · '+mon;
     }
-    function selCuentaPF(id, def) { return mkSelect(id, [['','(sin asignar)']].concat(cuentasPF.map(function(c){ return [c.id, etiqCtaPF(c)]; })), def||''); }
+    // mon ('USD' | 'ARS'): muestra solo las cuentas de esa moneda (un pago en dólares no ofrece cuentas en pesos y viceversa)
+    function cuentasPorMonPF(mon) { return mon ? cuentasPF.filter(function(c){ return (mon==='USD') === (c.moneda==='USD'); }) : cuentasPF; }
+    function selCuentaPF(id, def, mon) {
+      var lista = cuentasPorMonPF(mon);
+      if (def && !lista.some(function(c){ return c.id===def; })) def = '';
+      return mkSelect(id, [['','(sin asignar)']].concat(lista.map(function(c){ return [c.id, etiqCtaPF(c)]; })), def||'');
+    }
     function claveCtaPF(t) { return String(t||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim().slice(0,40); }
     function ultimaCuentaPF(concepto) { try { var mp = JSON.parse(localStorage.getItem('qp_ultima_cuenta')||'{}'); var id = mp[claveCtaPF(concepto)]; if (id && cuentasPF.some(function(c){ return c.id===id; })) return id; } catch(e) {} return ''; }
     function recordarCuentaPF(concepto, id) { try { var mp = JSON.parse(localStorage.getItem('qp_ultima_cuenta')||'{}'); mp[claveCtaPF(concepto)] = id||''; localStorage.setItem('qp_ultima_cuenta', JSON.stringify(mp)); } catch(e) {} }
@@ -6325,9 +6341,11 @@ function vFinanzas() {
     function cuentaCompraUsdPF() { var us = cuentasPF.filter(function(x){ return x.moneda==='USD' && !x.reservada && x.tipo!=='tarjeta'; }); var c = us.find(function(x){ return /naranja/i.test(instCtaPF(x)) && x.tipo!=='tarjeta'; }) || us[0]; return c ? c.id : ''; }
     // Marcar un gasto como pagado pidiendo la cuenta
     function mMarcarPagadoPF(g, onDone) {
-      var defId = (Number(g.prestamo_monto||0)>0 || (usdTotalPF(g)>0 && Number(g.monto||0)===0)) ? (cuentaUsdPF() || cuentaDefaultIngresoPF()) : cuentaDefaultIngresoPF();
+      var esUsdPago = Number(g.prestamo_monto||0)>0 || (usdTotalPF(g)>0 && Number(g.monto||0)===0);
+      var monPago = esUsdPago ? 'USD' : (usdTotalPF(g)>0 ? null : 'ARS');   // gasto mixto (pesos + USD): se ofrecen todas
+      var defId = esUsdPago ? (cuentaUsdPF() || cuentaDefaultIngresoPF()) : cuentaDefaultIngresoPF();
       openM(makeModal('Marcar pagado — '+(g.concepto||'gasto'), function(body) {
-        addFg(body, '¿De qué cuenta salió?', selCuentaPF('mpg-cuenta', defId));
+        addFg(body, '¿De qué cuenta salió?', selCuentaPF('mpg-cuenta', defId, monPago));
         body.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;line-height:1.4'},'El saldo de esa cuenta baja solo. Si pagaste desde una cuenta en dólares, descuenta los USD.'));
       }, function(foot) {
         foot.appendChild(cancelBtn());
@@ -7282,6 +7300,9 @@ function cargarCuentasGastoPF() {
     .then(function(cts){ return (cts||[]).filter(function(x){ return !x.reservada; }); });
 }
 function selCuentaGastoPF(cts, id, gasto) {
+  // un pago en dólares muestra solo cuentas en dólares, y uno en pesos solo cuentas en pesos
+  var _usd = gasto && gasto.moneda==='USD';
+  cts = cts.filter(function(c){ return (c.moneda==='USD') === _usd; });
   var opts = [['','(sin asignar)']].concat(cts.map(function(c){
     return [c.id, c.tipo==='tarjeta' ? '💳 '+c.nombre : (c.institucion||c.nombre)+' · '+(c.moneda==='USD'?'USD':'pesos')];
   }));
