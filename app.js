@@ -1894,6 +1894,171 @@ function filtrar(f) {
   });
 }
 
+// ===== Importador de resumenes de tarjeta (lee PDF en el navegador) =====
+var RTJ_MESES = {ene:1,feb:2,mar:3,abr:4,may:5,jun:6,jul:7,ago:8,sep:9,set:9,oct:10,nov:11,dic:12};
+var RTJ_DATE = '(\\d{2}[\\/.]\\d{2}[\\/.]\\d{2}|\\d{2}[- ][A-Za-z]{3}[- ]\\d{2})';
+var RTJ_MONEY_G = /(^|[^\d.,])(-?)\$?\s?(-?)((?:\d{1,3}(?:\.\d{3})+|\d{1,9}),\d{2})(?![\d%)])(-?)/g;
+function rtjFecha(s) {
+  if (!s) return null; s = String(s).trim();
+  var m = /^(\d{2})[\/.](\d{2})[\/.](\d{2})$/.exec(s);
+  if (m) return '20'+m[3]+'-'+m[2]+'-'+m[1];
+  m = /^(\d{2})[- ]([A-Za-z]{3})[- ](\d{2})$/.exec(s);
+  if (m && RTJ_MESES[m[2].toLowerCase()]) return '20'+m[3]+'-'+String(RTJ_MESES[m[2].toLowerCase()]).padStart(2,'0')+'-'+m[1];
+  return null;
+}
+function rtjNum(str) { return Number(str.replace(/\./g,'').replace(',','.')); }
+function rtjMoney(line) {
+  var out = [], m; RTJ_MONEY_G.lastIndex = 0;
+  while ((m = RTJ_MONEY_G.exec(line))) {
+    var neg = !!(m[2] || m[3] || m[5]);
+    out.push({v:(neg?-1:1)*rtjNum(m[4]), idx:m.index+m[1].length, len:m[0].length-m[1].length});
+  }
+  return out;
+}
+function rtjLimpiar(lines) {
+  return lines.map(function(l){ return String(l).replace(/\s+/g,' ').trim(); }).filter(function(l){ return l; });
+}
+function rtjMoneyDespues(lines, rx, maxL) {
+  for (var i=0;i<lines.length;i++) {
+    var m = rx.exec(lines[i]); if (!m) continue;
+    for (var j=i;j<Math.min(lines.length,i+(maxL||4));j++) {
+      var tail = j===i ? lines[j].slice(m.index+m[0].length) : lines[j];
+      var ms = rtjMoney(tail); if (ms.length) return ms[0].v;
+    }
+  }
+  return null;
+}
+function rtjCabecera(L) {
+  var h = {cierre:null, cierreAnt:null, vencimiento:null, total:null, minimo:null}, m, i;
+  var txt = L.join('\n');
+  // Banco Nacion Mastercard
+  if ((m = new RegExp('Estado de cuenta al\\s*:\\s*'+RTJ_DATE,'i').exec(txt))) h.cierre = rtjFecha(m[1]);
+  if ((m = new RegExp('Vencimiento actual\\s*:\\s*'+RTJ_DATE,'i').exec(txt))) h.vencimiento = rtjFecha(m[1]);
+  if ((m = new RegExp('Cierre Anterior\\s*:\\s*'+RTJ_DATE,'i').exec(txt))) h.cierreAnt = rtjFecha(m[1]);
+  if ((m = /Saldo actual:\s*\$?\s*([\d.]+,\d{2})/i.exec(txt))) h.total = rtjNum(m[1]);
+  if ((m = /Pago Minimo:\s*\$?\s*([\d.]+,\d{2})/i.exec(txt))) h.minimo = rtjNum(m[1]);
+  // Banco Nacion Visa
+  if (!h.cierre && (m = new RegExp('CIERRE ACTUAL:?\\s*'+RTJ_DATE,'i').exec(txt))) h.cierre = rtjFecha(m[1]);
+  if (!h.cierreAnt && (m = new RegExp('CIERRE ANTERIOR\\s+'+RTJ_DATE,'i').exec(txt))) h.cierreAnt = rtjFecha(m[1]);
+  if (!h.vencimiento) for (i=0;i<L.length;i++) {
+    m = new RegExp('^'+RTJ_DATE+'\\s+([\\d.]+,\\d{2})\\s+[\\d.]+,\\d{2}\\s+([\\d.]+,\\d{2})').exec(L[i]);
+    if (m) { h.vencimiento = rtjFecha(m[1]); if (h.total==null) h.total = rtjNum(m[2]); if (h.minimo==null) h.minimo = rtjNum(m[3]); break; }
+  }
+  if (!h.cierreAnt) for (i=0;i<L.length;i++) { m = new RegExp('^'+RTJ_DATE+'\\s+[\\d.]+,?\\d*\\s+'+RTJ_DATE+'$').exec(L[i]); if (m && /CIERRE ANTERIOR/i.test(L[i-1]||'') === false && h.cierre && rtjFecha(m[1]) < h.cierre && rtjFecha(m[2]) > h.cierre) { h.cierreAnt = rtjFecha(m[1]); break; } }
+  // Naranja X: "vence el 10/11/26", "resumen actual cerro el 27/10" (sin anio)
+  if (!h.vencimiento && (m = new RegExp('y vence el '+RTJ_DATE,'i').exec(txt))) h.vencimiento = rtjFecha(m[1]);
+  function sinAnio(dm) { var p = /^(\d{2})\/(\d{2})$/.exec(dm || ''); if (!p || !h.vencimiento) return null; var y = Number(h.vencimiento.slice(0,4)); if (Number(p[2]) > Number(h.vencimiento.slice(5,7)) + 1) y--; return y+'-'+p[2]+'-'+p[1]; }
+  if (!h.cierre && (m = /resumen actual cerr[oó] el (\d{2}\/\d{2})(?!\/)/i.exec(txt))) h.cierre = sinAnio(m[1]);
+  if (!h.cierreAnt && (m = /resumen anterior cerr[oó] el (\d{2}\/\d{2})(?!\/)/i.exec(txt))) h.cierreAnt = sinAnio(m[1]);
+  if (h.minimo==null && (m = /LA MENOR ENTREGA\s*\$?\s*([\d.]+,\d{2})/i.exec(txt))) h.minimo = rtjNum(m[1]);
+  // Santander Visa: 6 fechas del periodo
+  if (!h.cierre) {
+    var iP = L.findIndex(function(l){ return /^Per[ií]odo de consumos/i.test(l); }), fs = [];
+    if (iP >= 0) for (i=iP;i<Math.min(L.length,iP+30);i++) { var d = new RegExp('^'+RTJ_DATE+'$').exec(L[i]); if (d) fs.push(rtjFecha(d[1])); }
+    if (fs.length >= 4) { h.cierreAnt = fs[0]; h.cierre = fs[2]; h.vencimiento = fs[3]; }
+  }
+  if (h.total==null) h.total = rtjMoneyDespues(L, /Total a pagar/i, 4);
+  var usd = 0; L.forEach(function(l){ var u = /U\$S\s*([\d.]*\d,\d{2})/i.exec(l); if (u && l.length < 60 && !/L[ií]mite|Cuotas|En d[oó]lares:/i.test(l)) usd = Math.max(usd, rtjNum(u[1])); });
+  h.usd = usd;
+  if (h.minimo==null) h.minimo = rtjMoneyDespues(L, /M[ií]nimo a pagar/i, 4);
+  return h;
+}
+function rtjClase(desc, monto) {
+  var d = desc.toLowerCase();
+  if (monto < 0 || /^bon\./.test(d) || /bonif|devoluci/.test(d)) return 'bonificacion';
+  if (/\biva\b|i\.v\.a|sellos|percep|impuesto|ley \d|ingresos brutos|rg \d/.test(d)) return 'impuesto';
+  if (/^intereses|^inter[eé]s|punit|^int\./.test(d)) return 'interes';
+  if (/com\.|comision|comisi[oó]n|mantenimiento|renov/.test(d)) return 'comision';
+  return 'compra';
+}
+function rtjTitulo(s) {
+  return s.toLowerCase().replace(/(^|[\s*\/(-])([a-zñáéíóú])/g, function(_,a,b){ return a+b.toUpperCase(); });
+}
+var RTJ_SKIP = [/^Subtotal/i, /Total\s+(a pagar|consumos|consumido|titular)/i, /^Tarjeta\s+\d+\s+Total/i, /SALDO\s+(ANTERIOR|PENDIENTE|ACTUAL)/i, /^(\d{2}[\/.\- ][A-Za-z0-9]{2,3}[\/.\- ]\d{2}\s+)?SU PAGO/i, /^(\d{2}[\/.]\d{2}[\/.]\d{2}\s+)?Su pago/i, /Saldo anterior/i, /^COMPRAS DEL MES|^CUOTAS DEL MES/i, /^Impuestos, intereses y percepciones/i, /PAGO MINIMO|M[ií]nimo a pagar/i, /Copia fiel/i, /^<<<PAGE>>>/, /^Movimientos de/i, /^Visa cr[eé]dito terminada/i, /^Terminada en/i, /^de .* Quarleri/i, /^Fecha\b.*Descripci/i, /^FECHA COMPROBANTE/i, /^FECHA TARJETA CUPON/i, /^Otros( cargos)?:?$/i, /^cargos:?$/i, /^IVA Operaciones/i, /^Detalle de consumos/i, /^Consumos tarjeta/i, /^JUAN CRUZ QUARLERI, Titular/i, /^DETALLE (DEL MES|DE TRANSACCION)/i, /^_+$/, /^Tarjetas incluidas/i, /^Total consumido/i];
+var RTJ_STOP = /^(Total a pagar|SALDO ACTUAL|TOTAL TITULAR|T[eé]rminos y condiciones|Plan V:|Total\s*\$?\s*[\d.,]*$)/i;
+function rtjItems(L, h) {
+  var ini = L.findIndex(function(l){ return /^Movimientos de|^DETALLE DEL MES|^FECHA COMPROBANTE|DETALLE DE TRANSACCION|^FECHA TARJETA CUPON/i.test(l); });
+  var items = [];
+  // Mastercard BN: cargos que solo vienen en el resumen consolidado
+  if (ini > 0) L.slice(0, ini).forEach(function(l){
+    var m = /^(INTERESES DE FINANCIACION|IMPUESTO DE SELLOS|I\.V\.A\.? [\d,]+%)\s+([\d.]*\d,\d{2})/i.exec(l);
+    if (m) items.push({fecha:h.cierre, orig:h.cierre, post:true, desc:m[1].replace(/\s+[\d,]+%$/,'').replace(/^I\.V\.A\.?$/i,'IVA').trim(), monto:rtjNum(m[2])});
+  });
+  if (ini < 0) return items;
+  var cur = null, pend = '', post = false;
+  for (var i=ini+1;i<L.length;i++) {
+    var l = L[i];
+    if (RTJ_STOP.test(l) && !/^Subtotal/i.test(l)) { if (/^Total a pagar|^SALDO ACTUAL|^TOTAL TITULAR|^T[eé]rminos|^Plan V:|^Total\s*\$?\s*[\d.,]*$/i.test(l)) break; }
+    var rest = l, md = new RegExp('^'+RTJ_DATE+'\\s*(.*)$').exec(l);
+    if (md && rtjFecha(md[1])) { cur = rtjFecha(md[1]); rest = md[2]; }
+    if (/^Subtotal|^Tarjeta\s+\d+\s+Total|^Otros( cargos)?:?$|^cargos:?$|^IVA Operaciones/i.test(l)) { post = true; if (/^Otros|^cargos|^IVA Operaciones/i.test(l) && h.cierre) cur = h.cierre; }
+    if (RTJ_SKIP.some(function(rx){ return rx.test(l) || rx.test(rest); })) { pend = ''; continue; }
+    if (/^[\d]{5,8}\*?$/.test(rest) || /^\d[\d-]*$/.test(rest) && !rtjMoney(rest).length) continue;
+    var ms = rtjMoney(rest);
+    if (!ms.length) { if (rest) pend = (pend ? pend+' ' : '') + rest; continue; }
+    var monto = ms[ms.length-1].v;
+    if (Math.abs(monto) < 0.005) { pend = ''; continue; }
+    var descTxt = rest;
+    ms.slice().reverse().forEach(function(x){ descTxt = descTxt.slice(0,x.idx) + ' ' + descTxt.slice(x.idx+x.len); });
+    descTxt = (pend ? pend+' ' : '') + descTxt;
+    var tarj = /\b(NX|MC|VISA) (Virtual|F[ií]sica)\s+\d{1,6}\s+/i; if (tarj.test(descTxt)) descTxt = descTxt.replace(tarj,' ').trim().replace(/\s\d{2}$/,'');
+    descTxt = descTxt.replace(/^\d{5,8}\*?\s+/,'').replace(/\s\d{5,8}\*?(?=\s|$)/g,' ').replace(/\s+\$\s*(?=\s|$)/g,' ').replace(/\s+/g,' ').trim();
+    pend = '';
+    if (!descTxt || !cur) continue;
+    descTxt = descTxt.replace(/\s\d$/,'');
+    items.push({fecha:cur, orig:cur, post:post, desc:descTxt, monto:monto});
+  }
+  return items;
+}
+function rtjParsear(lines) {
+  var L = rtjLimpiar(lines), h = rtjCabecera(L), items = rtjItems(L, h);
+  var contra = rtjMoneyDespues(L, /Total consumido|TOTAL CONSUMOS DEL MES|Tarjeta \d+ Total Consumos de|Consumos tarjeta de cr[eé]dito de/i, 3);
+  // fecha efectiva: lo que cae fuera de este ciclo se asigna al cierre actual
+  items.forEach(function(x){
+    x.clase = rtjClase(x.desc, x.monto);
+    var dentro = h.cierre && (!h.cierreAnt || x.orig > h.cierreAnt) && x.orig <= h.cierre && (h.cierreAnt || x.orig >= rtjSumaDias(h.cierre,-35));
+    x.fecha = dentro || !h.cierre ? x.orig : h.cierre;
+    x.desplazado = x.fecha !== x.orig;
+  });
+  // anular bonificaciones contra su cargo
+  items.forEach(function(x){
+    if (x.monto >= 0 || x.anulado) return;
+    var par = items.find(function(y){ return !y.anulado && y !== x && Math.abs(y.monto + x.monto) < 0.01; });
+    if (par) { x.anulado = par.anulado = true; }
+  });
+  var suma = items.filter(function(x){ return !x.post; }).reduce(function(s,x){ return s+x.monto; }, 0);
+  return {cab:h, items:items, consumoDeclarado:contra, sumaConsumo:Math.round(suma*100)/100};
+}
+function rtjSumaDias(iso, n) { var d = new Date(iso+'T12:00:00'); d.setDate(d.getDate()+n); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+
+function rtjCargarPdfJs() {
+  return new Promise(function(res, rej){
+    if (window.pdfjsLib) { res(window.pdfjsLib); return; }
+    var sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    sc.onload = function(){ window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; res(window.pdfjsLib); };
+    sc.onerror = function(){ rej(new Error('No se pudo cargar el lector de PDF (revisá tu conexión)')); };
+    document.head.appendChild(sc);
+  });
+}
+function rtjLineasPdf(buf) {
+  return window.pdfjsLib.getDocument({data:new Uint8Array(buf)}).promise.then(function(doc){
+    var out = [], p = Promise.resolve();
+    for (var n=1; n<=doc.numPages; n++) (function(num){ p = p.then(function(){ return doc.getPage(num).then(function(pg){ return pg.getTextContent(); }).then(function(tc){
+      var cur = '', lastY = null;
+      tc.items.forEach(function(it){
+        var y = it.transform[5];
+        if (lastY !== null && Math.abs(y-lastY) > 2) { if (cur.trim()) out.push(cur.trim()); cur = ''; }
+        cur += (cur && !/ $/.test(cur) ? ' ' : '') + it.str; lastY = y;
+        if (it.hasEOL) { if (cur.trim()) out.push(cur.trim()); cur = ''; lastY = null; }
+      });
+      if (cur.trim()) out.push(cur.trim());
+      out.push('<<<PAGE>>>');
+    }); }); })(n);
+    return p.then(function(){ return out; });
+  });
+}
+
 // ── Selector de cuenta en cobros (entregas, fees, cobro rapido) ──
 function cuentasCobroPF() {
   return sbFetch('panel_pf_cuentas?select=id,nombre,institucion,moneda,tipo,reservada,ingreso_default&activa=eq.true&order=orden.asc').catch(function(){ return []; })
@@ -5030,6 +5195,7 @@ function vFinanzas() {
             tdMonto.appendChild(el('div',{style:'font-size:10px;color:#854F0B;font-weight:500'},'🏢 '+partesNeg.join(' + ')+' negocio'));
           }
           tr.appendChild(tdMonto);
+          if (g.categoria==='Tarjetas' && !g.pagado) tdMonto.appendChild(minimoGastoPF(g) > 0 ? el('div',{style:'font-size:10px;color:#854F0B;font-weight:600'},'mínimo '+fmt(minimoGastoPF(g))) : el('div',{style:'font-size:10px;color:#94a3b8'},'mínimo sin cargar'));
           if (!g.pagado && entregadoPF(g) > 0) {
             tdMonto.appendChild(el('div',{style:'font-size:10px;color:#0B9EDA;font-weight:600'},'entregado '+fmt(entregadoPF(g))));
             tdMonto.appendChild(el('div',{style:'font-size:10px;color:#854F0B'},'falta '+fmt(saldoPF(g))));
@@ -5252,13 +5418,16 @@ function vFinanzas() {
         mkRow2(body, mkFg('Pesos personal (ARS)', mkInput('egpf-monto','number',g.monto||0)), mkFg('Pesos negocio (ARS)', mkInput('egpf-montoneg','number',g.monto_negocio||'')));
         mkRow2(body, mkFg('USD personal', mkInput('egpf-montousd','number',g.monto_usd||'')), mkFg('USD negocio', mkInput('egpf-montousdneg','number',g.monto_usd_negocio||'')));
         addFg(body, 'Fecha', mkInput('egpf-fecha','date',g.fecha?g.fecha.slice(0,10):''));
+        if (g.categoria==='Tarjetas' || g.tipo==='tarjeta') addFg(body, 'Pago mínimo del resumen (ARS)', mkInput('egpf-min','number',minimoGastoPF(g)||'','lo ves al cierre de la tarjeta'));
       }, function(foot) {
         foot.appendChild(cancelBtn());
         var ok = el('button', {class:'btn btnp'}, 'Guardar');
         ok.onclick = function() {
           var body2 = {concepto:gv('egpf-conc'), categoria:gv('egpf-cat'), tipo:gv('egpf-tipo'), monto:Number(gv('egpf-monto')||0), monto_usd:Number(gv('egpf-montousd')||0), monto_negocio:Number(gv('egpf-montoneg')||0), monto_usd_negocio:Number(gv('egpf-montousdneg')||0), fecha:gv('egpf-fecha')||null};
           ok.disabled = true; ok.textContent = 'Guardando...';
+          var minP = ge('egpf-min') ? Number(gv('egpf-min')||0) : null;
           dbUpd('panel_pf_gastos', g.id, body2)
+            .then(function(){ return (minP===null || minP===minimoGastoPF(g)) ? null : guardarMinimoTjPF(g.id, minP); })
             .then(function(){ closeM(); cb(body2); })
             .catch(function(e){ ok.disabled = false; ok.textContent = 'Guardar'; alert('No se pudo guardar: ' + e.message); });
         };
@@ -5770,22 +5939,6 @@ function vFinanzas() {
 
     // ---- ASESOR IA (Claude via Edge Function asesor-pf) ----
     // Arma el resumen del mes: pendientes con fecha, calendario de caja, tarjetas, cobros y deudas
-    function tarjetasAsesorPF() {
-      var hoyF = fechaLocalPF(Date.now()), out = [];
-      cuentasPF.filter(function(c){ return c.tipo==='tarjeta'; }).forEach(function(c){
-        var mp = tjMesesPF(c), cfg = cfgTjPF(c), hoyK = cicloKeyTjPF(c, hoyF), keys = [hoyK];
-        for (var qi=1; qi<=4; qi++) { var qk = ymSumaPF(hoyK,-qi), qx = mp[qk] || {cons:0,pag:0}, qreal = (resumenesTjPF[c.id]||{})[qk]; if (((qreal||qx.cons) - qx.pag) > 0.5) keys.push(qk); }
-        keys.forEach(function(k){
-          var x = mp[k] || {cons:0, pag:0}, real = (resumenesTjPF[c.id]||{})[k], min = (minimosTjPF[c.id]||{})[k] || null;
-          var venc = cfg ? vencFechaTjPF(c,k) : null;
-          if (venc && venc < hoyF && !(((real||x.cons) - x.pag) > 0.5)) return;
-          var deuda = real || Math.max(0, x.cons - x.pag);
-          if (!(deuda > 0) && !min) return;
-          out.push({tarjeta:c.nombre, moneda:c.moneda, ciclo:k, cierre:cfg?cierreFechaTjPF(c,k):null, vencimiento:venc, consumo_cargado:Math.round(x.cons), pagos_hechos:Math.round(x.pag), resumen_real:real||null, minimo_a_pagar:min, minimo_cargado:!!min});
-        });
-      });
-      return out;
-    }
     function datosAsesorPF(m, efectivo, diaDS) {
       var hoy = new Date();
       var hoyStr = hoy.getFullYear()+'-'+String(hoy.getMonth()+1).padStart(2,'0')+'-'+String(hoy.getDate()).padStart(2,'0');
@@ -5799,7 +5952,9 @@ function vFinanzas() {
 
       var usdHold = cuentasPF.length ? disponibleUsdPF() : 0;
       var pend = gastosPF.filter(function(g){ return g.mes_id===m.id && !g.pagado; }).map(function(g){
-        return {concepto:g.concepto, categoria:g.categoria, fecha:g.fecha, saldo_ars:Math.round(saldoPF(g)), saldo_usd:Math.round(saldoUSDPF(g)*100)/100, prestamo_usd:Number(g.prestamo_monto||0)};
+        var o = {concepto:g.concepto, categoria:g.categoria, fecha:g.fecha, saldo_ars:Math.round(saldoPF(g)), saldo_usd:Math.round(saldoUSDPF(g)*100)/100, prestamo_usd:Number(g.prestamo_monto||0)};
+        if (g.categoria==='Tarjetas') { o.minimo_a_pagar = minimoGastoPF(g) || null; o.minimo_cargado = minimoGastoPF(g) > 0; }
+        return o;
       }).filter(function(g){ return g.saldo_ars>0 || g.saldo_usd>0; });
 
       var ev = [];
@@ -5807,7 +5962,7 @@ function vFinanzas() {
         var saleArs = g.saldo_ars + g.saldo_usd*tcUSD, notaUsd = '';
         if (usdHold > 0 && g.saldo_usd > 0) { var cu = Math.min(usdHold, g.saldo_usd); usdHold -= cu; saleArs -= cu*tcUSD; notaUsd = ' (USD '+cu+' cubiertos con tus dolares)'; }
         else if (usdHold > 0 && g.prestamo_usd > 0 && g.saldo_ars > 0) { var cu2 = Math.min(usdHold, g.prestamo_usd); usdHold -= cu2; saleArs = g.saldo_ars*(1 - cu2/g.prestamo_usd); notaUsd = ' (USD '+cu2+' cubiertos con tus dolares)'; }
-        ev.push({fecha:aHoy(g.fecha), entra:0, sale:Math.round(Math.max(0,saleArs)), tarjeta:g.categoria==='Tarjetas', detalle:g.concepto+notaUsd});
+        ev.push({fecha:aHoy(g.fecha), entra:0, sale:Math.round(Math.max(0,saleArs)), tarjeta:g.categoria==='Tarjetas', detalle:g.concepto+notaUsd+(g.minimo_a_pagar>0 ? ' (minimo '+g.minimo_a_pagar+')' : '')});
       });
       // Pagos mensuales fijos en USD que no estan como gasto del mes (ej: Susana, "USD 400 x mes")
       prestamosPF.filter(function(p){ return p.activo && p.moneda==='USD'; }).forEach(function(p){
@@ -5853,8 +6008,7 @@ function vFinanzas() {
         liquidacion: {sueldo_bruto:Math.round(t.totalBruto), sueldo_depositado:Math.round(t.juanSueldo), ds_pendiente:dsPend, dia_tope_llegada_ds:Number(diaDS)||10, nota_ds:'El DS pendiente entra a mas tardar ese dia (peor caso). Si llega antes, Juan lo carga como Transferencia interna y el DS pendiente baja solo.'},
         gastos_pendientes: pend,
         tarjetas_pendientes: pend.filter(function(g){ return g.categoria==='Tarjetas'; }),
-        tarjetas_ciclos: tarjetasAsesorPF(),
-        nota_tarjetas: 'tarjetas_ciclos trae, por ciclo, el vencimiento, el resumen real y el MINIMO A PAGAR que Juan cargo en el panel. Usa esos minimos; solo pedi el minimo de una tarjeta si minimo_cargado es false.',
+        nota_tarjetas: 'En tarjetas_pendientes cada tarjeta trae minimo_a_pagar (lo cargo Juan al cerrar el resumen). Usa ese minimo; solo pedilo si minimo_cargado es false.',
         calendario_caja: calendario,
         por_cobrar_negocio: porCobrar,
         deudas_a_cobrar: deudasPF.filter(function(d){ return d.estado==='pendiente'; }).map(function(d){ return {nombre:d.nombre, concepto:d.concepto, monto:Number(d.monto)}; }),
@@ -6001,9 +6155,9 @@ function vFinanzas() {
       return sbFetch('panel_config?on_conflict=clave', {method:'POST', body:{clave:'pf_resumenes_tarjeta', valor:JSON.stringify(resumenesTjPF)}, prefer:'resolution=merge-duplicates,return=minimal'}).catch(function(e){ alert('No se pudo guardar: '+e.message); });
     }
     var minimosTjPF = (function(){ var r = (config||[]).find(function(c){ return c.clave==='pf_minimos_tarjeta'; }); if (!r) return {}; try { return JSON.parse(r.valor)||{}; } catch(e) { return {}; } })();
-    function guardarMinimoTjPF(cid, key, monto) {
-      minimosTjPF[cid] = minimosTjPF[cid] || {};
-      if (monto > 0) minimosTjPF[cid][key] = monto; else delete minimosTjPF[cid][key];
+    function minimoGastoPF(g) { return Number(minimosTjPF[g.id]||0); }
+    function guardarMinimoTjPF(gid, monto) {
+      if (monto > 0) minimosTjPF[gid] = monto; else delete minimosTjPF[gid];
       return sbFetch('panel_config?on_conflict=clave', {method:'POST', body:{clave:'pf_minimos_tarjeta', valor:JSON.stringify(minimosTjPF)}, prefer:'resolution=merge-duplicates,return=minimal'}).catch(function(e){ alert('No se pudo guardar: '+e.message); });
     }
     var MESES_CORTO_PF = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -6030,6 +6184,133 @@ function vFinanzas() {
       return mp;
     }
     function fmtTjPF(c, n) { return c.moneda==='USD' ? 'USD '+(Math.round(n*100)/100) : fmt(Math.round(n)); }
+    // ---- Importador de resumenes de tarjeta (PDF) ----
+    function rtjTokensPF(n) { return String(n||'').toLowerCase().split(/[^a-z0-9ñ]+/).filter(function(t){ return t.length>=3 && t!=='tarjeta'; }); }
+    function gastoTarjetaDeResumenPF(c, venc) {
+      var toks = rtjTokensPF(c.nombre).concat(rtjTokensPF(c.institucion==='Tarjetas'?'':c.institucion)), best = null, bs = 0;
+      var ym = venc ? venc.slice(0,7) : null;
+      gastosPF.forEach(function(g){
+        if (g.categoria!=='Tarjetas' || g.pagado) return;
+        var cn = String(g.concepto||'').toLowerCase(), sc = toks.filter(function(t){ return cn.indexOf(t)>=0; }).length;
+        if (!sc) return;
+        var mm = mesesPF.find(function(x){ return x.id===g.mes_id; }), mok = mm && ym && ymKeyPF(new Date(mm.year, mm.month-1, 1))===ym ? 1 : 0;
+        sc = sc*2 + mok;
+        if (sc > bs) { bs = sc; best = g; }
+      });
+      return best;
+    }
+    function mImportarResumenTjPF(c) {
+      var res = null, filas = [], gTj = null;
+      var cont = el('div',{});
+      var okBtn = null;
+      openM(makeModal('Importar resumen · '+c.nombre, function(body) {
+        body.appendChild(el('div',{style:'font-size:12px;color:#64748B;line-height:1.5;margin-bottom:10px'},'Subí el PDF del resumen. Se lee acá mismo en tu navegador (no se envía a ningún lado). Vas a ver cada línea antes de importar, y las que ya cargaste quedan marcadas para no duplicarlas.'));
+        var fi = el('input',{type:'file',accept:'application/pdf,.pdf',style:'margin-bottom:10px'});
+        body.appendChild(fi); body.appendChild(cont);
+        fi.onchange = function() {
+          var f = fi.files && fi.files[0]; if (!f) return;
+          cont.innerHTML = ''; cont.appendChild(el('div',{style:'font-size:12px;color:#64748B'},'Leyendo el resumen…'));
+          rtjCargarPdfJs().then(function(){ return f.arrayBuffer(); }).then(rtjLineasPdf).then(function(lines){
+            res = rtjParsear(lines);
+            if (!res.items.length) throw new Error('No encontré consumos en este PDF. ¿Es el resumen de la tarjeta?');
+            armar();
+          }).catch(function(e){ cont.innerHTML = ''; cont.appendChild(el('div',{style:'font-size:12px;color:#A32D2D'},'No se pudo leer: '+(e && e.message || e)+(/password/i.test(String(e&&e.name||'')+String(e&&e.message||''))?' (el PDF tiene contraseña)':''))); });
+        };
+      }, function(foot) {
+        foot.appendChild(cancelBtn());
+        okBtn = el('button',{class:'btn btnp'},'Importar seleccionados'); okBtn.disabled = true;
+        okBtn.onclick = importar; foot.appendChild(okBtn);
+      }));
+      function candidatosPF() {
+        var cand = [];
+        gastosPF.forEach(function(g){
+          if (g.cuenta_id===c.id || (!g.pagado && /\(tarjeta\)/i.test(g.concepto||''))) cand.push({fecha:String(g.fecha||g.pagado_at||'').slice(0,10), monto:Number(g.monto||0), usada:false, t:g.concepto});
+          (g._entregas||[]).forEach(function(e){ if (e.cuenta_id===c.id) cand.push({fecha:String(e.fecha||e.created_at||'').slice(0,10), monto:Number(e.monto||0), usada:false, t:g.concepto}); });
+        });
+        return cand;
+      }
+      function dif(a, b) { return Math.abs((new Date(a+'T12:00:00') - new Date(b+'T12:00:00'))/86400000); }
+      function armar() {
+        var cab = res.cab, cand = candidatosPF();
+        gTj = gastoTarjetaDeResumenPF(c, cab.vencimiento);
+        filas = res.items.map(function(x){
+          var estado = 'nuevo', dup = null;
+          if (x.anulado) estado = 'anulado';
+          else {
+            dup = cand.find(function(k){ return !k.usada && Math.abs(k.monto - x.monto) < 1 && k.fecha && (dif(k.fecha, x.fecha) <= 3 || dif(k.fecha, x.orig) <= 3); });
+            if (dup) { dup.usada = true; estado = 'cargado'; }
+          }
+          return {x:x, estado:estado, sel: estado==='nuevo'};
+        });
+        cont.innerHTML = '';
+        var info = el('div',{style:'display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px'});
+        function campo(l, inp) { var d = el('div',{style:'font-size:11px;color:#64748B'}); d.appendChild(el('div',{},l)); d.appendChild(inp); return d; }
+        var iVe = el('input',{type:'date',value:cab.vencimiento||'',style:'padding:3px 5px;border:1px solid #CBD5E1;border-radius:6px;font-size:12px'});
+        var iTo = el('input',{type:'number',value:cab.total!=null?cab.total:'',style:'width:120px;padding:3px 5px;border:1px solid #CBD5E1;border-radius:6px;font-size:12px'});
+        var iMi = el('input',{type:'number',value:cab.minimo!=null?cab.minimo:'',style:'width:110px;padding:3px 5px;border:1px solid #CBD5E1;border-radius:6px;font-size:12px'});
+        iVe.id='rtj-venc'; iTo.id='rtj-total'; iMi.id='rtj-min';
+        info.appendChild(campo('Cierre', el('div',{style:'font-size:13px;font-weight:600;color:#1a2e4a;padding:3px 0'}, cab.cierre ? fdate(cab.cierre) : '—')));
+        info.appendChild(campo('Vencimiento', iVe)); info.appendChild(campo('Total a pagar', iTo)); info.appendChild(campo('Pago mínimo', iMi));
+        cont.appendChild(info);
+        var cuadra = res.consumoDeclarado!=null && Math.abs(res.consumoDeclarado - res.sumaConsumo) < 1;
+        cont.appendChild(el('div',{style:'font-size:11px;font-weight:600;margin-bottom:8px;color:'+(res.consumoDeclarado==null?'#64748B':(cuadra?'#3D8A32':'#A32D2D'))}, res.consumoDeclarado==null ? 'No pude verificar el total de consumos del resumen: revisá las líneas.' : (cuadra ? '✓ Las líneas leídas suman '+fmt(res.consumoDeclarado)+', igual que el consumo del resumen.' : '⚠ El resumen dice '+fmt(res.consumoDeclarado)+' de consumos y leí '+fmt(res.sumaConsumo)+'. Revisá las líneas antes de importar.')));
+        if (cab.usd > 0) cont.appendChild(el('div',{style:'font-size:11px;font-weight:600;color:#A32D2D;margin-bottom:8px'},'⚠ Este resumen tiene consumos en dólares (U$S '+cab.usd+'): solo se importan las líneas en pesos, los dólares cargalos a mano.'));
+        var tw = el('div',{style:'max-height:320px;overflow:auto;border:1px solid #E2E8F0;border-radius:8px'}), tb = el('table',{class:'tbl',style:'font-size:12px;width:100%'});
+        tb.appendChild(elH('thead',{},'<tr><th></th><th>Fecha</th><th>Detalle</th><th style="text-align:right">Monto</th><th>Estado</th></tr>'));
+        var tbd = el('tbody');
+        filas.forEach(function(f, i){
+          var tr = el('tr',{style:f.estado==='nuevo'?'':'color:#94a3b8'});
+          var td0 = el('td',{}), cb = el('input',{type:'checkbox'}); cb.checked = f.sel; cb.disabled = f.estado==='anulado';
+          cb.onchange = function(){ f.sel = cb.checked; resumen(); }; td0.appendChild(cb); tr.appendChild(td0);
+          tr.appendChild(el('td',{style:'white-space:nowrap'}, fdate(f.x.fecha)+(f.x.desplazado?' *':'')));
+          tr.appendChild(el('td',{}, rtjTitulo(f.x.desc)));
+          tr.appendChild(el('td',{style:'text-align:right;white-space:nowrap;font-weight:500'}, fmt(f.x.monto)));
+          tr.appendChild(el('td',{style:'white-space:nowrap;font-size:11px'}, f.estado==='cargado'?'Ya cargado':(f.estado==='anulado'?'Se anula':(f.x.clase==='compra'?'Nuevo':'Nuevo · '+f.x.clase))));
+          tbd.appendChild(tr);
+        });
+        tb.appendChild(tbd); tw.appendChild(tb); cont.appendChild(tw);
+        if (filas.some(function(f){ return f.x.desplazado; })) cont.appendChild(el('div',{style:'font-size:10px;color:#94a3b8;margin-top:4px'},'* La compra es de un ciclo anterior (cuota, plan o cargo): se carga con la fecha de cierre de este resumen y la fecha original queda en el detalle.'));
+        var ex = el('div',{style:'margin-top:10px;font-size:12px;color:#334155'});
+        function chk(id, txt, on) { var l = el('label',{style:'display:flex;align-items:center;gap:6px;margin:3px 0'}), k = el('input',{type:'checkbox',id:id}); k.checked = on; l.appendChild(k); l.appendChild(document.createTextNode(txt)); ex.appendChild(l); }
+        chk('rtj-real','Guardar el total como "resumen real" de este ciclo', true);
+        if (gTj) { chk('rtj-gmin','Cargar el pago mínimo en el gasto «'+gTj.concepto+'»', true); chk('rtj-gmon','Actualizar el monto de ese gasto al total del resumen (hoy '+fmt(gTj.monto)+')', false); }
+        else ex.appendChild(el('div',{style:'font-size:11px;color:#94a3b8'},'No encontré el gasto de esta tarjeta sin pagar: el mínimo lo cargás desde Editar en el gasto.'));
+        cont.appendChild(ex);
+        cont.appendChild(el('div',{id:'rtj-resumen',style:'margin-top:8px;font-size:12px;font-weight:600;color:#1a2e4a'}));
+        resumen();
+      }
+      function resumen() {
+        var sel = filas.filter(function(f){ return f.sel; }), tot = sel.reduce(function(s,f){ return s+f.x.monto; },0);
+        var r = ge('rtj-resumen'); if (r) r.textContent = sel.length+' línea'+(sel.length===1?'':'s')+' a importar · '+fmt(tot);
+        if (okBtn) okBtn.disabled = false;
+      }
+      function importar() {
+        var sel = filas.filter(function(f){ return f.sel; });
+        okBtn.disabled = true; okBtn.textContent = 'Importando…';
+        var iso = new Date().toISOString(), n = 0, fallo = null;
+        var p = sel.reduce(function(pr, f){
+          return pr.then(function(){
+            var fecha = f.x.fecha;
+            var mm = mesesPF.find(function(x){ return x.year===Number(fecha.slice(0,4)) && x.month===Number(fecha.slice(5,7)); }) || getMesPF(mesSeleccionadoPF);
+            if (!mm) { fallo = 'No hay un mes cargado para '+fecha; return; }
+            var conc = rtjTitulo(f.x.desc)+' · '+c.nombre+(f.x.desplazado ? ' · compra '+fdate(f.x.orig) : '');
+            var row = {mes_id:mm.id, concepto:conc, monto:f.x.monto, categoria:'Varios', tipo:'varios', fecha:fecha, pagado:true, pagado_at:iso, cuenta_id:c.id};
+            return dbIns('panel_pf_gastos', row).then(function(r){ var g = (r&&r[0])||row; if (!g._entregas) g._entregas = []; gastosPF.push(g); n++; });
+          });
+        }, Promise.resolve());
+        p.then(function(){
+          var jobs = [], cab = res.cab, tot = Number(gv('rtj-total')||0), min = Number(gv('rtj-min')||0);
+          if (ge('rtj-real') && ge('rtj-real').checked && tot > 0 && cab.cierre) jobs.push(guardarResumenTjPF(c.id, cicloKeyTjPF(c, cab.cierre), tot));
+          if (gTj && ge('rtj-gmin') && ge('rtj-gmin').checked && min > 0) jobs.push(guardarMinimoTjPF(gTj.id, min));
+          if (gTj && ge('rtj-gmon') && ge('rtj-gmon').checked && tot > 0) jobs.push(dbUpd('panel_pf_gastos', gTj.id, {monto:tot}).then(function(){ gTj.monto = tot; }));
+          return Promise.all(jobs);
+        }).then(function(){
+          cont.innerHTML = '';
+          cont.appendChild(el('div',{style:'font-size:13px;color:#3D8A32;font-weight:600;padding:10px 0'},'✓ Se importaron '+n+' gasto'+(n===1?'':'s')+' en '+c.nombre+'.'+(fallo?' ('+fallo+')':'')));
+          okBtn.textContent = 'Listo'; okBtn.disabled = false; okBtn.onclick = function(){ closeM(); renderAll(); };
+        }).catch(function(e){ okBtn.disabled = false; okBtn.textContent = 'Importar seleccionados'; alert('Error al importar: '+(e&&e.message||e)+(n?'\nYa se habían importado '+n+' líneas: no las vuelvas a importar (el sistema las va a marcar como ya cargadas).':'')); });
+      }
+    }
     function renderTarjetasMesPF(box) {
       var tjs = cuentasPF.filter(function(c){ return c.tipo==='tarjeta'; });
       if (!tjs.length) return;
@@ -6047,9 +6328,11 @@ function vFinanzas() {
         function guardaCfg(){ guardarCicloTjPF(c.id, Number(iCi.value||0), Number(iVe.value||0)).then(function(){ renderAll(); }); }
         iCi.onchange = guardaCfg; iVe.onchange = guardaCfg;
         var cfgBox = el('span',{style:'font-size:11px;color:#64748B'}); cfgBox.appendChild(document.createTextNode('Cierra el día ')); cfgBox.appendChild(iCi); cfgBox.appendChild(document.createTextNode(' · vence el día ')); cfgBox.appendChild(iVe);
-        cab2.appendChild(cfgBox); box.appendChild(cab2);
+        cab2.appendChild(cfgBox);
+        var bImpTj = el('button',{class:'btn btnsm'},'📄 Importar resumen'); bImpTj.onclick = function(){ mImportarResumenTjPF(c); }; cab2.appendChild(bImpTj);
+        box.appendChild(cab2);
         var tw = el('div',{style:'overflow-x:auto'}), tb = el('table',{class:'tbl',style:'font-size:12px'});
-        tb.appendChild(elH('thead',{},'<tr><th>Ciclo</th><th style="text-align:right">Consumo cargado</th><th style="text-align:right">Pagos a la tarjeta</th><th style="text-align:right">Resumen real</th><th style="text-align:right">Pago mínimo</th><th style="text-align:right">Diferencia</th></tr>'));
+        tb.appendChild(elH('thead',{},'<tr><th>Ciclo</th><th style="text-align:right">Consumo cargado</th><th style="text-align:right">Pagos a la tarjeta</th><th style="text-align:right">Resumen real</th><th style="text-align:right">Diferencia</th></tr>'));
         var tbd = el('tbody');
         keys.forEach(function(k){
           var x = mp[k] || {cons:0, pag:0}, real = (resumenesTjPF[c.id]||{})[k];
@@ -6069,9 +6352,6 @@ function vFinanzas() {
           var td = el('td',{style:'text-align:right'}), inp = el('input',{type:'number',value:real||'',placeholder:'total resumen',style:'width:110px;padding:4px 6px;border:1px solid #CBD5E1;border-radius:6px;text-align:right;font-size:12px'});
           inp.onchange = function(){ guardarResumenTjPF(c.id, k, Number(inp.value||0)).then(function(){ renderAll(); }); };
           td.appendChild(inp); tr.appendChild(td);
-          var tdm = el('td',{style:'text-align:right'}), inpM = el('input',{type:'number',value:(minimosTjPF[c.id]||{})[k]||'',placeholder:'mínimo',style:'width:90px;padding:4px 6px;border:1px solid #CBD5E1;border-radius:6px;text-align:right;font-size:12px'});
-          inpM.onchange = function(){ guardarMinimoTjPF(c.id, k, Number(inpM.value||0)).then(function(){ renderAll(); }); };
-          tdm.appendChild(inpM); tr.appendChild(tdm);
           var dif = real ? real - x.cons : null;
           tr.appendChild(el('td',{style:'text-align:right;font-weight:600;color:'+(dif===null?'#94a3b8':(Math.abs(dif)<1?'#3D8A32':'#A32D2D'))}, dif===null ? '—' : (Math.abs(dif)<1 ? 'OK' : (dif>0?'Falta cargar ':'Sobra ')+fmtTjPF(c, Math.abs(dif)))));
           tbd.appendChild(tr);
@@ -6100,8 +6380,7 @@ function vFinanzas() {
           var x = mp[k] || {cons:0, pag:0}, real = (resumenesTjPF[c.id]||{})[k], base = real || Math.max(0, x.cons - x.pag);
           if (!(base > 0) && !real) return;
           var ars = convPF(base, mon, 'ARS'); total += ars;
-          var minK = (minimosTjPF[c.id]||{})[k];
-          fila('💳 '+c.nombre+' · '+(cfg ? 'vence '+ddmmPF(venc) : 'consumo de '+ymEtiqPF(k))+(real?' (resumen real)':'')+(minK?' · mínimo '+fmtTjPF(c, minK):''), c.moneda==='USD' ? 'USD '+(Math.round(base*100)/100)+' ≈ '+fmt(Math.round(ars)) : fmt(Math.round(ars)));
+          fila('💳 '+c.nombre+' · '+(cfg ? 'vence '+ddmmPF(venc) : 'consumo de '+ymEtiqPF(k))+(real?' (resumen real)':''), c.moneda==='USD' ? 'USD '+(Math.round(base*100)/100)+' ≈ '+fmt(Math.round(ars)) : fmt(Math.round(ars)));
         });
         if (!cfg) card.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;padding:2px 0 4px'},'Cargá cierre y vencimiento de '+c.nombre+' en Cuentas para ver la fecha exacta.'));
       });
