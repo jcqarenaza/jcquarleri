@@ -5770,6 +5770,22 @@ function vFinanzas() {
 
     // ---- ASESOR IA (Claude via Edge Function asesor-pf) ----
     // Arma el resumen del mes: pendientes con fecha, calendario de caja, tarjetas, cobros y deudas
+    function tarjetasAsesorPF() {
+      var hoyF = fechaLocalPF(Date.now()), out = [];
+      cuentasPF.filter(function(c){ return c.tipo==='tarjeta'; }).forEach(function(c){
+        var mp = tjMesesPF(c), cfg = cfgTjPF(c), hoyK = cicloKeyTjPF(c, hoyF), keys = [hoyK];
+        for (var qi=1; qi<=4; qi++) { var qk = ymSumaPF(hoyK,-qi), qx = mp[qk] || {cons:0,pag:0}, qreal = (resumenesTjPF[c.id]||{})[qk]; if (((qreal||qx.cons) - qx.pag) > 0.5) keys.push(qk); }
+        keys.forEach(function(k){
+          var x = mp[k] || {cons:0, pag:0}, real = (resumenesTjPF[c.id]||{})[k], min = (minimosTjPF[c.id]||{})[k] || null;
+          var venc = cfg ? vencFechaTjPF(c,k) : null;
+          if (venc && venc < hoyF && !(((real||x.cons) - x.pag) > 0.5)) return;
+          var deuda = real || Math.max(0, x.cons - x.pag);
+          if (!(deuda > 0) && !min) return;
+          out.push({tarjeta:c.nombre, moneda:c.moneda, ciclo:k, cierre:cfg?cierreFechaTjPF(c,k):null, vencimiento:venc, consumo_cargado:Math.round(x.cons), pagos_hechos:Math.round(x.pag), resumen_real:real||null, minimo_a_pagar:min, minimo_cargado:!!min});
+        });
+      });
+      return out;
+    }
     function datosAsesorPF(m, efectivo, diaDS) {
       var hoy = new Date();
       var hoyStr = hoy.getFullYear()+'-'+String(hoy.getMonth()+1).padStart(2,'0')+'-'+String(hoy.getDate()).padStart(2,'0');
@@ -5837,6 +5853,8 @@ function vFinanzas() {
         liquidacion: {sueldo_bruto:Math.round(t.totalBruto), sueldo_depositado:Math.round(t.juanSueldo), ds_pendiente:dsPend, dia_tope_llegada_ds:Number(diaDS)||10, nota_ds:'El DS pendiente entra a mas tardar ese dia (peor caso). Si llega antes, Juan lo carga como Transferencia interna y el DS pendiente baja solo.'},
         gastos_pendientes: pend,
         tarjetas_pendientes: pend.filter(function(g){ return g.categoria==='Tarjetas'; }),
+        tarjetas_ciclos: tarjetasAsesorPF(),
+        nota_tarjetas: 'tarjetas_ciclos trae, por ciclo, el vencimiento, el resumen real y el MINIMO A PAGAR que Juan cargo en el panel. Usa esos minimos; solo pedi el minimo de una tarjeta si minimo_cargado es false.',
         calendario_caja: calendario,
         por_cobrar_negocio: porCobrar,
         deudas_a_cobrar: deudasPF.filter(function(d){ return d.estado==='pendiente'; }).map(function(d){ return {nombre:d.nombre, concepto:d.concepto, monto:Number(d.monto)}; }),
@@ -5982,6 +6000,12 @@ function vFinanzas() {
       if (monto > 0) resumenesTjPF[cid][key] = monto; else delete resumenesTjPF[cid][key];
       return sbFetch('panel_config?on_conflict=clave', {method:'POST', body:{clave:'pf_resumenes_tarjeta', valor:JSON.stringify(resumenesTjPF)}, prefer:'resolution=merge-duplicates,return=minimal'}).catch(function(e){ alert('No se pudo guardar: '+e.message); });
     }
+    var minimosTjPF = (function(){ var r = (config||[]).find(function(c){ return c.clave==='pf_minimos_tarjeta'; }); if (!r) return {}; try { return JSON.parse(r.valor)||{}; } catch(e) { return {}; } })();
+    function guardarMinimoTjPF(cid, key, monto) {
+      minimosTjPF[cid] = minimosTjPF[cid] || {};
+      if (monto > 0) minimosTjPF[cid][key] = monto; else delete minimosTjPF[cid][key];
+      return sbFetch('panel_config?on_conflict=clave', {method:'POST', body:{clave:'pf_minimos_tarjeta', valor:JSON.stringify(minimosTjPF)}, prefer:'resolution=merge-duplicates,return=minimal'}).catch(function(e){ alert('No se pudo guardar: '+e.message); });
+    }
     var MESES_CORTO_PF = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
     function ymKeyPF(d) { return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
     function ymSumaPF(key, n) { var y = Number(key.slice(0,4)), m = Number(key.slice(5,7))-1+n; var d = new Date(y, m, 1); return ymKeyPF(d); }
@@ -6025,7 +6049,7 @@ function vFinanzas() {
         var cfgBox = el('span',{style:'font-size:11px;color:#64748B'}); cfgBox.appendChild(document.createTextNode('Cierra el día ')); cfgBox.appendChild(iCi); cfgBox.appendChild(document.createTextNode(' · vence el día ')); cfgBox.appendChild(iVe);
         cab2.appendChild(cfgBox); box.appendChild(cab2);
         var tw = el('div',{style:'overflow-x:auto'}), tb = el('table',{class:'tbl',style:'font-size:12px'});
-        tb.appendChild(elH('thead',{},'<tr><th>Ciclo</th><th style="text-align:right">Consumo cargado</th><th style="text-align:right">Pagos a la tarjeta</th><th style="text-align:right">Resumen real</th><th style="text-align:right">Diferencia</th></tr>'));
+        tb.appendChild(elH('thead',{},'<tr><th>Ciclo</th><th style="text-align:right">Consumo cargado</th><th style="text-align:right">Pagos a la tarjeta</th><th style="text-align:right">Resumen real</th><th style="text-align:right">Pago mínimo</th><th style="text-align:right">Diferencia</th></tr>'));
         var tbd = el('tbody');
         keys.forEach(function(k){
           var x = mp[k] || {cons:0, pag:0}, real = (resumenesTjPF[c.id]||{})[k];
@@ -6045,6 +6069,9 @@ function vFinanzas() {
           var td = el('td',{style:'text-align:right'}), inp = el('input',{type:'number',value:real||'',placeholder:'total resumen',style:'width:110px;padding:4px 6px;border:1px solid #CBD5E1;border-radius:6px;text-align:right;font-size:12px'});
           inp.onchange = function(){ guardarResumenTjPF(c.id, k, Number(inp.value||0)).then(function(){ renderAll(); }); };
           td.appendChild(inp); tr.appendChild(td);
+          var tdm = el('td',{style:'text-align:right'}), inpM = el('input',{type:'number',value:(minimosTjPF[c.id]||{})[k]||'',placeholder:'mínimo',style:'width:90px;padding:4px 6px;border:1px solid #CBD5E1;border-radius:6px;text-align:right;font-size:12px'});
+          inpM.onchange = function(){ guardarMinimoTjPF(c.id, k, Number(inpM.value||0)).then(function(){ renderAll(); }); };
+          tdm.appendChild(inpM); tr.appendChild(tdm);
           var dif = real ? real - x.cons : null;
           tr.appendChild(el('td',{style:'text-align:right;font-weight:600;color:'+(dif===null?'#94a3b8':(Math.abs(dif)<1?'#3D8A32':'#A32D2D'))}, dif===null ? '—' : (Math.abs(dif)<1 ? 'OK' : (dif>0?'Falta cargar ':'Sobra ')+fmtTjPF(c, Math.abs(dif)))));
           tbd.appendChild(tr);
@@ -6073,7 +6100,8 @@ function vFinanzas() {
           var x = mp[k] || {cons:0, pag:0}, real = (resumenesTjPF[c.id]||{})[k], base = real || Math.max(0, x.cons - x.pag);
           if (!(base > 0) && !real) return;
           var ars = convPF(base, mon, 'ARS'); total += ars;
-          fila('💳 '+c.nombre+' · '+(cfg ? 'vence '+ddmmPF(venc) : 'consumo de '+ymEtiqPF(k))+(real?' (resumen real)':''), c.moneda==='USD' ? 'USD '+(Math.round(base*100)/100)+' ≈ '+fmt(Math.round(ars)) : fmt(Math.round(ars)));
+          var minK = (minimosTjPF[c.id]||{})[k];
+          fila('💳 '+c.nombre+' · '+(cfg ? 'vence '+ddmmPF(venc) : 'consumo de '+ymEtiqPF(k))+(real?' (resumen real)':'')+(minK?' · mínimo '+fmtTjPF(c, minK):''), c.moneda==='USD' ? 'USD '+(Math.round(base*100)/100)+' ≈ '+fmt(Math.round(ars)) : fmt(Math.round(ars)));
         });
         if (!cfg) card.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;padding:2px 0 4px'},'Cargá cierre y vencimiento de '+c.nombre+' en Cuentas para ver la fecha exacta.'));
       });
