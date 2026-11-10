@@ -1893,6 +1893,23 @@ function filtrar(f) {
     tb.appendChild(tr);
   });
 }
+
+// ── Selector de cuenta en cobros (entregas, fees, cobro rapido) ──
+function cuentasCobroPF() {
+  return sbFetch('panel_pf_cuentas?select=id,nombre,institucion,moneda,tipo,reservada,ingreso_default&activa=eq.true&order=orden.asc').catch(function(){ return []; })
+  .then(function(cts){ return (cts||[]).filter(function(x){ return x.moneda!=='USD' && !x.reservada && x.tipo!=='tarjeta'; }); });
+}
+function fgCuentaCobroPF(body, cts, id) {
+  if (!cts || !cts.length) return;
+  var defCta = (cts.find(function(x){ return x.ingreso_default; }) || cts[0]).id;
+  addFg(body, '¿A qué cuenta entró? (si es Pagado)', mkSelect(id, cts.map(function(x){ return [x.id, (x.institucion||x.nombre)+' · pesos']; }), defCta));
+}
+// Si el cobro quedo pagado, registra el pago en la cuenta elegida
+function pagoCuentaCobroPF(cobro, estado, monto, fecha, medio, cuentaId) {
+  if (estado !== 'pagado' || !cobro || !cobro.id || !cuentaId || !(monto > 0)) return Promise.resolve();
+  return dbIns('panel_pagos', {cobro_id: cobro.id, monto: monto, fecha: fecha, medio: medio, cuenta_id: cuentaId}).catch(function(e){ alert('El cobro se guardó pero no se pudo asignar la cuenta: ' + e.message); });
+}
+
 function mRegistrarPago(c) {
   sbFetch('panel_pf_cuentas?select=id,nombre,institucion,moneda,tipo,reservada,ingreso_default&activa=eq.true&order=orden.asc').catch(function(){ return []; })
   .then(function(cts){ mRegistrarPagoUI(c, (cts||[]).filter(function(x){ return x.moneda!=='USD' && !x.reservada && x.tipo!=='tarjeta'; })); });
@@ -2896,6 +2913,9 @@ function vResumenCliente(a, cl, s) {
 }
 
 function mCobrar(a, cl, si, fee, totI, saldoI) {
+  cuentasCobroPF().then(function(cts){ mCobrarUI(a, cl, si, fee, totI, saldoI, cts); });
+}
+function mCobrarUI(a, cl, si, fee, totI, saldoI, cts) {
   var aid = a.id;
   var fasesConSaldo = (a._fases||[]).map(function(f) {
     var pag = pagadoFase(f, a);
@@ -2929,13 +2949,16 @@ function mCobrar(a, cl, si, fee, totI, saldoI) {
     addFg(body, 'Descripcion', mkInput('rcd','text','Fee mensual '+MESES[new Date().getMonth()]+' '+new Date().getFullYear()));
     mkRow2(body, mkFg('Monto ($)', mkInput('rcm','number',fee)), mkFg('Metodo', mkSelect('rcmet',[['transferencia','Transferencia'],['efectivo','Efectivo'],['mercadopago','MercadoPago']],'transferencia')));
     mkRow2(body, mkFg('Vencimiento', mkInput('rcv','date',new Date().toISOString().slice(0,10))), mkFg('Estado', mkSelect('rce',[['pendiente','Pendiente'],['pagado','Pagado']],'pendiente')));
+    fgCuentaCobroPF(body, cts, 'rccta');
   }, function(foot) {
     foot.appendChild(cancelBtn());
     var ok = el('button', {class:'btn btnp'}, 'Registrar');
     ok.onclick = function() {
       var estado=gv('rce'), monto=Number(gv('rcm')||0), fecha=gv('rcv'), desc=gv('rcd'), met=gv('rcmet'), tipo=gv('rct');
       var faseId = (tipo==='implementacion' && fasesConSaldo.length) ? gv('rcfase') : null;
+      var cta_ = ge('rccta') ? gv('rccta') : null;
       dbIns('panel_cobros', {asignacion_id:aid, tipo_cobro:tipo, fase_id:faseId, descripcion:desc, monto:monto, metodo:met, fecha_vencimiento:fecha, fecha_pago:estado==='pagado'?fecha:null, estado:estado})
+      .then(function(r) { return pagoCuentaCobroPF((r||[])[0], estado, monto, fecha, met, cta_).then(function(){ return r; }); })
       .then(function(r) {
         closeM();
         if (estado==='pagado') qpConfirm('Generar recibo?', function(){ mRecibo({cli:cl, sis:si, desc:desc, monto:monto, met:met, fecha:fecha, estado:estado, num:(r[0]||{}).id?(r[0].id.slice(-4)):'0001', cobro_id:(r[0]||{}).id}); }, {si:'Generar', no:'No'});
@@ -2948,17 +2971,23 @@ function mCobrar(a, cl, si, fee, totI, saldoI) {
 
 // COBRAR FEE (alertas)
 function mCobrarFee(aid, cl, si, monto, mes, anio) {
+  cuentasCobroPF().then(function(cts){ mCobrarFeeUI(aid, cl, si, monto, mes, anio, cts); });
+}
+function mCobrarFeeUI(aid, cl, si, monto, mes, anio, cts) {
   openM(makeModal('Fee ' + MESES[mes-1] + ' ' + anio, function(body) {
     body.appendChild(el('div', {class:'ibox'}, si + ' - ' + MESES[mes-1] + ' ' + anio));
     addFg(body, 'Descripcion', mkInput('cfd','text','Fee mensual '+MESES[mes-1]+' '+anio));
     mkRow2(body, mkFg('Monto ($)', mkInput('cfm','number',monto)), mkFg('Metodo', mkSelect('cfmet',[['transferencia','Transferencia'],['efectivo','Efectivo'],['mercadopago','MercadoPago']],'transferencia')));
     mkRow2(body, mkFg('Fecha', mkInput('cff','date',new Date().toISOString().slice(0,10))), mkFg('Estado', mkSelect('cfe',[['pagado','Pagado'],['pendiente','Pendiente']],'pagado')));
+    fgCuentaCobroPF(body, cts, 'cfcta');
   }, function(foot) {
     foot.appendChild(cancelBtn());
     var ok = el('button', {class:'btn btns'}, 'Confirmar');
     ok.onclick = function() {
       var estado=gv('cfe'), mon=Number(gv('cfm')||0), fecha=gv('cff');
-      dbIns('panel_cobros', {asignacion_id:aid, tipo_cobro:'fee', descripcion:gv('cfd'), monto:mon, metodo:gv('cfmet'), fecha_pago:estado==='pagado'?fecha:null, fecha_vencimiento:fecha, estado:estado})
+      var cta_ = ge('cfcta') ? gv('cfcta') : null, met_ = gv('cfmet');
+      dbIns('panel_cobros', {asignacion_id:aid, tipo_cobro:'fee', descripcion:gv('cfd'), monto:mon, metodo:met_, fecha_pago:estado==='pagado'?fecha:null, fecha_vencimiento:fecha, estado:estado})
+      .then(function(r) { return pagoCuentaCobroPF((r||[])[0], estado, mon, fecha, met_, cta_).then(function(){ return r; }); })
       .then(function(r) {
         closeM();
         if (estado==='pagado') { var cfd_ = gv('cfd'), cfmet_ = gv('cfmet'); qpConfirm('Generar recibo?', function(){ mRecibo({cli:cl, sis:si, desc:cfd_, monto:mon, met:cfmet_, fecha:fecha, estado:estado, num:(r[0]||{}).id?r[0].id.slice(-4):'0001', cobro_id:(r[0]||{}).id}); }, {si:'Generar', no:'No'}); }
@@ -2971,6 +3000,9 @@ function mCobrarFee(aid, cl, si, monto, mes, anio) {
 
 // ENTREGA IMPL (alertas)
 function mEntrega(a, cl, si, saldo) {
+  cuentasCobroPF().then(function(cts){ mEntregaUI(a, cl, si, saldo, cts); });
+}
+function mEntregaUI(a, cl, si, saldo, cts) {
   var aid = a.id;
   var fasesConSaldo = (a._fases||[]).map(function(f) {
     var pag = pagadoFase(f, a);
@@ -2993,13 +3025,16 @@ function mEntrega(a, cl, si, saldo) {
       mkRow2(body, mkFg('Monto ($)', mkInput('cem','number',saldo)), mkFg('Metodo', mkSelect('cemet',[['transferencia','Transferencia'],['efectivo','Efectivo'],['mercadopago','MercadoPago']],'transferencia')));
     }
     mkRow2(body, mkFg('Fecha', mkInput('cef','date',new Date().toISOString().slice(0,10))), mkFg('Estado', mkSelect('cee',[['pagado','Pagado'],['pendiente','Pendiente']],'pagado')));
+    fgCuentaCobroPF(body, cts, 'cecta');
   }, function(foot) {
     foot.appendChild(cancelBtn());
     var ok = el('button', {class:'btn btns'}, 'Confirmar');
     ok.onclick = function() {
       var estado=gv('cee'), mon=Number(gv('cem')||0), fecha=gv('cef');
       var faseId = fasesConSaldo.length ? gv('cefase') : null;
-      dbIns('panel_cobros', {asignacion_id:aid, tipo_cobro:'implementacion', fase_id:faseId, descripcion:gv('ced'), monto:mon, metodo:gv('cemet'), fecha_pago:estado==='pagado'?fecha:null, fecha_vencimiento:fecha, estado:estado})
+      var cta_ = ge('cecta') ? gv('cecta') : null, met_ = gv('cemet');
+      dbIns('panel_cobros', {asignacion_id:aid, tipo_cobro:'implementacion', fase_id:faseId, descripcion:gv('ced'), monto:mon, metodo:met_, fecha_pago:estado==='pagado'?fecha:null, fecha_vencimiento:fecha, estado:estado})
+      .then(function(r) { return pagoCuentaCobroPF((r||[])[0], estado, mon, fecha, met_, cta_).then(function(){ return r; }); })
       .then(function(r) {
         closeM();
         if (estado==='pagado') { var ced_ = gv('ced'), cemet_ = gv('cemet'); qpConfirm('Generar recibo?', function(){ mRecibo({cli:cl, sis:si, desc:ced_, monto:mon, met:cemet_, fecha:fecha, estado:estado, num:(r[0]||{}).id?r[0].id.slice(-4):'0001', cobro_id:(r[0]||{}).id}); }, {si:'Generar', no:'No'}); }
@@ -3013,6 +3048,9 @@ function mEntrega(a, cl, si, saldo) {
 // COBRO RAPIDO
 function mCobrarRapido() {
   if (!_D || !_D.asigs.length) { alert('No hay asignaciones.'); return; }
+  cuentasCobroPF().then(function(cts){ mCobrarRapidoUI(cts); });
+}
+function mCobrarRapidoUI(cts) {
   openM(makeModal('Registrar cobro', function(body) {
     var sel = el('select', {class:'fi', id:'rqa'});
     _D.asigs.filter(function(a){ return !a._cli.revendedor_id && !a._cli.eliminado; }).forEach(function(a) {
@@ -3051,7 +3089,7 @@ function mCobrarRapido() {
     addFg(body, 'Descripcion', mkInput('rqd','text','Fee mensual '+MESES[new Date().getMonth()]+' '+new Date().getFullYear()));
     mkRow2(body, mkFg('Monto ($)', mkInput('rqm','number',(_D.asigs[0]||{}).fee_mensual||0)), mkFg('Metodo', mkSelect('rqmet',[['transferencia','Transferencia'],['efectivo','Efectivo'],['mercadopago','MercadoPago']],'transferencia')));
     mkRow2(body, mkFg('Vencimiento', mkInput('rqv','date',new Date().toISOString().slice(0,10))), mkFg('Estado', mkSelect('rqe',[['pendiente','Pendiente'],['pagado','Pagado']],'pendiente')));
-
+    fgCuentaCobroPF(body, cts, 'rqcta');
   }, function(foot) {
     foot.appendChild(cancelBtn());
     var ok = el('button', {class:'btn btnp'}, 'Registrar');
@@ -3060,8 +3098,9 @@ function mCobrarRapido() {
       var cl = op.textContent.split(' - ')[0], si = op.textContent.split(' - ')[1]||'';
       var estado=gv('rqe'), monto=Number(gv('rqm')||0), fecha=gv('rqv'), tipo=gv('rqt');
       var faseId = (tipo==='implementacion' && ge('rqfase')) ? gv('rqfase') : null;
-      var desc=gv('rqd'), met=gv('rqmet');
+      var desc=gv('rqd'), met=gv('rqmet'), cta_ = ge('rqcta') ? gv('rqcta') : null;
       dbIns('panel_cobros', {asignacion_id:sel.value, tipo_cobro:tipo, fase_id:faseId, descripcion:desc, monto:monto, metodo:met, fecha_vencimiento:fecha, fecha_pago:estado==='pagado'?fecha:null, estado:estado})
+      .then(function(r) { return pagoCuentaCobroPF((r||[])[0], estado, monto, fecha, met, cta_).then(function(){ return r; }); })
       .then(function(r) {
         closeM();
         if (estado==='pagado') qpConfirm('Generar recibo?', function(){
