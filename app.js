@@ -6237,8 +6237,33 @@ function vFinanzas() {
         return cand;
       }
       function dif(a, b) { return Math.abs((new Date(a+'T12:00:00') - new Date(b+'T12:00:00'))/86400000); }
+      function stemsPF(t) { return String(t||'').toLowerCase().replace(/[^a-zñáéíóú ]/g,' ').split(/\s+/).filter(function(w){ return w.length>=4; }).map(function(w){ return w.slice(0,5); }); }
+      function mesIdxPF(g) { var mm = mesesPF.find(function(x){ return x.id===g.mes_id; }); return mm ? mm.year*12+mm.month : null; }
+      function buscarGastoPF(x, refIdx, usados) {
+        var esU = x.moneda==='USD', mejor = null, mejorD = 99;
+        var st = stemsPF(x.desc);
+        gastosPF.forEach(function(g){
+          if (usados[g.id]) return;
+          var gi = mesIdxPF(g); if (gi===null || Math.abs(gi-refIdx) > 1) return;
+          var m1 = esU ? Number(g.monto_usd||0) : Number(g.monto||0);
+          if (!(m1 > 0)) return;
+          var sal = esU ? saldoUSDPF(g) : saldoPF(g);
+          var exacto = Math.abs(m1 - x.monto) < (esU?0.02:1) || (!g.pagado && Math.abs(sal - x.monto) < (esU?0.02:1));
+          var d = Math.abs(gi-refIdx);
+          if (exacto) {
+            var tipo = g.pagado ? (g.cuenta_id===c.id ? 'cargado' : 'cargado_otra') : 'vincular';
+            var score = (tipo==='vincular'?0:3) + d;
+            if (score < mejorD) { mejorD = score; mejor = {g:g, tipo:tipo}; }
+          } else if (!g.pagado && st.length) {
+            var gs = stemsPF(g.concepto), comun = st.filter(function(w){ return gs.indexOf(w)>=0; }).length;
+            if (comun && Math.abs(m1 - x.monto) <= Math.max(x.monto, m1)*0.25) { var score2 = 10 + d; if (score2 < mejorD) { mejorD = score2; mejor = {g:g, tipo:'posible'}; } }
+          }
+        });
+        return mejor;
+      }
       function armar() {
-        var cab = res.cab, cand = candidatosPF();
+        var cab = res.cab, cand = candidatosPF(), usadosG = {};
+        var refIdx = (function(){ var f = cab.vencimiento || cab.cierre || (res.items[0]||{}).fecha || ''; return f ? Number(f.slice(0,4))*12+Number(f.slice(5,7)) : 0; })();
         gTj = gastoTarjetaDeResumenPF(c, cab.vencimiento);
         filas = res.items.map(function(x){
           var estado = 'nuevo', dup = null;
@@ -6247,7 +6272,12 @@ function vFinanzas() {
             dup = cand.find(function(k){ return !k.usada && !!k.usd === (x.moneda==='USD') && Math.abs(k.monto - x.monto) < (x.moneda==='USD' ? 0.02 : 1) && k.fecha && (dif(k.fecha, x.fecha) <= 3 || dif(k.fecha, x.orig) <= 3); });
             if (dup) { dup.usada = true; estado = 'cargado'; }
           }
-          return {x:x, estado:estado, sel: estado==='nuevo' && x.clase!=='percepcion'};
+          var vinc = null;
+          if (estado==='nuevo' && x.clase!=='percepcion' && x.clase!=='impuesto' && x.clase!=='interes') {
+            vinc = buscarGastoPF(x, refIdx, usadosG);
+            if (vinc) { usadosG[vinc.g.id] = true; estado = vinc.tipo; }
+          }
+          return {x:x, estado:estado, vinc:vinc, sel: (estado==='nuevo' && x.clase!=='percepcion') || estado==='vincular'};
         });
         cont.innerHTML = '';
         var info = el('div',{style:'display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px'});
@@ -6268,13 +6298,13 @@ function vFinanzas() {
         tb.appendChild(elH('thead',{},'<tr><th></th><th>Fecha</th><th>Detalle</th><th style="text-align:right">Monto</th><th>Estado</th></tr>'));
         var tbd = el('tbody');
         filas.forEach(function(f, i){
-          var tr = el('tr',{style:f.estado==='nuevo'?'':'color:#94a3b8'});
-          var td0 = el('td',{}), cb = el('input',{type:'checkbox'}); cb.checked = f.sel; cb.disabled = f.estado==='anulado';
+          var tr = el('tr',{style:(f.estado==='nuevo'||f.estado==='vincular'||f.estado==='posible')?'':'color:#94a3b8'});
+          var td0 = el('td',{}), cb = el('input',{type:'checkbox'}); cb.checked = f.sel; cb.disabled = f.estado==='anulado' || f.estado==='cargado';
           cb.onchange = function(){ f.sel = cb.checked; resumen(); }; td0.appendChild(cb); tr.appendChild(td0);
           tr.appendChild(el('td',{style:'white-space:nowrap'}, fdate(f.x.fecha)+(f.x.desplazado?' *':'')));
           tr.appendChild(el('td',{}, rtjTitulo(f.x.desc)));
           tr.appendChild(el('td',{style:'text-align:right;white-space:nowrap;font-weight:500'}, fmtMon(f.x.monto, f.x.moneda)));
-          tr.appendChild(el('td',{style:'white-space:nowrap;font-size:11px'}, f.estado==='cargado'?'Ya cargado':(f.estado==='anulado'?'Se anula':(f.x.clase==='compra'?'Nuevo':(f.x.clase==='percepcion'?'Percepción · se reintegra':'Nuevo · '+f.x.clase)))));
+          tr.appendChild(el('td',{style:'font-size:11px;'+(f.estado==='vincular'?'color:#0B7A3E;font-weight:600':(f.estado==='posible'?'color:#854F0B':''))}, f.estado==='cargado'?'Ya cargado':(f.estado==='cargado_otra'?'Ya cargado: «'+f.vinc.g.concepto+'» (otra cuenta)':(f.estado==='vincular'?'Es «'+f.vinc.g.concepto+'» · marcar pagado con '+c.nombre:(f.estado==='posible'?'¿Será «'+f.vinc.g.concepto+'» ('+fmtMon(f.x.moneda==='USD'?f.vinc.g.monto_usd:f.vinc.g.monto, f.x.moneda)+')? · vincular y ajustar monto':(f.estado==='anulado'?'Se anula':(f.x.clase==='compra'?'Nuevo':(f.x.clase==='percepcion'?'Percepción · se reintegra':'Nuevo · '+f.x.clase))))))));
           tbd.appendChild(tr);
         });
         tb.appendChild(tbd); tw.appendChild(tb); cont.appendChild(tw);
@@ -6298,8 +6328,15 @@ function vFinanzas() {
         var sel = filas.filter(function(f){ return f.sel; });
         okBtn.disabled = true; okBtn.textContent = 'Importando…';
         var iso = new Date().toISOString(), n = 0, fallo = null;
+        var nVinc = 0;
         var p = sel.reduce(function(pr, f){
           return pr.then(function(){
+            if ((f.estado==='vincular' || f.estado==='posible') && f.vinc) {
+              var gg = f.vinc.g, patch = {pagado:true, pagado_at:iso, cuenta_id:c.id};
+              if (f.estado==='posible') { if (f.x.moneda==='USD') patch.monto_usd = f.x.monto; else patch.monto = f.x.monto; }
+              return dbUpd('panel_pf_gastos', gg.id, patch).then(function(){ Object.assign(gg, patch); nVinc++; return sincPagoPrestamoPF(gg, true); });
+            }
+            if (f.estado!=='nuevo') return;
             var fecha = f.x.fecha;
             var mm = mesesPF.find(function(x){ return x.year===Number(fecha.slice(0,4)) && x.month===Number(fecha.slice(5,7)); }) || getMesPF(mesSeleccionadoPF);
             if (!mm) { fallo = 'No hay un mes cargado para '+fecha; return; }
@@ -6317,7 +6354,7 @@ function vFinanzas() {
           return Promise.all(jobs);
         }).then(function(){
           cont.innerHTML = '';
-          cont.appendChild(el('div',{style:'font-size:13px;color:#3D8A32;font-weight:600;padding:10px 0'},'✓ Se importaron '+n+' gasto'+(n===1?'':'s')+' en '+c.nombre+'.'+(fallo?' ('+fallo+')':'')));
+          cont.appendChild(el('div',{style:'font-size:13px;color:#3D8A32;font-weight:600;padding:10px 0'},'✓ Se importaron '+n+' gasto'+(n===1?'':'s')+' nuevo'+(n===1?'':'s')+(nVinc?' y se marcaron '+nVinc+' gasto'+(nVinc===1?'':'s')+' que ya tenías como pagado'+(nVinc===1?'':'s')+' con '+c.nombre:'')+'.'+(fallo?' ('+fallo+')':'')));
           okBtn.textContent = 'Listo'; okBtn.disabled = false; okBtn.onclick = function(){ closeM(); renderAll(); };
         }).catch(function(e){ okBtn.disabled = false; okBtn.textContent = 'Importar seleccionados'; alert('Error al importar: '+(e&&e.message||e)+(n?'\nYa se habían importado '+n+' líneas: no las vuelvas a importar (el sistema las va a marcar como ya cargadas).':'')); });
       }
