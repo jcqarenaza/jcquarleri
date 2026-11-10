@@ -6588,18 +6588,30 @@ function vFinanzas() {
       }));
     }
     function mMovimientosCuentaPF(c) {
-      var usd = c.moneda==='USD';
+      var usd = c.moneda==='USD', ts = new Date(c.saldo_inicial_ts||0).getTime();
+      function fm(n) { return usd ? 'USD '+(Math.round(n*100)/100).toLocaleString('es-AR') : fmt(Math.round(n)); }
       openM(makeModal('Movimientos — '+etiqCtaPF(c), function(body) {
-        var lista = movimientosCuentaPF(c, true).sort(function(a,b){ return b.t-a.t; });
-        var baseTxt = (usd?'USD '+c.saldo_inicial:fmt(Number(c.saldo_inicial)))+' ('+fmtFechaHoraPF(new Date(c.saldo_inicial_ts).getTime())+')';
-        body.appendChild(el('div',{style:'font-size:12px;color:#64748B;margin-bottom:8px'},'Saldo base: '+baseTxt+'. Lo anterior a la base se muestra en gris y no suma al saldo.'));
-        if (!lista.length) body.appendChild(el('div',{style:'font-size:13px;color:#94a3b8'},'Sin movimientos.'));
-        var marcoBase = false;
+        var lista = movimientosCuentaPF(c, true);
+        // saldo corrido: arranca en el saldo base y sigue con lo posterior al ajuste
+        var acc = Number(c.saldo_inicial||0);
+        lista.filter(function(x){ return !x.previo; }).sort(function(a,b){ return a.t-b.t; }).forEach(function(x){ acc += x.monto; x.saldoDespues = acc; });
+        lista.push({t:ts, ajuste:true, monto:0, det:'Ajuste de saldo'});
+        lista.sort(function(a,b){ return (b.t-a.t) || (a.ajuste ? 1 : -1); });
+        body.appendChild(el('div',{style:'font-size:12px;color:#64748B;margin-bottom:8px'},'Saldo actual: '+fm(acc)+'. Se ve todo el historial; lo anterior al último ajuste ya está incluido en el saldo base y no suma.'));
         lista.forEach(function(x){
-          if (x.previo && !marcoBase) { marcoBase = true; body.appendChild(el('div',{style:'font-size:11px;font-weight:700;color:#0B6E99;background:#E6F4FA;border-radius:6px;padding:4px 8px;margin:6px 0'},'↑ Después de la base · ↓ Antes del ajuste de saldo ('+baseTxt+'): ya incluido en el saldo base')); }
-          var f = el('div',{style:'display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid #F1F5F9;gap:10px'+(x.previo?';opacity:.5':'')});
-          f.appendChild(el('span',{}, fmtFechaHoraPF(x.t)+' · '+x.det));
-          f.appendChild(el('b',{style:'color:'+(x.monto<0?'#A32D2D':'#3D8A32')}, (x.monto<0?'−':'+')+(usd?'USD '+(Math.round(Math.abs(x.monto)*100)/100):fmt(Math.round(Math.abs(x.monto))))));
+          if (x.ajuste) {
+            var a = el('div',{style:'display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:700;color:#0B6E99;background:#E6F4FA;border-radius:6px;padding:6px 8px;margin:6px 0;gap:10px'});
+            a.appendChild(el('span',{}, fmtFechaHoraPF(x.t)+' · ⚖ Ajuste de saldo: se fijó el saldo real'));
+            a.appendChild(el('b',{}, fm(Number(c.saldo_inicial||0))));
+            body.appendChild(a); return;
+          }
+          var f = el('div',{style:'display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid #F1F5F9;gap:10px'+(x.previo?';opacity:.6':'')});
+          var izq = el('span',{}, fmtFechaHoraPF(x.t)+' · '+x.det+(x.previo?'  (antes del ajuste)':''));
+          f.appendChild(izq);
+          var der = el('span',{style:'text-align:right;white-space:nowrap'});
+          der.appendChild(el('b',{style:'color:'+(x.monto<0?'#A32D2D':'#3D8A32')}, (x.monto<0?'−':'+')+fm(Math.abs(x.monto))));
+          if (!x.previo) der.appendChild(el('div',{style:'font-size:10px;color:#94a3b8'},'saldo '+fm(x.saldoDespues)));
+          f.appendChild(der);
           body.appendChild(f);
         });
       }, function(foot) { foot.appendChild(cancelBtn()); }));
