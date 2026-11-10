@@ -5960,7 +5960,12 @@ function vFinanzas() {
       var usdHold = cuentasPF.length ? disponibleUsdPF() : 0;
       var pend = gastosPF.filter(function(g){ return g.mes_id===m.id && !g.pagado; }).map(function(g){
         var o = {concepto:g.concepto, categoria:g.categoria, fecha:g.fecha, saldo_ars:Math.round(saldoPF(g)), saldo_usd:Math.round(saldoUSDPF(g)*100)/100, prestamo_usd:Number(g.prestamo_monto||0)};
-        if (g.categoria==='Tarjetas') { o.minimo_a_pagar = minimoGastoPF(g) || null; o.minimo_cargado = minimoGastoPF(g) > 0; }
+        if (g.categoria==='Tarjetas') {
+          var mn = minimoGastoPF(g), ent = entregadoPF(g);
+          o.total_resumen = Math.round(Number(g.monto||0)); o.entregado_ars = Math.round(ent);
+          o.minimo_a_pagar = mn || null; o.minimo_cargado = mn > 0;
+          if (mn > 0) { o.minimo_pendiente = Math.max(0, Math.round(mn - ent)); o.minimo_cubierto = ent >= mn - 0.5; }
+        }
         return o;
       }).filter(function(g){ return g.saldo_ars>0 || g.saldo_usd>0; });
 
@@ -5969,7 +5974,7 @@ function vFinanzas() {
         var saleArs = g.saldo_ars + g.saldo_usd*tcUSD, notaUsd = '';
         if (usdHold > 0 && g.saldo_usd > 0) { var cu = Math.min(usdHold, g.saldo_usd); usdHold -= cu; saleArs -= cu*tcUSD; notaUsd = ' (USD '+cu+' cubiertos con tus dolares)'; }
         else if (usdHold > 0 && g.prestamo_usd > 0 && g.saldo_ars > 0) { var cu2 = Math.min(usdHold, g.prestamo_usd); usdHold -= cu2; saleArs = g.saldo_ars*(1 - cu2/g.prestamo_usd); notaUsd = ' (USD '+cu2+' cubiertos con tus dolares)'; }
-        ev.push({fecha:aHoy(g.fecha), entra:0, sale:Math.round(Math.max(0,saleArs)), tarjeta:g.categoria==='Tarjetas', detalle:g.concepto+notaUsd+(g.minimo_a_pagar>0 ? ' (minimo '+g.minimo_a_pagar+')' : '')});
+        ev.push({fecha:aHoy(g.fecha), entra:0, sale:Math.round(Math.max(0,saleArs)), tarjeta:g.categoria==='Tarjetas', detalle:g.concepto+notaUsd+(g.minimo_a_pagar>0 ? ' (minimo del resumen '+g.minimo_a_pagar+(g.minimo_cubierto ? ', YA CUBIERTO con las entregas' : ', falta para el minimo '+g.minimo_pendiente)+')' : '')});
       });
       // Pagos mensuales fijos en USD que no estan como gasto del mes (ej: Susana, "USD 400 x mes")
       prestamosPF.filter(function(p){ return p.activo && p.moneda==='USD'; }).forEach(function(p){
@@ -6015,7 +6020,7 @@ function vFinanzas() {
         liquidacion: {sueldo_bruto:Math.round(t.totalBruto), sueldo_depositado:Math.round(t.juanSueldo), ds_pendiente:dsPend, dia_tope_llegada_ds:Number(diaDS)||10, nota_ds:'El DS pendiente entra a mas tardar ese dia (peor caso). Si llega antes, Juan lo carga como Transferencia interna y el DS pendiente baja solo.'},
         gastos_pendientes: pend,
         tarjetas_pendientes: pend.filter(function(g){ return g.categoria==='Tarjetas'; }),
-        nota_tarjetas: 'En tarjetas_pendientes cada tarjeta trae minimo_a_pagar (lo cargo Juan al cerrar el resumen). Usa ese minimo; solo pedilo si minimo_cargado es false.',
+        nota_tarjetas: 'En tarjetas_pendientes cada tarjeta trae: total_resumen, entregado_ars (lo que Juan ya pago, restado de saldo_ars), minimo_a_pagar (el minimo del resumen), minimo_pendiente (lo que falta pagar para llegar al minimo) y minimo_cubierto. Si minimo_cubierto es true, el minimo YA ESTA PAGO: no lo incluyas como pendiente; lo que queda es saldo opcional. Solo pedi el minimo si minimo_cargado es false.',
         calendario_caja: calendario,
         por_cobrar_negocio: porCobrar,
         deudas_a_cobrar: deudasPF.filter(function(d){ return d.estado==='pendiente'; }).map(function(d){ return {nombre:d.nombre, concepto:d.concepto, monto:Number(d.monto)}; }),
