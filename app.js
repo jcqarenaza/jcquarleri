@@ -2066,6 +2066,23 @@ function rtjLineasPdf(buf) {
   });
 }
 
+
+// Dolar oficial: dolarapi.com, y si esta desactualizado (mas de 1 dia) usa bluelytics
+function qpDolarOficial() {
+  if (window._qpDolarP && Date.now() - (window._qpDolarT||0) < 600000) return window._qpDolarP;
+  var a = fetch('https://dolarapi.com/v1/dolares/oficial').then(function(r){ return r.json(); }).catch(function(){ return null; });
+  var b = fetch('https://api.bluelytics.com.ar/v2/latest').then(function(r){ return r.json(); }).then(function(d){
+    return d && d.oficial && d.oficial.value_sell ? {moneda:'USD', casa:'oficial', compra:d.oficial.value_buy, venta:d.oficial.value_sell, fechaActualizacion:d.last_update, fuente:'bluelytics'} : null;
+  }).catch(function(){ return null; });
+  window._qpDolarT = Date.now();
+  window._qpDolarP = Promise.all([a, b]).then(function(r){
+    var x = r[0], y = r[1];
+    if (x && x.venta && y) { var tx = Date.parse(x.fechaActualizacion||'')||0, ty = Date.parse(y.fechaActualizacion||'')||0; return ty > tx + 86400000 ? y : x; }
+    return (x && x.venta) ? x : (y || x);
+  });
+  return window._qpDolarP;
+}
+
 // ── Selector de cuenta en cobros (entregas, fees, cobro rapido) ──
 function cuentasCobroPF() {
   return sbFetch('panel_pf_cuentas?select=id,nombre,institucion,moneda,tipo,reservada,ingreso_default&activa=eq.true&order=orden.asc').catch(function(){ return []; })
@@ -3515,7 +3532,7 @@ function vFinanzas() {
     cuentasPF:          sbFetch('panel_pf_cuentas?select=*&activa=eq.true&order=orden.asc,created_at.asc').catch(function(){ return []; }),
     movimientosPF:      sbFetch('panel_pf_movimientos?select=*&order=created_at.asc').catch(function(){ return []; }),
     asignacionesFin:    sbFetch('panel_asignaciones?select=id,cliente_id').catch(function(){ return []; }),
-    dolarData:          fetch('https://dolarapi.com/v1/dolares/oficial').then(function(r){ return r.json(); }).catch(function(){ return null; }),
+    dolarData:          qpDolarOficial().catch(function(){ return null; }),
     pagoGastos:         sbFetch('panel_gastos_pagos?select=*&order=fecha.desc').catch(function(){ return []; }),
     config:             sbFetch('panel_config?select=clave,valor').catch(function(){ return []; }),
     gastosPers:         sbFetch('panel_gastos_personales?select=*&order=activo.desc,nombre.asc').catch(function(){ return []; }),
@@ -6573,11 +6590,14 @@ function vFinanzas() {
     function mMovimientosCuentaPF(c) {
       var usd = c.moneda==='USD';
       openM(makeModal('Movimientos — '+etiqCtaPF(c), function(body) {
-        var lista = movimientosCuentaPF(c).sort(function(a,b){ return b.t-a.t; });
-        body.appendChild(el('div',{style:'font-size:12px;color:#64748B;margin-bottom:8px'},'Desde la base: '+(usd?'USD '+c.saldo_inicial:fmt(Number(c.saldo_inicial)))+' ('+fmtFechaHoraPF(new Date(c.saldo_inicial_ts).getTime())+')'));
-        if (!lista.length) body.appendChild(el('div',{style:'font-size:13px;color:#94a3b8'},'Sin movimientos después de la base.'));
+        var lista = movimientosCuentaPF(c, true).sort(function(a,b){ return b.t-a.t; });
+        var baseTxt = (usd?'USD '+c.saldo_inicial:fmt(Number(c.saldo_inicial)))+' ('+fmtFechaHoraPF(new Date(c.saldo_inicial_ts).getTime())+')';
+        body.appendChild(el('div',{style:'font-size:12px;color:#64748B;margin-bottom:8px'},'Saldo base: '+baseTxt+'. Lo anterior a la base se muestra en gris y no suma al saldo.'));
+        if (!lista.length) body.appendChild(el('div',{style:'font-size:13px;color:#94a3b8'},'Sin movimientos.'));
+        var marcoBase = false;
         lista.forEach(function(x){
-          var f = el('div',{style:'display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid #F1F5F9;gap:10px'});
+          if (x.previo && !marcoBase) { marcoBase = true; body.appendChild(el('div',{style:'font-size:11px;font-weight:700;color:#0B6E99;background:#E6F4FA;border-radius:6px;padding:4px 8px;margin:6px 0'},'↑ Después de la base · ↓ Antes del ajuste de saldo ('+baseTxt+'): ya incluido en el saldo base')); }
+          var f = el('div',{style:'display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid #F1F5F9;gap:10px'+(x.previo?';opacity:.5':'')});
           f.appendChild(el('span',{}, fmtFechaHoraPF(x.t)+' · '+x.det));
           f.appendChild(el('b',{style:'color:'+(x.monto<0?'#A32D2D':'#3D8A32')}, (x.monto<0?'−':'+')+(usd?'USD '+(Math.round(Math.abs(x.monto)*100)/100):fmt(Math.round(Math.abs(x.monto))))));
           body.appendChild(f);
@@ -6697,37 +6717,39 @@ function vFinanzas() {
       }
       return remARS + remUSD*tcUSD;
     }
-    function movimientosCuentaPF(c) {
+    function movimientosCuentaPF(c, incluirPrevios) {
       var ts = new Date(c.saldo_inicial_ts||0).getTime(), out = [];
-      ingresosPF.forEach(function(i){ if (i.cuenta_id===c.id && i.created_at && new Date(i.created_at).getTime()>ts) out.push({t:new Date(i.created_at).getTime(), monto:convPF(Number(i.monto||0),'ARS',c.moneda), det:'Ingreso: '+(i.concepto||i.categoria||'')}); });
+      function post(t) { return incluirPrevios || t > ts; }
+      ingresosPF.forEach(function(i){ if (i.cuenta_id===c.id && i.created_at && post(new Date(i.created_at).getTime())) out.push({t:new Date(i.created_at).getTime(), monto:convPF(Number(i.monto||0),'ARS',c.moneda), det:'Ingreso: '+(i.concepto||i.categoria||'')}); });
       if (c.moneda !== 'USD') {
         var defId = cuentaDefaultIngresoPF(), conPagos = {};
         pagosCobroPF.forEach(function(pg){
           conPagos[pg.cobro_id] = true;
           var dest = pg.cuenta_id || defId;
-          if (dest===c.id && pg.created_at && new Date(pg.created_at).getTime()>ts) out.push({t:new Date(pg.created_at).getTime(), monto:Number(pg.monto||0), det:'Cobro del negocio'});
+          if (dest===c.id && pg.created_at && post(new Date(pg.created_at).getTime())) out.push({t:new Date(pg.created_at).getTime(), monto:Number(pg.monto||0), det:'Cobro del negocio'});
         });
         if (c.ingreso_default) {
-          var dTs = fechaLocalPF(ts);
+          var dTs = incluirPrevios ? '0000-00-00' : fechaLocalPF(ts);
           cobros.forEach(function(co){ if (!co.id || conPagos[co.id]) return; if (co.fecha_pago && String(co.fecha_pago).slice(0,10) > dTs && String(co.fecha_pago).slice(0,10) <= fechaLocalPF(Date.now())) out.push({t:new Date(co.fecha_pago+'T12:00:00').getTime(), monto:Number(co.monto||0), det:'Cobro: '+(co.descripcion||co.tipo_cobro||'')}); });
         }
       }
       gastosPF.forEach(function(g){
-        if (g.pagado && g.cuenta_id===c.id && g.pagado_at && new Date(g.pagado_at).getTime()>ts) { var a = montoGastoEnCuentaPF(g, c); if (a > 0) out.push({t:new Date(g.pagado_at).getTime(), monto:-a, det:'Pago: '+(g.concepto||'')}); }
-        (g._entregas||[]).forEach(function(e){ if (e.cuenta_id===c.id && e.created_at && new Date(e.created_at).getTime()>ts) out.push({t:new Date(e.created_at).getTime(), monto:-convPF(Number(e.monto||0), e.moneda==='USD'?'USD':'ARS', c.moneda), det:'Entrega: '+(g.concepto||'')}); });
+        if (g.pagado && g.cuenta_id===c.id && g.pagado_at && post(new Date(g.pagado_at).getTime())) { var a = montoGastoEnCuentaPF(g, c); if (a > 0) out.push({t:new Date(g.pagado_at).getTime(), monto:-a, det:'Pago: '+(g.concepto||'')}); }
+        (g._entregas||[]).forEach(function(e){ if (e.cuenta_id===c.id && e.created_at && post(new Date(e.created_at).getTime())) out.push({t:new Date(e.created_at).getTime(), monto:-convPF(Number(e.monto||0), e.moneda==='USD'?'USD':'ARS', c.moneda), det:'Entrega: '+(g.concepto||'')}); });
       });
       [['Gasto del negocio', R.pagoGastos], ['Gasto personal fijo', R.pagoGastosPers]].forEach(function(par){
         (par[1]||[]).forEach(function(p){
-          if (!(p.cuenta_id===c.id && p.created_at && new Date(p.created_at).getTime()>ts)) return;
+          if (!(p.cuenta_id===c.id && p.created_at && post(new Date(p.created_at).getTime()))) return;
           var m = (p.moneda||'ARS')===c.moneda ? Number(p.monto||0) : (c.moneda==='USD' ? convPF(Number(p.monto_ars||0),'ARS','USD') : Number(p.monto_ars||0));
           out.push({t:new Date(p.created_at).getTime(), monto:-m, det:par[0]+': '+((p._gasto&&p._gasto.nombre)||'')});
         });
       });
       movimientosPF.forEach(function(mv){
-        if (!(mv.created_at && new Date(mv.created_at).getTime()>ts)) return;
+        if (!(mv.created_at && post(new Date(mv.created_at).getTime()))) return;
         if (mv.cuenta_destino===c.id) out.push({t:new Date(mv.created_at).getTime(), monto:Number(mv.monto_destino||0), det:'Movimiento entrante'+(mv.notas?': '+mv.notas:'')});
         if (mv.cuenta_origen===c.id) out.push({t:new Date(mv.created_at).getTime(), monto:-Number(mv.monto_origen||0), det:'Movimiento saliente'+(mv.notas?': '+mv.notas:'')});
       });
+      out.forEach(function(x){ x.previo = x.t <= ts; });
       return out;
     }
     function saldoCuentaPF(c) { return Number(c.saldo_inicial||0) + movimientosCuentaPF(c).reduce(function(a,x){ return a + x.monto; }, 0); }
@@ -7751,7 +7773,7 @@ function registrarPagoGastoUI(g, cb, cts) {
         mkFg('Tipo de cambio BNA (auto)', mkInput('rp-tc','number','','Cargando...')),
         mkFg('Moneda', mkSelect('rp-mon',[['USD','USD'],['ARS','ARS']],g.moneda||'USD'))
       );
-      fetch('https://dolarapi.com/v1/dolares/oficial').then(function(r){ return r.json(); }).then(function(d){
+      qpDolarOficial().then(function(d){
         var inp = document.getElementById('rp-tc'); if (inp) inp.value = d.venta || 1200;
       }).catch(function(){ var inp = document.getElementById('rp-tc'); if (inp) inp.value = 1200; });
     }
@@ -7849,7 +7871,7 @@ function registrarPagoGastoPersonalUI(g, cb, cts) {
         mkFg('Tipo de cambio BNA (auto)', mkInput('rpp-tc','number','','Cargando...')),
         mkFg('Moneda', mkSelect('rpp-mon',[['USD','USD'],['ARS','ARS']],g.moneda||'USD'))
       );
-      fetch('https://dolarapi.com/v1/dolares/oficial').then(function(r){ return r.json(); }).then(function(d){
+      qpDolarOficial().then(function(d){
         var inp = document.getElementById('rpp-tc'); if (inp) inp.value = d.venta || 1200;
       }).catch(function(){ var inp = document.getElementById('rpp-tc'); if (inp) inp.value = 1200; });
     }
@@ -8601,7 +8623,7 @@ function mPlanConeOS(emp, asigId) {
       feeBox.appendChild(feeRight);
       body.appendChild(feeBox);
       // Traer dólar oficial
-      fetch('https://dolarapi.com/v1/dolares/oficial').then(function(r){ return r.json(); }).then(function(d){
+      qpDolarOficial().then(function(d){
         var tc = d && d.venta ? Number(d.venta) : null;
         if (tc) feeARS.textContent = '≈ $'+Math.round(feeUSD*tc).toLocaleString('es-AR')+' ARS (oficial $'+tc.toLocaleString('es-AR')+')';
       }).catch(function(){});
@@ -8957,7 +8979,7 @@ function vPartners() {
     sbFetch('panel_sistemas?select=*&order=nombre.asc&para_reventa=eq.true'),
     sbFetch('panel_clientes?select=*'),
     sbFetch('panel_asignaciones?select=*'),
-    fetch('https://dolarapi.com/v1/dolares/oficial').then(function(r){ return r.json(); }).catch(function(){ return null; })
+    qpDolarOficial().catch(function(){ return null; })
   ]).then(function(r) {
     var revs=r[0]||[],revSis=r[1],sistemas=r[2],clientes=r[3],asigs=r[4],dolarData=r[5];
     var revsActivos=revs.filter(function(rv){ return rv.activo!==false; });
