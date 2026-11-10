@@ -6590,6 +6590,23 @@ function vFinanzas() {
       openM(makeModal('Mover plata entre cuentas', function(body) {
         var sO = mkSelect('mv-o', opts, opts[0] ? opts[0][0] : ''), sD = mkSelect('mv-d', opts, usdId || (opts[1] ? opts[1][0] : ''));
         mkRow2(body, mkFg('Sale de', sO), mkFg('Entra a', sD));
+        // El destino es de la misma moneda que el origen, salvo que sea una compra/venta de dólares
+        var chkCambio = el('input',{type:'checkbox',id:'mv-cambio'});
+        var lblCambio = el('label',{style:'font-size:12px;color:#64748B;display:flex;align-items:center;gap:6px;margin:-2px 0 10px'});
+        lblCambio.appendChild(chkCambio); lblCambio.appendChild(document.createTextNode('Es compra o venta de dólares (cambia de moneda)'));
+        body.appendChild(lblCambio);
+        function monCta(id){ var x = cuentasPF.find(function(y){ return y.id===id; }); return x ? (x.moneda==='USD'?'USD':'ARS') : null; }
+        function filtrarDestino() {
+          var mo = monCta(sO.value), prev = sD.value;
+          while (sD.firstChild) sD.removeChild(sD.firstChild);
+          var ok = opts.filter(function(o){ return o[0]!==sO.value && (chkCambio.checked || monCta(o[0])===mo); });
+          ok.forEach(function(o){ sD.appendChild(el('option',{value:o[0]},o[1])); });
+          if (ok.some(function(o){ return o[0]===prev; })) sD.value = prev;
+          else if (chkCambio.checked && usdId && ok.some(function(o){ return o[0]===usdId; }) && mo==='ARS') sD.value = usdId;
+        }
+        sO.addEventListener('change', function(){ filtrarDestino(); if (typeof calc==='function') calc(); });
+        chkCambio.addEventListener('change', function(){ filtrarDestino(); if (typeof calc==='function') calc(); });
+        filtrarDestino();
         var inpM = mkInput('mv-m','number','');
         var inpTc = mkInput('mv-tc','number',Math.round(tcUSD));
         mkRow2(body, mkFg('Monto que sale', inpM), mkFg('Fecha', mkInput('mv-f','date',new Date().toISOString().slice(0,10))));
@@ -6613,6 +6630,7 @@ function vFinanzas() {
           var o = cuentasPF.find(function(x){ return x.id===gv('mv-o'); }), d = cuentasPF.find(function(x){ return x.id===gv('mv-d'); });
           var m = Number(gv('mv-m')||0), tc = Number(gv('mv-tc')||0);
           if (!o||!d||o.id===d.id) { alert('Elegí dos cuentas distintas'); return; }
+          if (o.moneda!==d.moneda && !(ge('mv-cambio') && ge('mv-cambio').checked)) { alert('Las cuentas son de distinta moneda: tildá "compra o venta de dólares" o elegí otra cuenta'); return; }
           if (!(m>0)) { alert('Poné el monto'); return; }
           var dif = o.moneda!==d.moneda; if (dif && !(tc>0)) { alert('Poné el precio del dólar'); return; }
           var dest = !dif ? m : (o.moneda==='USD' ? m*tc : m/tc);
