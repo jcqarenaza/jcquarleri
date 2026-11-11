@@ -7295,7 +7295,14 @@ function vFinanzas() {
           var tdHAcc2 = el('td',{style:'text-align:right'});
           var btnAH2 = el('button',{class:'btn btnsm'},'+ Entrega');
           (function(pp2){btnAH2.onclick=function(e){e.stopPropagation();mNuevaEntrega2(pp2);};})(part);
-          tdHAcc2.appendChild(btnAH2); trH2.appendChild(tdHAcc2); tb2.appendChild(trH2);
+          tdHAcc2.appendChild(btnAH2);
+          var btnQuit2 = el('button',{class:'btn btnsm',title:'Quitar de la juntada',style:'margin-left:6px;color:#E53E3E;border-color:#FECACA'},'Quitar');
+          (function(pp4,nEnt,sub4){ btnQuit2.onclick=function(e){ e.stopPropagation();
+            var msg = nEnt ? (pp4.nombre+' tiene '+nEnt+' entrega(s) por '+fmt(sub4)+'. Si lo quitás, esas entregas dejan de contar en el total (se conservan en la base). ¿Quitarlo igual?') : ('¿Quitar a '+pp4.nombre+' de la juntada?');
+            if(!confirm(msg)) return;
+            dbUpd('panel_juntada_participantes',pp4.id,{activo:false}).then(function(){ pp4.activo=false; juntadaPagos=juntadaPagos.filter(function(x){ return x.participante_id!==pp4.id; }); renderJuntada(); }).catch(function(err){ alert('No se pudo quitar: '+(err&&err.message||err)); });
+          }; })(part,pagosP2.length,subtotal2);
+          tdHAcc2.appendChild(btnQuit2); trH2.appendChild(tdHAcc2); tb2.appendChild(trH2);
           if (!isC) {
             if (!pagosP2.length) { var trV=el('tr'); trV.appendChild(el('td',{colspan:'5',style:'text-align:center;font-size:12px;color:#94a3b8;padding:6px'},'Sin entregas')); tb2.appendChild(trV); }
             else { pagosP2.forEach(function(p2){ var tr2=el('tr'); tr2.appendChild(el('td',{style:'padding-left:24px;color:#64748B;font-size:13px'},'')); tr2.appendChild(el('td',{style:'font-size:12px;color:#64748B'},fdate(p2.fecha))); tr2.appendChild(el('td',{style:'text-align:right'},fmt(p2.importe))); tr2.appendChild(el('td',{},''));
