@@ -7247,7 +7247,9 @@ function vFinanzas() {
         var totalGastado2 = gastosComunes2.reduce(function(s,g){ return s+Number(g.importe); },0);
         var totalIntereses2 = interesesMP2.reduce(function(s,g){ return s+Number(g.importe); },0);
         var resCard2 = el('div',{class:'card',style:'display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;padding:14px;margin-bottom:10px'});
-        [{label:'Total aportado',val:fmt(totalAportado2),color:'#3D8A32'},
+        var _nActivos = juntadaParticipantes.filter(function(p){ return p.activo; }).length;
+        [{label:'Somos (activos)',val:String(_nActivos),color:'#1a2e4a'},
+         {label:'Total aportado',val:fmt(totalAportado2),color:'#3D8A32'},
          {label:'Total gastado', val:fmt(totalGastado2), color:'#A32D2D'},
          {label:'Intereses MP',  val:fmt(totalIntereses2), color:'#854F0B'},
          {label:'Disponible',    val:fmt(totalAportado2+totalIntereses2-totalGastado2), color:'#0B9EDA'},
@@ -7279,14 +7281,14 @@ function vFinanzas() {
         tbl2.appendChild(elH('thead',{},'<tr><th>Qui\xE9n</th><th>Fecha</th><th style="text-align:right">Importe</th><th style="text-align:right">Subtotal</th><th></th></tr>'));
         var tb2 = el('tbody');
         var _totJ = {}; juntadaPagos.forEach(function(p){ _totJ[p.participante_id] = (_totJ[p.participante_id]||0) + Number(p.importe); });
-        juntadaParticipantes.filter(function(p){return p.activo;}).sort(function(x,y){ return (_totJ[y.id]||0) - (_totJ[x.id]||0) || String(x.nombre).localeCompare(String(y.nombre)); }).forEach(function(part){
+        juntadaParticipantes.filter(function(p){return p.activo || (_totJ[p.id]||0)>0;}).sort(function(x,y){ return (y.activo?1:0)-(x.activo?1:0) || (_totJ[y.id]||0) - (_totJ[x.id]||0) || String(x.nombre).localeCompare(String(y.nombre)); }).forEach(function(part){
           var pagosP2 = juntadaPagos.filter(function(p){return p.participante_id===part.id;}).sort(function(a,b){return new Date(a.fecha)-new Date(b.fecha);});
           var subtotal2 = pagosP2.reduce(function(s,p){return s+Number(p.importe);},0);
           var isC = checkCollapsed(part.id);
-          var trH2 = el('tr',{style:'background:#F8FAFC'});
+          var trH2 = el('tr',{style:part.activo?'background:#F8FAFC':'background:#F1F5F9;opacity:.6'});
           var tdT2 = el('td',{style:'font-weight:600;color:#1a2e4a;cursor:pointer;user-select:none'});
           var arr2 = el('span',{style:'margin-right:6px;font-size:10px;color:#94a3b8'},isC?'\u25B6':'\u25BC');
-          tdT2.appendChild(arr2); tdT2.appendChild(document.createTextNode(part.nombre));
+          tdT2.appendChild(arr2); tdT2.appendChild(document.createTextNode(part.nombre+(part.activo?'':' (no va)')));
           (function(pid2){ tdT2.onclick = function(){ collapsed[pid2]=checkCollapsed(pid2)?false:true; renderJuntada(); }; })(part.id);
           trH2.appendChild(tdT2);
           trH2.appendChild(el('td',{},''));
@@ -7296,11 +7298,12 @@ function vFinanzas() {
           var btnAH2 = el('button',{class:'btn btnsm'},'+ Entrega');
           (function(pp2){btnAH2.onclick=function(e){e.stopPropagation();mNuevaEntrega2(pp2);};})(part);
           tdHAcc2.appendChild(btnAH2);
-          var btnQuit2 = el('button',{class:'btn btnsm',title:'Quitar de la juntada',style:'margin-left:6px;color:#E53E3E;border-color:#FECACA'},'Quitar');
+          var btnQuit2 = el('button',{class:'btn btnsm',title:part.activo?'Marcar que no va':'Volver a sumarlo',style:'margin-left:6px;'+(part.activo?'color:#E53E3E;border-color:#FECACA':'color:#3D8A32;border-color:#BBF7D0')},part.activo?'No va':'Reactivar');
           (function(pp4,nEnt,sub4){ btnQuit2.onclick=function(e){ e.stopPropagation();
-            var msg = nEnt ? (pp4.nombre+' tiene '+nEnt+' entrega(s) por '+fmt(sub4)+'. Si lo quitás, esas entregas dejan de contar en el total (se conservan en la base). ¿Quitarlo igual?') : ('¿Quitar a '+pp4.nombre+' de la juntada?');
+            var nuevo = !pp4.activo;
+            var msg = nuevo ? ('¿Volver a sumar a '+pp4.nombre+'?') : (nEnt ? (pp4.nombre+' no va, pero su plata ('+fmt(sub4)+') queda sumada en los totales. Sale del contador de activos y se muestra en gris. ¿Confirmás?') : ('¿Sacar a '+pp4.nombre+' de la juntada?'));
             if(!confirm(msg)) return;
-            dbUpd('panel_juntada_participantes',pp4.id,{activo:false}).then(function(){ pp4.activo=false; juntadaPagos=juntadaPagos.filter(function(x){ return x.participante_id!==pp4.id; }); renderJuntada(); }).catch(function(err){ alert('No se pudo quitar: '+(err&&err.message||err)); });
+            dbUpd('panel_juntada_participantes',pp4.id,{activo:nuevo}).then(function(){ pp4.activo=nuevo; renderJuntada(); }).catch(function(err){ alert('No se pudo actualizar: '+(err&&err.message||err)); });
           }; })(part,pagosP2.length,subtotal2);
           tdHAcc2.appendChild(btnQuit2); trH2.appendChild(tdHAcc2); tb2.appendChild(trH2);
           if (!isC) {
