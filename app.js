@@ -464,6 +464,19 @@ function vDash() {
       .sort(function(a,b){ return new Date(b.fecha_pago)-new Date(a.fecha_pago); }).slice(0,5);
     var wrap = el('div', {});
 
+    // Saludo
+    var _uSal = window._currentUser || {};
+    var _nmSal = String(_uSal.nombre || '').trim().split(/\s+/).slice(0,2).join(' ');
+    var _hSal = hoy.getHours(), _saludo = _hSal < 12 ? 'Buen día' : (_hSal < 20 ? 'Buenas tardes' : 'Buenas noches');
+    var _DIAS = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'], _MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    var greet = el('div', {style:'margin-bottom:26px'});
+    greet.appendChild(el('div', {style:'font-size:13px;color:#64748B;margin-bottom:6px'}, _DIAS[hoy.getDay()]+' '+hoy.getDate()+' de '+_MESES[hoy.getMonth()]));
+    var _h1 = el('h1', {style:"margin:0;font-family:'Outfit',sans-serif;font-weight:600;font-size:34px;line-height:1.15;letter-spacing:-.01em;color:#1a2e4a"});
+    _h1.appendChild(document.createTextNode(_saludo + (_nmSal ? ', ' : '')));
+    if (_nmSal) _h1.appendChild(el('span', {style:'color:#0B9EDA'}, _nmSal));
+    greet.appendChild(_h1);
+    wrap.appendChild(greet);
+
     // Banner alertas
     if (als.length) {
       var banner = el('div', {class:'abanner'});

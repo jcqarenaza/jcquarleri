@@ -12,7 +12,7 @@
   <meta name="theme-color" content="#1A7FE8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>QP C&IA</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@500;600&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--b:#0B9EDA;--bd:#0C6FA3;--bl:#E6F6FD;--g:#5BBD4E;--gd:#3D8A32;--gl:#EDF7EA;--tx:#1a2e4a;--gr:#64748B;--br:#E2E8F0;--bg:#F0F5FA;--surface:#fff;--border:#E2E8F0;--tx2:#64748B;--ac:#0B9EDA}
@@ -137,6 +137,98 @@ body{overflow-x:clip;-webkit-tap-highlight-color:transparent;touch-action:manipu
   #login-screen button{min-height:46px}
   #login-screen{align-items:flex-start!important;overflow-y:auto;height:100dvh!important;padding-top:max(60px,calc(env(safe-area-inset-top) + 40px))}
   #login-screen input:-webkit-autofill{-webkit-box-shadow:0 0 0 100px #F0F4F8 inset!important;-webkit-text-fill-color:#1a2540!important}
+}
+/* ===== Rediseño pastel: fondo blanco, formas redondeadas, barra lateral (compu) / barra inferior (celular) ===== */
+:root{--bg:#fff;--bg2:#F6F9FC;--br:#E8ECF3;--border:#E8ECF3;--shd:0 8px 30px rgba(26,46,74,.05);--f1:'Outfit',sans-serif;--f2:'Figtree','DM Sans',sans-serif;--fm:'JetBrains Mono',ui-monospace,monospace}
+body{font-family:var(--f2);background:#fff}
+input,select,textarea,button{font-family:inherit}
+.top{background:#fff;box-shadow:none;border-bottom:1px solid var(--br)}
+.nb{display:flex;align-items:center;gap:10px;border-radius:16px;font-family:var(--f2);font-weight:500;color:var(--gr)}
+.nb .ni{width:18px;height:18px;flex:0 0 auto;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.nb:hover{background:var(--bg2);color:var(--tx)}
+.nb.on{background:var(--bl);color:var(--bd);font-weight:600}
+.nsec{font:600 10px var(--f2);letter-spacing:.12em;text-transform:uppercase;color:#94A3B8;padding:16px 14px 6px}
+.badge{top:50%;right:10px;transform:translateY(-50%)}
+.app{background:#fff}
+.mets{gap:14px}
+.met{border:1px solid var(--br);border-radius:24px;padding:20px;box-shadow:var(--shd);background:linear-gradient(160deg,#E6F6FD 0%,#fff 72%)}
+.met:has(.mst[style*="#EF9F27"]){background:linear-gradient(160deg,#FAEEDA 0%,#fff 72%)}
+.met:has(.mst[style*="#7F77DD"]){background:linear-gradient(160deg,#EEEDFE 0%,#fff 72%)}
+.met:has(.mst[style*="#E53E3E"]){background:linear-gradient(160deg,#FDECEC 0%,#fff 72%)}
+.met:has(.mst[style*="#3D8A32"]),.met:has(.mst[style*="#5BBD4E"]),.met:has(.mst[style*="#639922"]){background:linear-gradient(160deg,#EDF7EA 0%,#fff 72%)}
+.mst{position:static!important;width:10px;height:10px!important;border-radius:50%;margin-bottom:12px}
+.mlb{font-family:var(--f2);font-weight:600;letter-spacing:.08em}
+.mv{font-family:var(--fm);font-weight:600;letter-spacing:-.02em}
+.st{font-family:var(--f2);font-weight:600;letter-spacing:.08em}
+.btn{border:1px solid var(--br);border-radius:999px;padding:9px 18px;font-weight:500;background:#fff}
+.btn:hover{background:var(--bg2);border-color:#CBD5E1}
+.btnp{background:var(--b);border-color:var(--b);box-shadow:0 8px 20px rgba(11,158,218,.22)}
+.btnp:hover{background:var(--bd);border-color:var(--bd)}
+.btns{box-shadow:0 8px 20px rgba(91,189,78,.2)}
+.btnsm{padding:5px 13px}
+.card,.cc{border:1px solid var(--br);border-radius:24px;box-shadow:var(--shd)}
+.ch{padding:16px 20px}
+.cb2{padding:14px 20px;background:var(--bg2)}
+.ai{border:1px solid var(--br);border-radius:16px}
+.tbl th{background:var(--bg2);border-bottom:1px solid var(--br);font-family:var(--f2);font-weight:600}
+.tbl td{border-bottom:1px solid #F1F4F9}
+.tbl tr:hover td{background:var(--bg2)}
+.tbl td[style*="text-align:right"]{font-family:var(--fm);font-size:12.5px;font-weight:500}
+.chip{font-family:var(--f2);font-weight:600;padding:3px 11px}
+.fi{border:1px solid #E2E8F0;border-radius:16px;padding:10px 14px;font-family:var(--f2)}
+.fi:focus{border-color:var(--b);box-shadow:0 0 0 4px var(--bl)}
+.fl{font-family:var(--f2);font-weight:600}
+.ov{background:rgba(26,46,74,.30)}
+.mod{border:1px solid var(--br);border-radius:28px;box-shadow:0 20px 60px rgba(26,46,74,.18)}
+.mhd{border-bottom:1px solid #F1F4F9;padding:20px 24px}
+.mtt{font-family:var(--f1);font-weight:600;font-size:18px}
+.mbd{padding:24px}
+.mft{border-top:1px solid #F1F4F9;padding:16px 24px}
+.tabs{background:var(--bg2);border-radius:999px;padding:4px;border:1px solid var(--br)}
+.tab{border-radius:999px;font-family:var(--f2);font-weight:500;padding:6px 16px}
+.tab.on{background:#fff;color:var(--bd);font-weight:600;box-shadow:0 2px 8px rgba(26,46,74,.08)}
+.abanner{border-radius:20px}
+.aitem{border-radius:16px}
+.ibox{border-radius:16px}
+.tog{width:40px;height:22px}
+.sl:before{height:16px;width:16px}
+input:checked+.sl:before{transform:translateX(18px)}
+/* Formas escritas directamente en el código */
+[style*="border-radius:6px"]{border-radius:10px!important}
+[style*="border-radius:8px"]{border-radius:14px!important}
+[style*="border-radius:9px"],[style*="border-radius:10px"]{border-radius:16px!important}
+[style*="border-radius:12px"],[style*="border-radius:14px"]{border-radius:20px!important}
+[style*="border-radius:16px"]{border-radius:28px!important}
+#login-screen{background:#fff!important}
+#login-screen>div{border:1px solid var(--br)!important;box-shadow:0 20px 60px rgba(26,46,74,.10)!important}
+#login-screen button{border-radius:999px!important}
+#login-screen input{border-radius:16px!important;border:1px solid #E2E8F0!important;background:#fff!important}
+#login-title{font-family:var(--f1)}
+
+/* Compu: barra lateral */
+@media(min-width:901px){
+  .top{position:fixed;left:0;top:0;bottom:0;width:248px;flex-direction:column;align-items:stretch;justify-content:flex-start;padding:24px 16px;gap:4px;min-height:0;overflow-y:auto;border-bottom:0;border-right:1px solid var(--br);z-index:100}
+  .logo{height:40px;max-width:150px;align-self:flex-start;margin:0 0 10px 10px}
+  .nav{flex-direction:column;flex:1;width:100%;margin:0;gap:2px;overflow:visible}
+  .nb{width:100%;text-align:left;padding:10px 14px;font-size:14px}
+  #nb-bio{margin-top:auto}
+  .app{margin:0 0 0 248px;width:calc(100% - 248px);max-width:1320px;padding:36px 44px}
+}
+/* Celular y tablet chica: navegación abajo */
+@media(max-width:900px){
+  .top{position:sticky;top:0;min-height:52px;justify-content:center;box-shadow:none}
+  .nsec{display:none}
+  .nav{position:fixed;left:0;right:0;bottom:0;margin:0;z-index:150;flex-direction:row;overflow-x:auto;background:rgba(255,255,255,.96);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--br);padding:6px 8px calc(6px + env(safe-area-inset-bottom));gap:4px}
+  .nb{flex:0 0 auto;flex-direction:column;justify-content:center;gap:3px;min-width:64px;min-height:52px;padding:6px 10px;font-size:11px;border-radius:16px;white-space:nowrap}
+  .nb .ni{width:22px;height:22px}
+  .badge{top:4px;right:10px;transform:none}
+  .app{max-width:none;padding:16px 14px calc(96px + env(safe-area-inset-bottom))}
+}
+@media(max-width:600px){
+  .nb{padding:6px 10px;font-size:11px}
+  .mod{border-radius:28px 28px 0 0}
+  .card,.cc{border-radius:20px}
+  .met{padding:16px}
 }
 body.qp-loading #app { visibility: hidden; }
 body.qp-loading .nav { visibility: hidden; }
@@ -368,15 +460,17 @@ async function doLogin() {
   <div class="top">
     <img id="logo" class="logo" alt="QP C&IA" style="height:38px;object-fit:contain">
     <nav class="nav">
-      <button class="nb on" id="nb-dash" onclick="go('dash')">Dashboard</button>
-      <button class="nb" id="nb-sistemas" onclick="go('sistemas')">Sistemas</button>
-      <button class="nb" id="nb-clientes" onclick="go('clientes')">Clientes</button>
-      <button class="nb" id="nb-cobros" onclick="go('cobros')">Cobros<span class="badge" id="abadge" style="display:none">0</span></button>
-      <button class="nb" id="nb-salud" onclick="go('salud')">Salud &#x2665;</button>
-      <button class="nb" id="nb-gastos" onclick="go('gastos')">Finanzas</button>
-      <button class="nb" id="nb-partners" onclick="go('partners')" style="display:none">Partners</button>
-      <button class="nb" id="nb-bio" onclick="qpBioManual()">Face ID</button>
-      <button class="nb" id="nb-salir" onclick="qpSalir()" style="color:#A32D2D">Salir</button>
+      <div class="nsec">Gestión</div>
+      <button class="nb on" id="nb-dash" onclick="go('dash')"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="2"/><rect x="14" y="3" width="7" height="5" rx="2"/><rect x="14" y="12" width="7" height="9" rx="2"/><rect x="3" y="16" width="7" height="5" rx="2"/></svg><span>Dashboard</span></button>
+      <button class="nb" id="nb-sistemas" onclick="go('sistemas')"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 8h2M14 8h2M8 12h2M14 12h2M10 21v-4h4v4"/></svg><span>Sistemas</span></button>
+      <button class="nb" id="nb-clientes" onclick="go('clientes')"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.4 3.2-5.5 6.5-5.5s5.9 2.1 6.5 5.5M17 11a3 3 0 1 0 0-6M18 14.8c2 .6 3.2 2.4 3.5 5.2"/></svg><span>Clientes</span></button>
+      <button class="nb" id="nb-cobros" onclick="go('cobros')"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M14.5 9.5h-3.8a1.8 1.8 0 0 0 0 3.6h2.6a1.8 1.8 0 0 1 0 3.6H9.5"/></svg><span>Cobros</span><span class="badge" id="abadge" style="display:none">0</span></button>
+      <div class="nsec">Salud y finanzas</div>
+      <button class="nb" id="nb-salud" onclick="go('salud')"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><span>Salud</span></button>
+      <button class="nb" id="nb-gastos" onclick="go('gastos')"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10l9-6 9 6M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18"/></svg><span>Finanzas</span></button>
+      <button class="nb" id="nb-partners" onclick="go('partners')" style="display:none"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12l3 3 5-6"/><circle cx="12" cy="12" r="9"/></svg><span>Partners</span></button>
+      <button class="nb" id="nb-bio" onclick="qpBioManual()"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3H5a2 2 0 0 0-2 2v2M17 3h2a2 2 0 0 1 2 2v2M7 21H5a2 2 0 0 1-2-2v-2M17 21h2a2 2 0 0 0 2-2v-2M9 10v1M15 10v1M9.5 15c1.5 1.3 3.5 1.3 5 0"/></svg><span>Face ID</span></button>
+      <button class="nb" id="nb-salir" onclick="qpSalir()" style="color:#A32D2D"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg><span>Salir</span></button>
     </nav>
   </div>
   <div class="app" id="app">Cargando...</div>
