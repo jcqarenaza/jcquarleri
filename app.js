@@ -6651,7 +6651,8 @@ function vFinanzas() {
           var m = Number(inpM.value||0), tc = Number(inpTc.value||0), dif = o.moneda!==d.moneda;
           fgTc.style.display = dif ? '' : 'none';
           var dest = !dif ? m : (o.moneda==='USD' ? m*tc : (tc>0 ? m/tc : 0));
-          res.textContent = m>0 ? ('Entra: '+(d.moneda==='USD'?'USD '+(Math.round(dest*100)/100):fmt(Math.round(dest)))) : '';
+          var sd = saldoCuentaPF(o), sdTxt = 'Disponible en '+o.nombre+': '+(o.moneda==='USD'?'USD '+(Math.round(sd*100)/100):fmt(Math.round(sd)));
+          res.textContent = (m>0 ? ('Entra: '+(d.moneda==='USD'?'USD '+(Math.round(dest*100)/100):fmt(Math.round(dest)))+'  ·  ') : '')+sdTxt;
           return {o:o,d:d,m:m,tc:dif?tc:null,dest:dest,dif:dif};
         }
         [sO,sD,inpM,inpTc].forEach(function(x){ x.oninput = calc; x.onchange = calc; }); calc();
@@ -6664,6 +6665,9 @@ function vFinanzas() {
           if (!o||!d||o.id===d.id) { alert('Elegí dos cuentas distintas'); return; }
           if (o.moneda!==d.moneda && !(ge('mv-cambio') && ge('mv-cambio').checked)) { alert('Las cuentas son de distinta moneda: tildá "compra o venta de dólares" o elegí otra cuenta'); return; }
           if (!(m>0)) { alert('Poné el monto'); return; }
+          // No se puede sacar más de lo que hay, salvo en Santander (cuenta con descubierto)
+          var sdoO = saldoCuentaPF(o);
+          if (!/santander/i.test(o.nombre||'') && m > sdoO + 0.005) { alert('No alcanza el saldo de '+o.nombre+': tiene '+(o.moneda==='USD'?'USD '+(Math.round(sdoO*100)/100):fmt(Math.round(sdoO)))+' y querés mover '+(o.moneda==='USD'?'USD '+m:fmt(m))+'.\nRevisá el monto y la moneda de la cuenta.'); return; }
           var dif = o.moneda!==d.moneda; if (dif && !(tc>0)) { alert('Poné el precio del dólar'); return; }
           var dest = !dif ? m : (o.moneda==='USD' ? m*tc : m/tc);
           ok.disabled = true;
