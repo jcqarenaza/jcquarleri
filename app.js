@@ -5455,12 +5455,14 @@ function vFinanzas() {
         mkRow2(body, mkFg('Pesos personal (ARS)', mkInput('egpf-monto','number',g.monto||0)), mkFg('Pesos negocio (ARS)', mkInput('egpf-montoneg','number',g.monto_negocio||'')));
         mkRow2(body, mkFg('USD personal', mkInput('egpf-montousd','number',g.monto_usd||'')), mkFg('USD negocio', mkInput('egpf-montousdneg','number',g.monto_usd_negocio||'')));
         addFg(body, 'Fecha', mkInput('egpf-fecha','date',g.fecha?g.fecha.slice(0,10):''));
+        if (esCombustiblePF(g)) addFg(body, 'Litros aprox.', mkInput('egpf-litros','number',litrosGastoPF(g)||'','ej: 30'));
         if (g.categoria==='Tarjetas' || g.tipo==='tarjeta') addFg(body, 'Pago mínimo del resumen (ARS)', mkInput('egpf-min','number',minimoGastoPF(g)||'','lo ves al cierre de la tarjeta'));
       }, function(foot) {
         foot.appendChild(cancelBtn());
         var ok = el('button', {class:'btn btnp'}, 'Guardar');
         ok.onclick = function() {
-          var body2 = {concepto:gv('egpf-conc'), categoria:gv('egpf-cat'), tipo:gv('egpf-tipo'), monto:Number(gv('egpf-monto')||0), monto_usd:Number(gv('egpf-montousd')||0), monto_negocio:Number(gv('egpf-montoneg')||0), monto_usd_negocio:Number(gv('egpf-montousdneg')||0), fecha:gv('egpf-fecha')||null};
+          var concEd = gv('egpf-conc'); if (ge('egpf-litros')) concEd = conLitrosPF(concEd, Number(gv('egpf-litros')||0));
+          var body2 = {concepto:concEd, categoria:gv('egpf-cat'), tipo:gv('egpf-tipo'), monto:Number(gv('egpf-monto')||0), monto_usd:Number(gv('egpf-montousd')||0), monto_negocio:Number(gv('egpf-montoneg')||0), monto_usd_negocio:Number(gv('egpf-montousdneg')||0), fecha:gv('egpf-fecha')||null};
           ok.disabled = true; ok.textContent = 'Guardando...';
           var minP = ge('egpf-min') ? Number(gv('egpf-min')||0) : null;
           dbUpd('panel_pf_gastos', g.id, body2)
@@ -5739,6 +5741,23 @@ function vFinanzas() {
       var c1=el('div',{}); c1.appendChild(el('div',{class:'st'},'Ultimo km registrado')); c1.appendChild(el('div',{style:'font-size:18px;font-weight:700;color:#0B9EDA'},ultimoKm.toLocaleString('es-AR')+' km'));
       var c2=el('div',{}); c2.appendChild(el('div',{class:'st'},'Total gastado en mantenimiento')); c2.appendChild(el('div',{style:'font-size:18px;font-weight:700;color:#A32D2D'},fmt(totalGastado)));
       resCard.appendChild(c1); resCard.appendChild(c2);
+      // Combustible: litros por mes (los que cargaste con "Litros aprox.")
+      (function(){
+        var porMes = {};
+        gastosPF.forEach(function(g){ if (!esCombustiblePF(g)) return; var mm = mesesPF.find(function(x){ return x.id===g.mes_id; }); if (!mm) return; var k = mm.year*100+mm.month, o = porMes[k] = porMes[k] || {y:mm.year, m:mm.month, lit:0, cargas:0, pesos:0, conLit:0, sinLit:0}; var l = litrosGastoPF(g); o.cargas++; if (l>0) { o.lit += l; o.pesos += Number(g.monto||0); o.conLit++; } else o.sinLit++; });
+        var hoyA = new Date(), kA = hoyA.getFullYear()*100+hoyA.getMonth()+1, act = porMes[kA];
+        var prev = Object.keys(porMes).map(Number).filter(function(k){ return k < kA && porMes[k].lit > 0; }).sort(function(a,b){ return b-a; }).slice(0,3);
+        var prom = prev.length ? prev.reduce(function(s,k){ return s+porMes[k].lit; },0)/prev.length : 0;
+        var tLit = Object.keys(porMes).reduce(function(s,k){ return s+porMes[k].lit; },0), tPes = Object.keys(porMes).reduce(function(s,k){ return s+porMes[k].pesos; },0);
+        var c3 = el('div',{}); c3.appendChild(el('div',{class:'st'},'⛽ Litros este mes (aprox.)'));
+        c3.appendChild(el('div',{style:'font-size:18px;font-weight:700;color:#3D8A32'}, act && act.lit>0 ? (Math.round(act.lit*10)/10)+' L' : '—'));
+        c3.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-top:2px'}, act ? act.cargas+' carga'+(act.cargas!==1?'s':'')+(act.sinLit?' · '+act.sinLit+' sin litros':'') : 'sin cargas este mes'));
+        var c4 = el('div',{}); c4.appendChild(el('div',{class:'st'},'Promedio mensual'));
+        c4.appendChild(el('div',{style:'font-size:18px;font-weight:700;color:#1a2e4a'}, prom>0 ? Math.round(prom)+' L' : '—'));
+        c4.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-top:2px'}, prom>0 ? 'últimos '+prev.length+' mes'+(prev.length!==1?'es':'')+' con litros' : 'cargá litros en Gasto rápido ⛽'));
+        resCard.appendChild(c3); resCard.appendChild(c4);
+        if (tLit > 0) { var c5 = el('div',{}); c5.appendChild(el('div',{class:'st'},'Precio por litro (aprox.)')); c5.appendChild(el('div',{style:'font-size:18px;font-weight:700;color:#854F0B'}, fmt(Math.round(tPes/tLit)))); resCard.appendChild(c5); }
+      })();
       content.appendChild(resCard);
 
       if (!autoPF.length) { content.appendChild(el('div',{class:'card'},[el('div',{class:'emp'},'Sin registros')])); return; }
@@ -6085,6 +6104,13 @@ function vFinanzas() {
       return wrap;
     }
 
+    // ---- Litros de combustible (se guardan en el concepto: "Combustible — Gulf · 30 L") ----
+    function reLitrosPF() { return /\s*·\s*(\d+(?:[.,]\d+)?)\s*L\b/i; }
+    function litrosGastoPF(g) { var m = reLitrosPF().exec(String(g.concepto||'')); return m ? Number(String(m[1]).replace(',','.')) : 0; }
+    function sinLitrosPF(t) { return String(t||'').replace(reLitrosPF(),'').trim(); }
+    function conLitrosPF(t, l) { var b = sinLitrosPF(t); return l > 0 ? b+' · '+(Math.round(l*10)/10)+' L' : b; }
+    function esCombustiblePF(g) { return /^combustible/i.test(String(g.concepto||'')); }
+
     // ---- GASTO RAPIDO ----
     var TIPOS_RAPIDO_PF = [
       {k:'Combustible', cat:'Vehículos', ic:'⛽'},
@@ -6094,7 +6120,7 @@ function vFinanzas() {
       {k:'Otro', cat:'Varios', ic:'🧾'}
     ];
     function mGastoRapidoPF() {
-      var sel = TIPOS_RAPIDO_PF[0];
+      var sel = TIPOS_RAPIDO_PF[0], fgLit = null;
       openM(makeModal('⚡ Gasto rápido', function(body) {
         var chips = el('div',{style:'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px'});
         var btns = [];
@@ -6103,9 +6129,10 @@ function vFinanzas() {
           b.onclick = function(){ sel = t; pintar(); var c = document.getElementById('gr-conc'); if (c && (!c.value || btns.some(function(x){ return x.t.k===c.value; }))) c.value = t.k; };
           btns.push({b:b, t:t}); chips.appendChild(b);
         });
-        function pintar() { btns.forEach(function(x){ x.b.className = 'btn btnsm' + (x.t===sel ? ' btnp' : ''); }); }
+        function pintar() { btns.forEach(function(x){ x.b.className = 'btn btnsm' + (x.t===sel ? ' btnp' : ''); }); if (fgLit) fgLit.style.display = sel.k==='Combustible' ? '' : 'none'; }
         body.appendChild(chips); pintar();
         mkRow2(body, mkFg('Concepto', mkInput('gr-conc','text',sel.k)), mkFg('Monto ($)', mkInput('gr-monto','number','','0')));
+        fgLit = mkFg('Litros aprox.', mkInput('gr-litros','number','','ej: 30')); body.appendChild(fgLit); pintar();
         var cuentasOk = cuentasPF.filter(function(c){ return !c.reservada && c.moneda!=='USD'; });
         if (cuentasOk.length) {
           addFg(body, '¿De qué cuenta sale?', mkSelect('gr-cuenta', cuentasOk.map(function(c){ return [c.id, etiqCtaPF(c)]; }), cuentaDefaultIngresoPF() || cuentasOk[0].id));
@@ -6119,6 +6146,7 @@ function vFinanzas() {
           var monto = Number(gv('gr-monto')||0); if (!(monto>0)) { alert('Poné el monto'); return; }
           var fecha = gv('gr-fecha') || new Date().toISOString().slice(0,10);
           var conc = (gv('gr-conc')||sel.k).trim() || sel.k; var nota = gv('gr-nota').trim();
+          var litrosN = sel.k==='Combustible' ? Number(gv('gr-litros')||0) : 0;
           var mm = mesesPF.find(function(x){ return x.year===Number(fecha.slice(0,4)) && x.month===Number(fecha.slice(5,7)); }) || getMesPF(mesSeleccionadoPF);
           if (!mm) { alert('No hay un mes cargado para esa fecha'); return; }
           var cid = cuentasPF.length ? (gv('gr-cuenta')||null) : null;
@@ -6128,7 +6156,7 @@ function vFinanzas() {
             if (!confirm(etiqCtaPF(cta)+' quedaría en '+fmt(Math.round(saldoCuentaPF(cta)-monto))+'. ¿Cargarlo igual?')) return;
           }
           var iso = new Date().toISOString();
-          var row = {mes_id:mm.id, concepto:conc+(nota?' — '+nota:'')+(conTarjeta?' (tarjeta)':''), monto:monto, categoria:sel.cat, tipo:'varios', fecha:fecha, pagado:!conTarjeta};
+          var row = {mes_id:mm.id, concepto:conc+(nota?' — '+nota:'')+(litrosN>0?' · '+(Math.round(litrosN*10)/10)+' L':'')+(conTarjeta?' (tarjeta)':''), monto:monto, categoria:sel.cat, tipo:'varios', fecha:fecha, pagado:!conTarjeta};
           if (cuentasPF.length && !conTarjeta) { row.pagado_at = iso; row.cuenta_id = cid; }
           ok.disabled = true; ok.textContent = 'Guardando...';
           dbIns('panel_pf_gastos', row).then(function(r){
@@ -6269,6 +6297,13 @@ function vFinanzas() {
           if (g.cuenta_id===c.id || (!g.pagado && /\(tarjeta\)/i.test(g.concepto||''))) { var gu = Number(g.monto_usd||0) > 0 && !(Number(g.monto||0) > 0); cand.push({fecha:String(g.fecha||g.pagado_at||'').slice(0,10), monto:gu?Number(g.monto_usd):Number(g.monto||0), usd:gu, usada:false, t:g.concepto}); }
           (g._entregas||[]).forEach(function(e){ if (e.cuenta_id===c.id) cand.push({fecha:String(e.fecha||e.created_at||'').slice(0,10), monto:Number(e.monto||0), usd:e.moneda==='USD', usada:false, t:g.concepto}); });
         });
+        // Gastos del negocio pagados con esta tarjeta (Negocio > Gastos > Registrar pago)
+        (R.pagoGastos||[]).forEach(function(p, pi){
+          if (p.cuenta_id!==c.id) return;
+          var gn = (R.gastos||[]).find(function(x){ return x.id===p.gasto_id; }), f0 = String(p.fecha||p.created_at||'').slice(0,10), gid = 'neg'+pi;
+          if (p.moneda==='USD') { cand.push({fecha:f0, monto:Number(p.monto||0), usd:true, usada:false, t:gn?gn.nombre:'', neg:true, gid:gid}); if (Number(p.monto_ars||0)>0) cand.push({fecha:f0, monto:Number(p.monto_ars), usd:false, usada:false, t:gn?gn.nombre:'', neg:true, gid:gid}); }
+          else cand.push({fecha:f0, monto:Number(p.monto||0), usd:false, usada:false, t:gn?gn.nombre:'', neg:true, gid:gid});
+        });
         return cand;
       }
       function dif(a, b) { return Math.abs((new Date(a+'T12:00:00') - new Date(b+'T12:00:00'))/86400000); }
@@ -6296,6 +6331,16 @@ function vFinanzas() {
         });
         return mejor;
       }
+      function gastosNegocioParaPF(x) { var esU = x.moneda==='USD'; return (R.gastos||[]).filter(function(g){ return g.activo && ((g.moneda==='USD') === esU); }); }
+      function buscarGastoNegocioPF(x) {
+        var st = stemsPF(x.desc), mejor = null, mejorD = 1e12;
+        gastosNegocioParaPF(x).forEach(function(g){
+          var gs = stemsPF(g.nombre), comun = st.filter(function(w){ return gs.indexOf(w)>=0; }).length;
+          if (!comun) return;
+          var d = Math.abs(Number(g.monto||0) - x.monto); if (d < mejorD) { mejorD = d; mejor = g; }
+        });
+        return mejor;
+      }
       function armar() {
         var cab = res.cab, cand = candidatosPF(), usadosG = {};
         var refIdx = (function(){ var f = cab.vencimiento || cab.cierre || (res.items[0]||{}).fecha || ''; return f ? Number(f.slice(0,4))*12+Number(f.slice(5,7)) : 0; })();
@@ -6305,14 +6350,16 @@ function vFinanzas() {
           if (x.anulado) estado = 'anulado';
           else {
             dup = cand.find(function(k){ return !k.usada && !!k.usd === (x.moneda==='USD') && Math.abs(k.monto - x.monto) < (x.moneda==='USD' ? 0.02 : 1) && k.fecha && (dif(k.fecha, x.fecha) <= 3 || dif(k.fecha, x.orig) <= 3); });
-            if (dup) { dup.usada = true; estado = 'cargado'; }
+            if (dup) { dup.usada = true; estado = 'cargado'; if (dup.gid) cand.forEach(function(k2){ if (k2.gid===dup.gid) k2.usada = true; }); }
           }
           var vinc = null;
           if (estado==='nuevo' && x.clase!=='percepcion' && x.clase!=='impuesto' && x.clase!=='interes') {
             vinc = buscarGastoPF(x, refIdx, usadosG);
             if (vinc) { usadosG[vinc.g.id] = true; estado = vinc.tipo; }
           }
-          return {x:x, estado:estado, vinc:vinc, sel: (estado==='nuevo' && x.clase!=='percepcion') || estado==='vincular'};
+          var fila = {x:x, estado:estado, vinc:vinc, cneg:!!(dup && dup.neg), neg:false, negG:null, sel: (estado==='nuevo' && x.clase!=='percepcion') || estado==='vincular'};
+          if (estado==='nuevo' && x.clase!=='percepcion' && x.clase!=='impuesto' && x.clase!=='interes') { var gnm = buscarGastoNegocioPF(x); if (gnm) { fila.neg = true; fila.negG = gnm; } }
+          return fila;
         });
         cont.innerHTML = '';
         var info = el('div',{style:'display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px'});
@@ -6339,7 +6386,20 @@ function vFinanzas() {
           tr.appendChild(el('td',{style:'white-space:nowrap'}, fdate(f.x.fecha)+(f.x.desplazado?' *':'')));
           tr.appendChild(el('td',{}, rtjTitulo(f.x.desc)));
           tr.appendChild(el('td',{style:'text-align:right;white-space:nowrap;font-weight:500'}, fmtMon(f.x.monto, f.x.moneda)));
-          tr.appendChild(el('td',{style:'font-size:11px;'+(f.estado==='vincular'?'color:#0B7A3E;font-weight:600':(f.estado==='posible'?'color:#854F0B':''))}, f.estado==='cargado'?'Ya cargado':(f.estado==='cargado_otra'?'Ya cargado: «'+f.vinc.g.concepto+'» (otra cuenta)':(f.estado==='vincular'?'Es «'+f.vinc.g.concepto+'» · marcar pagado con '+c.nombre:(f.estado==='posible'?'¿Será «'+f.vinc.g.concepto+'» ('+fmtMon(f.x.moneda==='USD'?f.vinc.g.monto_usd:f.vinc.g.monto, f.x.moneda)+')? · vincular y ajustar monto':(f.estado==='anulado'?'Se anula':(f.x.clase==='compra'?'Nuevo':(f.x.clase==='percepcion'?'Percepción · se reintegra':'Nuevo · '+f.x.clase))))))));
+          tr.appendChild(el('td',{style:'font-size:11px;'+(f.estado==='vincular'?'color:#0B7A3E;font-weight:600':(f.estado==='posible'?'color:#854F0B':''))}, f.estado==='cargado'?(f.cneg?'Ya cargado (gasto del negocio)':'Ya cargado'):(f.estado==='cargado_otra'?'Ya cargado: «'+f.vinc.g.concepto+'» (otra cuenta)':(f.estado==='vincular'?'Es «'+f.vinc.g.concepto+'» · marcar pagado con '+c.nombre:(f.estado==='posible'?'¿Será «'+f.vinc.g.concepto+'» ('+fmtMon(f.x.moneda==='USD'?f.vinc.g.monto_usd:f.vinc.g.monto, f.x.moneda)+')? · vincular y ajustar monto':(f.estado==='anulado'?'Se anula':(f.x.clase==='compra'?'Nuevo':(f.x.clase==='percepcion'?'Percepción · se reintegra':'Nuevo · '+f.x.clase))))))));
+          if (f.estado==='nuevo' && f.x.clase!=='percepcion' && f.x.clase!=='impuesto' && f.x.clase!=='interes') {
+            var lstN = gastosNegocioParaPF(f.x);
+            if (lstN.length) {
+              var tdE = tr.lastChild, lab = el('label',{style:'display:flex;align-items:center;gap:5px;margin-top:4px;color:#854F0B;font-weight:600;white-space:nowrap'}), kn = el('input',{type:'checkbox'});
+              var sg = el('select',{style:'font-size:11px;max-width:150px;padding:2px 4px;border:1px solid #CBD5E1;border-radius:6px;font-weight:400'});
+              lstN.forEach(function(g){ sg.appendChild(el('option',{value:g.id},g.nombre)); });
+              if (f.negG) sg.value = f.negG.id;
+              kn.checked = f.neg; sg.style.display = f.neg ? '' : 'none';
+              kn.onchange = function(){ f.neg = kn.checked; f.negG = f.neg ? (lstN.find(function(g){ return g.id===sg.value; })||null) : null; sg.style.display = f.neg ? '' : 'none'; };
+              sg.onchange = function(){ if (f.neg) f.negG = lstN.find(function(g){ return g.id===sg.value; })||null; };
+              lab.appendChild(kn); lab.appendChild(document.createTextNode('🏢 Es del negocio:')); lab.appendChild(sg); tdE.appendChild(lab);
+            }
+          }
           tbd.appendChild(tr);
         });
         tb.appendChild(tbd); tw.appendChild(tb); cont.appendChild(tw);
@@ -6363,13 +6423,26 @@ function vFinanzas() {
         var sel = filas.filter(function(f){ return f.sel; });
         okBtn.disabled = true; okBtn.textContent = 'Importando…';
         var iso = new Date().toISOString(), n = 0, fallo = null;
-        var nVinc = 0;
+        var nVinc = 0, nNeg = 0;
         var p = sel.reduce(function(pr, f){
           return pr.then(function(){
             if ((f.estado==='vincular' || f.estado==='posible') && f.vinc) {
               var gg = f.vinc.g, patch = {pagado:true, pagado_at:iso, cuenta_id:c.id};
               if (f.estado==='posible') { if (f.x.moneda==='USD') patch.monto_usd = f.x.monto; else patch.monto = f.x.monto; }
               return dbUpd('panel_pf_gastos', gg.id, patch).then(function(){ Object.assign(gg, patch); nVinc++; return sincPagoPrestamoPF(gg, true); });
+            }
+            if (f.estado==='nuevo' && f.neg && f.negG) {
+              var gN = f.negG, esUN = f.x.moneda==='USD', tcN = esUN ? (tcUSD||1) : 1;
+              var rowP = {gasto_id:gN.id, fecha:f.x.fecha, monto:f.x.monto, moneda:esUN?'USD':'ARS', tipo_cambio:tcN, monto_ars:esUN ? Math.round(f.x.monto*tcN*100)/100 : f.x.monto, notas:'Importado del resumen · '+c.nombre, cuenta_id:c.id};
+              return dbIns('panel_gastos_pagos', rowP).then(function(r){
+                var pr = (r&&r[0]) || rowP; if (!pr.created_at) pr.created_at = iso;
+                (R.pagoGastos = R.pagoGastos || []).push(pr); nNeg++;
+                if (gN.fecha_proximo_pago && (gN.frecuencia==='mensual' || gN.frecuencia==='anual')) {
+                  var dN = new Date(gN.fecha_proximo_pago); if (gN.frecuencia==='mensual') dN.setMonth(dN.getMonth()+1); else dN.setFullYear(dN.getFullYear()+1);
+                  var nfN = dN.toISOString().slice(0,10);
+                  return dbUpd('panel_gastos', gN.id, {fecha_proximo_pago:nfN}).then(function(){ gN.fecha_proximo_pago = nfN; });
+                }
+              });
             }
             if (f.estado!=='nuevo') return;
             var fecha = f.x.fecha;
@@ -6389,7 +6462,7 @@ function vFinanzas() {
           return Promise.all(jobs);
         }).then(function(){
           cont.innerHTML = '';
-          cont.appendChild(el('div',{style:'font-size:13px;color:#3D8A32;font-weight:600;padding:10px 0'},'✓ Se importaron '+n+' gasto'+(n===1?'':'s')+' nuevo'+(n===1?'':'s')+(nVinc?' y se marcaron '+nVinc+' gasto'+(nVinc===1?'':'s')+' que ya tenías como pagado'+(nVinc===1?'':'s')+' con '+c.nombre:'')+'.'+(fallo?' ('+fallo+')':'')));
+          cont.appendChild(el('div',{style:'font-size:13px;color:#3D8A32;font-weight:600;padding:10px 0'},'✓ Se importaron '+n+' gasto'+(n===1?'':'s')+' nuevo'+(n===1?'':'s')+(nNeg?' y '+nNeg+' pago'+(nNeg===1?'':'s')+' de gastos del negocio':'')+(nVinc?' y se marcaron '+nVinc+' gasto'+(nVinc===1?'':'s')+' que ya tenías como pagado'+(nVinc===1?'':'s')+' con '+c.nombre:'')+'.'+(fallo?' ('+fallo+')':'')));
           okBtn.textContent = 'Listo'; okBtn.disabled = false; okBtn.onclick = function(){ closeM(); renderAll(); };
         }).catch(function(e){ okBtn.disabled = false; okBtn.textContent = 'Importar seleccionados'; alert('Error al importar: '+(e&&e.message||e)+(n?'\nYa se habían importado '+n+' líneas: no las vuelvas a importar (el sistema las va a marcar como ya cargadas).':'')); });
       }
