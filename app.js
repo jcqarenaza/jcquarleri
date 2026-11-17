@@ -7350,6 +7350,37 @@ function vFinanzas() {
           resCard2.appendChild(col);
         });
         sec.appendChild(resCard2);
+        // Por ciudad (activos + aportado) y autos de Pico
+        var _ciudJ = ['Pico','Bs As','Cba','Mza'];
+        var _ciuOf = function(p){ return _ciudJ.indexOf(p.ciudad)>=0 ? p.ciudad : ''; };
+        var _aportP = {}; juntadaPagos.forEach(function(p){ _aportP[p.participante_id] = (_aportP[p.participante_id]||0) + Number(p.importe); });
+        var ciuCard = el('div',{class:'card',style:'padding:14px;margin-bottom:10px'});
+        ciuCard.appendChild(el('div',{style:'font-size:12px;font-weight:600;color:#64748B;margin-bottom:8px'},'Por ciudad (activos)'));
+        var ciuGrid = el('div',{style:'display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px'});
+        _ciudJ.concat(['']).forEach(function(cn){
+          var ps = juntadaParticipantes.filter(function(p){ return p.activo && _ciuOf(p)===cn; });
+          if (!cn && !ps.length) return;
+          var ap = juntadaParticipantes.filter(function(p){ return _ciuOf(p)===cn; }).reduce(function(a,p){ return a + (_aportP[p.id]||0); },0);
+          var col = el('div',{style:'text-align:center;background:#F6F9FC;border-radius:14px;padding:10px'});
+          col.appendChild(el('div',{style:'font-size:11px;color:#64748B'},cn||'Sin ciudad'));
+          col.appendChild(el('div',{style:'font-size:20px;font-weight:700;color:#1a2e4a'},String(ps.length)));
+          col.appendChild(el('div',{style:'font-size:11px;color:#3D8A32'},fmt(ap)));
+          ciuGrid.appendChild(col);
+        });
+        ciuCard.appendChild(ciuGrid);
+        var _nPico = juntadaParticipantes.filter(function(p){ return p.activo && p.ciudad==='Pico'; }).length;
+        var _pxa = 4; try { _pxa = Number(localStorage.getItem('qp_pers_auto')) || 4; } catch(e){}
+        var autoRow = el('div',{style:'display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;font-size:13px;color:#1a2e4a'});
+        autoRow.appendChild(document.createTextNode('\uD83D\uDE97 Autos desde Pico: '));
+        var autoVal = el('b',{},String(Math.ceil(_nPico/_pxa)));
+        autoRow.appendChild(autoVal);
+        autoRow.appendChild(document.createTextNode(' \u00B7 personas por auto: '));
+        var pxaIn = el('input',{type:'number',min:'1',value:String(_pxa),style:'width:60px;padding:4px 8px;border:1px solid #E2E8F0;border-radius:10px;font-size:13px'});
+        pxaIn.onchange = function(){ var v = Math.max(1, Number(pxaIn.value)||4); try { localStorage.setItem('qp_pers_auto', String(v)); } catch(e){} autoVal.textContent = String(Math.ceil(_nPico/v)); };
+        autoRow.appendChild(pxaIn);
+        autoRow.appendChild(document.createTextNode(' ('+_nPico+' de Pico)'));
+        ciuCard.appendChild(autoRow);
+        sec.appendChild(ciuCard);
         var intBox2 = el('div',{style:'background:#FEF3C7;border:.5px solid #FDE68A;border-radius:8px;padding:10px 16px;margin-bottom:10px;display:flex;align-items:center;gap:12px'});
         intBox2.appendChild(el('span',{style:'font-size:13px;color:#854F0B;flex:1'},'Intereses MercadoPago: '+fmt(totalIntereses2)));
         var btnIE2 = el('button',{class:'btn btnsm',style:'border-color:#FDE68A;color:#854F0B'},'Editar');
@@ -7371,7 +7402,19 @@ function vFinanzas() {
         tbl2.appendChild(elH('thead',{},'<tr><th>Qui\xE9n</th><th>Fecha</th><th style="text-align:right">Importe</th><th style="text-align:right">Subtotal</th><th></th></tr>'));
         var tb2 = el('tbody');
         var _totJ = {}; juntadaPagos.forEach(function(p){ _totJ[p.participante_id] = (_totJ[p.participante_id]||0) + Number(p.importe); });
-        juntadaParticipantes.filter(function(p){return p.activo || (_totJ[p.id]||0)>0;}).sort(function(x,y){ return (y.activo?1:0)-(x.activo?1:0) || (_totJ[y.id]||0) - (_totJ[x.id]||0) || String(x.nombre).localeCompare(String(y.nombre)); }).forEach(function(part){
+        var _ultCiu = null;
+        juntadaParticipantes.filter(function(p){return p.activo || (_totJ[p.id]||0)>0;}).sort(function(x,y){ return (_ciudJ.indexOf(_ciuOf(x))<0?9:_ciudJ.indexOf(_ciuOf(x))) - (_ciudJ.indexOf(_ciuOf(y))<0?9:_ciudJ.indexOf(_ciuOf(y))) || (y.activo?1:0)-(x.activo?1:0) || (_totJ[y.id]||0) - (_totJ[x.id]||0) || String(x.nombre).localeCompare(String(y.nombre)); }).forEach(function(part){
+          var _cg = _ciuOf(part);
+          if (_cg !== _ultCiu) {
+            _ultCiu = _cg;
+            var _gAct = juntadaParticipantes.filter(function(p){ return p.activo && _ciuOf(p)===_cg; }).length;
+            var _gTot = juntadaParticipantes.filter(function(p){ return _ciuOf(p)===_cg; }).reduce(function(a,p){ return a + (_totJ[p.id]||0); },0);
+            var trG = el('tr',{style:'background:#E6F6FD'});
+            trG.appendChild(el('td',{colspan:'3',style:'font-weight:700;color:#0C6FA3;font-size:12px;letter-spacing:.04em;text-transform:uppercase'},(_cg||'Sin ciudad')+' \u00B7 '+_gAct+' activo'+(_gAct!==1?'s':'')));
+            trG.appendChild(el('td',{style:'text-align:right;font-weight:700;color:#0C6FA3'},fmt(_gTot)));
+            trG.appendChild(el('td',{},''));
+            tb2.appendChild(trG);
+          }
           var pagosP2 = juntadaPagos.filter(function(p){return p.participante_id===part.id;}).sort(function(a,b){return new Date(a.fecha)-new Date(b.fecha);});
           var subtotal2 = pagosP2.reduce(function(s,p){return s+Number(p.importe);},0);
           var isC = checkCollapsed(part.id);
@@ -7379,6 +7422,7 @@ function vFinanzas() {
           var tdT2 = el('td',{style:'font-weight:600;color:#1a2e4a;cursor:pointer;user-select:none'});
           var arr2 = el('span',{style:'margin-right:6px;font-size:10px;color:#94a3b8'},isC?'\u25B6':'\u25BC');
           tdT2.appendChild(arr2); tdT2.appendChild(document.createTextNode(part.nombre+(part.activo?'':' (no va)')));
+          if (_ciuOf(part)) tdT2.appendChild(el('span',{style:'margin-left:8px;font-size:10px;font-weight:600;padding:2px 8px;border-radius:999px;background:#E6F6FD;color:#0C6FA3'},_ciuOf(part)));
           (function(pid2){ tdT2.onclick = function(){ collapsed[pid2]=checkCollapsed(pid2)?false:true; renderJuntada(); }; })(part.id);
           trH2.appendChild(tdT2);
           trH2.appendChild(el('td',{},''));
@@ -7395,6 +7439,9 @@ function vFinanzas() {
             if(!confirm(msg)) return;
             dbUpd('panel_juntada_participantes',pp4.id,{activo:nuevo}).then(function(){ pp4.activo=nuevo; renderJuntada(); }).catch(function(err){ alert('No se pudo actualizar: '+(err&&err.message||err)); });
           }; })(part,pagosP2.length,subtotal2);
+          var btnEd2 = el('button',{class:'btn btnsm',title:'Editar nombre y ciudad',style:'margin-left:6px'},'Editar');
+          (function(pp5){ btnEd2.onclick=function(e){ e.stopPropagation(); mEditarParticipante2(pp5); }; })(part);
+          tdHAcc2.appendChild(btnEd2);
           tdHAcc2.appendChild(btnQuit2); trH2.appendChild(tdHAcc2); tb2.appendChild(trH2);
           if (!isC) {
             if (!pagosP2.length) { var trV=el('tr'); trV.appendChild(el('td',{colspan:'5',style:'text-align:center;font-size:12px;color:#94a3b8;padding:6px'},'Sin entregas')); tb2.appendChild(trV); }
@@ -7517,10 +7564,23 @@ function vFinanzas() {
           w.document.write(html); w.document.close(); setTimeout(function(){ w.print(); }, 400);
         }
         function mNuevoParticipante2() {
-          openM(makeModal('Nuevo participante', function(body) { addFg(body,'Nombre',mkInput('jp2-nom','text','')); }, function(foot) {
+          openM(makeModal('Nuevo participante', function(body) { addFg(body,'Nombre',mkInput('jp2-nom','text','')); addFg(body,'Ciudad',mkSelect('jp2-ciu',[['','(sin ciudad)'],['Pico','Pico'],['Bs As','Bs As'],['Cba','Cba'],['Mza','Mza']],'')); }, function(foot) {
             foot.appendChild(cancelBtn()); var ok=el('button',{class:'btn btnp'},'Agregar');
             ok.onclick=function(){ var nom=gv('jp2-nom').trim(); if(!nom){alert('Nombre obligatorio');return;} ok.disabled=true;
-              dbIns('panel_juntada_participantes',{nombre:nom,activo:true}).then(function(r){ juntadaParticipantes.push(r[0]); closeM(); renderJuntada(); }); };
+              var nuevoP = {nombre:nom,activo:true}; if (gv('jp2-ciu')) nuevoP.ciudad = gv('jp2-ciu');
+              dbIns('panel_juntada_participantes',nuevoP).then(function(r){ juntadaParticipantes.push(r[0]); closeM(); renderJuntada(); }).catch(function(e){ alert('Error: '+e.message); ok.disabled=false; }); };
+            foot.appendChild(ok);
+          }));
+        }
+        function mEditarParticipante2(part) {
+          openM(makeModal('Editar \u2014 '+part.nombre, function(body) {
+            addFg(body,'Nombre',mkInput('jpe-nom','text',part.nombre||''));
+            addFg(body,'Ciudad',mkSelect('jpe-ciu',[['','(sin ciudad)'],['Pico','Pico'],['Bs As','Bs As'],['Cba','Cba'],['Mza','Mza']],part.ciudad||''));
+          }, function(foot) {
+            foot.appendChild(cancelBtn()); var ok=el('button',{class:'btn btnp'},'Guardar');
+            ok.onclick=function(){ var nom=gv('jpe-nom').trim(); if(!nom){alert('Nombre obligatorio');return;} ok.disabled=true;
+              var cambios = {nombre:nom, ciudad:gv('jpe-ciu')||null};
+              dbUpd('panel_juntada_participantes',part.id,cambios).then(function(){ part.nombre=nom; part.ciudad=cambios.ciudad; closeM(); renderJuntada(); }).catch(function(e){ alert('No se pudo guardar: '+(e&&e.message||e)+'. Si dice que falta la columna ciudad, corr\u00E9 el SQL que te pas\u00E9.'); ok.disabled=false; }); };
             foot.appendChild(ok);
           }));
         }
