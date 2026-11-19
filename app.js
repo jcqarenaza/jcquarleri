@@ -7748,31 +7748,32 @@ function vFinanzas() {
         if (previsto) { prevG += g1; }
         else {
           tG += g1; tI += i1; gm.forEach(function(g){ var r = rubro(g.concepto); rub[r] = (rub[r]||0) + Number(g.monto||0); });
-          detMes += '<div style="page-break-inside:avoid"><div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#E6F6FD;margin-top:12px"><b style="color:#0C6FA3;font-size:14px">'+MN[m]+'</b><span style="font-size:12px;color:#1a2e4a">Gastos <b>'+$(g1)+'</b> \u00B7 Aporte Emilse <b style="color:#3D8A32">'+$(i1)+'</b> \u00B7 A cargo Juan <b style="color:#0B9EDA">'+$(Math.max(0,g1-i1))+'</b></span></div><table><tbody>'+
-            gm.slice().sort(function(a,b){ return Number(b.monto)-Number(a.monto); }).map(function(g){ return '<tr><td style="padding:8px 16px;border-bottom:1px solid #f0f0f0;font-size:13px">'+(g.concepto||'-')+'</td><td style="padding:8px 16px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px;font-weight:600">'+$(g.monto)+'</td><td style="padding:8px 16px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:11px;color:'+(g.pagado?'#3D8A32':'#A32D2D')+'">'+(g.pagado?'Pagado':'Pendiente')+'</td></tr>'; }).join('')+
+          detMes += '<div style="page-break-inside:avoid"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;padding:8px 14px;background:#E6F6FD;margin-top:8px"><b style="color:#0C6FA3;font-size:14px">'+MN[m]+'</b><span style="font-size:12px;color:#1a2e4a">Gastos <b>'+$(g1)+'</b> \u00B7 Aporte Emilse <b style="color:#3D8A32">'+$(i1)+'</b> \u00B7 A cargo Juan <b style="color:#0B9EDA">'+$(Math.max(0,g1-i1))+'</b></span></div><table><tbody>'+
+            gm.slice().sort(function(a,b){ return Number(b.monto)-Number(a.monto); }).map(function(g){ return '<tr><td style="padding:5px 14px;border-bottom:1px solid #f0f0f0;font-size:12px">'+(g.concepto||'-')+'</td><td style="padding:5px 14px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:12px;font-weight:600">'+$(g.monto)+'</td><td style="padding:8px 16px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:11px;color:'+(g.pagado?'#3D8A32':'#A32D2D')+'">'+(g.pagado?'Pagado':'Pendiente')+'</td></tr>'; }).join('')+
             '</tbody></table></div>';
         }
         var est = previsto ? '<span style="font-size:10px;padding:2px 8px;border-radius:12px;background:#FAEEDA;color:#854F0B">previsto</span>' : '';
-        filasMes += '<tr style="'+(previsto?'color:#94a3b8;font-style:italic':'')+'"><td style="padding:10px 16px;border-bottom:1px solid #f0f0f0">'+MN[m]+' '+est+'</td>'+
-          '<td style="padding:10px 16px;border-bottom:1px solid #f0f0f0;text-align:right">'+$(g1)+'</td>'+
-          '<td style="padding:10px 16px;border-bottom:1px solid #f0f0f0;text-align:right;color:#3D8A32">'+(previsto&&!i1?'-':$(i1))+'</td>'+
-          '<td style="padding:10px 16px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:600;color:#0B9EDA">'+(previsto&&!i1?'-':$(Math.max(0,g1-i1)))+'</td></tr>';
+        filasMes += '<tr style="'+(previsto?'color:#94a3b8;font-style:italic':'')+'"><td style="padding:6px 14px;border-bottom:1px solid #f0f0f0">'+MN[m]+' '+est+'</td>'+
+          '<td style="padding:6px 14px;border-bottom:1px solid #f0f0f0;text-align:right">'+$(g1)+'</td>'+
+          '<td style="padding:6px 14px;border-bottom:1px solid #f0f0f0;text-align:right;color:#3D8A32">'+(previsto&&!i1?'-':$(i1))+'</td>'+
+          '<td style="padding:6px 14px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:600;color:#0B9EDA">'+(previsto&&!i1?'-':$(Math.max(0,g1-i1)))+'</td></tr>';
       }
       var meses = Math.max(1, mesHoy);
       var aCargo = Math.max(0, tG - tI);
       var filasRub = Object.keys(rub).sort(function(a,b){ return rub[b]-rub[a]; }).map(function(r){
         var pct = tG ? Math.round(rub[r]/tG*100) : 0;
-        return '<tr><td style="padding:10px 16px;border-bottom:1px solid #f0f0f0">'+r+'</td><td style="padding:10px 16px;border-bottom:1px solid #f0f0f0;text-align:right">'+$(rub[r])+'</td><td style="padding:10px 16px;border-bottom:1px solid #f0f0f0;text-align:right;color:#64748B">'+pct+'%</td></tr>';
+        return '<tr><td style="padding:6px 14px;border-bottom:1px solid #f0f0f0">'+r+'</td><td style="padding:6px 14px;border-bottom:1px solid #f0f0f0;text-align:right">'+$(rub[r])+'</td><td style="padding:6px 14px;border-bottom:1px solid #f0f0f0;text-align:right;color:#64748B">'+pct+'%</td></tr>';
       }).join('');
       var th = 'padding:10px 16px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;border-bottom:1px solid #f0f0f0;';
       var html='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Gastos de Pedro \u2014 Resumen '+anio+'</title>'+
-        '<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:"Helvetica Neue",Arial,sans-serif;background:#fff;padding:40px;color:#1a2e4a}'+
-        '.container{max-width:720px;margin:0 auto;border:1px solid #E2E8F0;border-radius:16px;overflow:hidden}'+
-        '.header{background:linear-gradient(135deg,#1a2e4a 0%,#0B9EDA 100%);padding:32px 36px;color:#fff}.header h1{font-size:26px;font-weight:800;margin-bottom:4px}.header p{font-size:14px;opacity:.8}'+
-        '.kpis{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:2px solid #f0f0f0}.kpi{padding:18px 12px;text-align:center;border-right:1px solid #f0f0f0}.kpi:last-child{border-right:none}'+
-        '.kl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px}.kv{font-size:18px;font-weight:800}'+
-        '.st{padding:16px 16px 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8}table{width:100%;border-collapse:collapse;font-size:14px}'+
-        '.footer{padding:14px 36px;font-size:11px;color:#94a3b8;text-align:center;border-top:1px solid #f0f0f0}@media print{body{padding:0}.container{border:none;border-radius:0}}</style></head><body><div class="container">'+
+        '<style>@page{size:A4 portrait;margin:12mm}*{margin:0;padding:0;box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}body{font-family:"Helvetica Neue",Arial,sans-serif;background:#fff;padding:12mm;color:#1a2e4a}'+
+        '.container{width:100%;max-width:186mm;margin:0 auto;border:1px solid #E2E8F0;border-radius:12px;overflow:hidden}'+
+        'tr{page-break-inside:avoid}thead{display:table-header-group}'+
+        '.header{background:linear-gradient(135deg,#1a2e4a 0%,#0B9EDA 100%);padding:20px 24px;color:#fff}.header h1{font-size:22px;font-weight:800;margin-bottom:2px}.header p{font-size:13px;opacity:.85}'+
+        '.kpis{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:2px solid #f0f0f0}.kpi{padding:12px 8px;text-align:center;border-right:1px solid #f0f0f0}.kpi:last-child{border-right:none}'+
+        '.kl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px}.kv{font-size:15px;font-weight:800}'+
+        '.st{padding:12px 16px 4px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8}table{width:100%;border-collapse:collapse;font-size:12px}'+
+        '.footer{padding:14px 36px;font-size:11px;color:#94a3b8;text-align:center;border-top:1px solid #f0f0f0}@media print{body{padding:0}.container{max-width:none;border:none;border-radius:0}}</style></head><body><div class="container">'+
         '<div class="header"><h1>\uD83D\uDC76 Gastos de Pedro</h1><p>Resumen '+anio+(mesHoy&&mesHoy<12?' \u00B7 enero a '+MN[mesHoy].toLowerCase():'')+'</p></div>'+
         '<div class="kpis">'+
           '<div class="kpi"><div class="kl">Total gastos</div><div class="kv">'+$(tG)+'</div></div>'+
