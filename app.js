@@ -6006,7 +6006,7 @@ function vFinanzas() {
         mkRow2(body, mkFg('Monto cobrado ($)', mkInput('cdv-monto','number',saldo)), mkFg('Fecha', mkInput('cdv-fecha','date',new Date().toISOString().slice(0,10))));
         if (cuentasPF.length) addFg(body, '\u00BFA qu\u00E9 cuenta entr\u00F3?', selCuentaPF('cdv-cuenta', cuentaDefaultIngresoPF(), 'ARS'));
         addFg(body, 'Nota (opcional)', mkInput('cdv-nota','text','','Ej: transferencia Mercado Pago'));
-        body.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;line-height:1.5;margin-top:6px'},'La plata suma al saldo de la cuenta y baja la deuda. Queda como "Transferencia interna", as\u00ED no infla tus ingresos del mes.'));
+        body.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;line-height:1.5;margin-top:6px'},'La plata suma al saldo de la cuenta y baja la deuda. No se carga como ingreso ni como transferencia interna: solo mueve el saldo.'));
       }, function(foot) {
         foot.appendChild(cancelBtn());
         var ok = el('button',{class:'btn btnp'},'Registrar cobro');
@@ -6016,15 +6016,14 @@ function vFinanzas() {
           var cuentaId = cuentasPF.length ? (gv('cdv-cuenta')||'') : '';
           if (cuentasPF.length && !cuentaId) { alert('Eleg\u00ED en qu\u00E9 cuenta entr\u00F3 la plata'); return; }
           var fecha = gv('cdv-fecha') || new Date().toISOString().slice(0,10);
-          var mesDe = mesesPF.find(function(x){ return x.year===Number(fecha.slice(0,4)) && x.month===Number(fecha.slice(5,7)); }) || getMesPF(mesSeleccionadoPF);
-          if (!mesDe) { alert('No hay un mes donde registrar el ingreso'); return; }
           var nota = gv('cdv-nota').trim();
           var nuevoSaldo = Math.round((Number(d.monto) - monto)*100)/100;
           ok.disabled = true; ok.textContent = 'Guardando...';
-          var ingRow = {mes_id:mesDe.id, concepto:'Cobro deuda: '+d.nombre+(d.concepto?' ('+d.concepto+')':''), categoria:'Transferencia interna', monto:monto, fecha:fecha};
-          if (cuentaId) ingRow.cuenta_id = cuentaId;
-          dbIns('panel_pf_ingresos', ingRow).then(function(ri) {
-            if (ri && ri[0]) ingresosPF.push(ri[0]);
+          // La plata entra a la cuenta como movimiento sin cuenta de origen (no es ingreso ni transferencia interna)
+          var pasoCuenta = cuentaId
+            ? dbIns('panel_pf_movimientos', {fecha:fecha, cuenta_origen:null, cuenta_destino:cuentaId, monto_origen:monto, monto_destino:monto, tc:null, notas:'Cobro deuda: '+d.nombre+(d.concepto?' ('+d.concepto+')':'')}).then(function(r0){ if (r0 && r0[0]) movimientosPF.push(r0[0]); })
+            : Promise.resolve();
+          pasoCuenta.then(function() {
             return dbIns('panel_pf_deudas_movimientos', {deuda_id:d.id, concepto:'Cobro'+(nota?': '+nota:''), monto:-monto, fecha:fecha});
           }).then(function(rm) {
             if (rm && rm[0]) deudasMovsPF.push(rm[0]);
@@ -6783,10 +6782,10 @@ function vFinanzas() {
       if (movs.length) {
         box.appendChild(el('div',{style:'font-weight:600;font-size:13px;color:#1a2e4a;margin:16px 0 6px'},'Últimos movimientos entre cuentas'));
         movs.forEach(function(mv){
-          var co = cuentasPF.find(function(x){ return x.id===mv.cuenta_origen; }) || {nombre:'?',moneda:'ARS'}, cd = cuentasPF.find(function(x){ return x.id===mv.cuenta_destino; }) || {nombre:'?',moneda:'ARS'};
+          var co = cuentasPF.find(function(x){ return x.id===mv.cuenta_origen; }) || {nombre:(mv.cuenta_origen ? '?' : 'Cobro de deuda'),moneda:'ARS'}, cd = cuentasPF.find(function(x){ return x.id===mv.cuenta_destino; }) || {nombre:'?',moneda:'ARS'};
           function mm(n,c){ return c.moneda==='USD' ? 'USD '+n : fmt(Math.round(Number(n))); }
           var f = el('div',{style:'display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:4px 0;border-bottom:1px solid #F1F5F9'});
-          f.appendChild(el('span',{}, fdate(mv.fecha)+' · '+etiqCtaPF(co)+' → '+etiqCtaPF(cd)+' · '+mm(mv.monto_origen,co)+(co.moneda!==cd.moneda ? ' → '+mm(mv.monto_destino,cd)+(mv.tc?' (dólar a '+fmt(Number(mv.tc))+')':'') : '')+(mv.notas?' · '+mv.notas:'')));
+          f.appendChild(el('span',{}, fdate(mv.fecha)+' · '+(mv.cuenta_origen ? etiqCtaPF(co) : '\uD83D\uDCB5 Cobro de deuda')+' → '+etiqCtaPF(cd)+' · '+mm(mv.monto_origen,co)+(co.moneda!==cd.moneda ? ' → '+mm(mv.monto_destino,cd)+(mv.tc?' (dólar a '+fmt(Number(mv.tc))+')':'') : '')+(mv.notas?' · '+mv.notas:'')));
           var bd = el('button',{class:'btn btnsm',style:'background:#FCEBEB;border-color:#FCEBEB;color:#A32D2D'},'×');
           bd.onclick = function(){ if (!confirm('Eliminar este movimiento?')) return; sbFetch('panel_pf_movimientos?id=eq.'+mv.id,{method:'DELETE',prefer:'return=minimal'}).then(function(){ movimientosPF.splice(movimientosPF.indexOf(mv),1); renderAll(); }); };
           f.appendChild(bd); box.appendChild(f);
