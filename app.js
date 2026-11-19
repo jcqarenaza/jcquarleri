@@ -4377,6 +4377,47 @@ function vFinanzas() {
       return out;
     }
 
+    // Fila de un gasto programado (con Editar y Quitar). Se usa en Prestamos y en Gastos.
+    function filaProgramadoPF(x) {
+      var fila = el('div',{style:'display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;border-radius:12px;background:#F6F9FC;margin-bottom:6px;font-size:13px'});
+      fila.appendChild(el('span',{style:'font-weight:600;color:#0C6FA3;min-width:70px'}, MESES_CORTOS[x.mes-1]+' '+x.anio));
+      fila.appendChild(el('span',{style:'flex:1;min-width:120px'}, (x.concepto||'-')+(x.fecha?' \u00B7 '+fdate(x.fecha):'')));
+      fila.appendChild(el('b',{}, Number(x.prestamo_monto||0)>0 ? fmtMon(x.prestamo_monto,'USD')+' (\u2248 '+fmt(x.monto||0)+')' : fmt(x.monto||0)));
+      var be = el('button',{class:'btn btnsm',title:'Editar monto, fecha o mes'},'Editar');
+      be.onclick = function(){ mEditarProgramadoPF(x); };
+      fila.appendChild(be);
+      var bx = el('button',{class:'btn btnsm',style:'color:#E53E3E;border-color:#FECACA',title:'Quitar de lo programado'},'x');
+      bx.onclick = function(){ if (!confirm('¿Quitar "'+(x.concepto||'')+'" de '+MESES_CORTOS[x.mes-1]+' '+x.anio+'?')) return;
+        sbFetch('panel_pf_gastos_programados?id=eq.'+x.id,{method:'DELETE',prefer:'return=minimal'}).then(function(){ gastosProgPF = gastosProgPF.filter(function(z){ return z.id!==x.id; }); renderAll(); }).catch(function(e){ alert('No se pudo quitar: '+e.message); }); };
+      fila.appendChild(bx);
+      return fila;
+    }
+    function mEditarProgramadoPF(x) {
+      var usd = Number(x.prestamo_monto||0) > 0;
+      var idActual = x.anio+'-'+x.mes;
+      var opts = [[idActual, MESES[x.mes-1]+' '+x.anio]].concat(mesesFuturosPF().filter(function(o){ return o[0]!==idActual; }));
+      openM(makeModal('Editar programado', function(body) {
+        addFg(body, 'Concepto', mkInput('epg-conc','text',x.concepto||''));
+        if (usd) mkRow2(body, mkFg('Monto USD', mkInput('epg-usd','number',x.prestamo_monto)), mkFg('Pesos estimados', mkInput('epg-monto','number',x.monto||0)));
+        else addFg(body, 'Monto ($)', mkInput('epg-monto','number',x.monto||0));
+        mkRow2(body, mkFg('Fecha de vencimiento', mkInput('epg-fecha','date',x.fecha?String(x.fecha).slice(0,10):'')), mkFg('Mes en que entra', mkSelect('epg-mes', opts, idActual)));
+      }, function(foot) {
+        foot.appendChild(cancelBtn());
+        var ok = el('button',{class:'btn btnp'},'Guardar');
+        ok.onclick = function(){
+          var conc = gv('epg-conc').trim(); if (!conc) { alert('Concepto obligatorio'); return; }
+          var monto = Number(gv('epg-monto')||0); if (!(monto>0)) { alert('Monto inválido'); return; }
+          var pm = gv('epg-mes').split('-');
+          var cambios = {concepto:conc, monto:monto, fecha:gv('epg-fecha')||null, anio:Number(pm[0]), mes:Number(pm[1])};
+          if (usd) { var u = Number(gv('epg-usd')||0); if (!(u>0)) { alert('Monto USD inválido'); return; } cambios.prestamo_monto = u; }
+          ok.disabled = true;
+          dbUpd('panel_pf_gastos_programados', x.id, cambios).then(function(){ for (var k in cambios) x[k] = cambios[k]; closeM(); renderAll(); })
+            .catch(function(e){ ok.disabled=false; alert('No se pudo guardar: '+(e&&e.message||e)); });
+        };
+        foot.appendChild(ok);
+      }));
+    }
+
     function crearMesSiguientePF() {
       var ultimo = mesesPF[mesesPF.length-1];
       var y = ultimo ? ultimo.year : hoy.getFullYear(), m = ultimo ? ultimo.month : hoy.getMonth()+1;
@@ -5046,15 +5087,7 @@ function vFinanzas() {
         var progCard = el('div',{class:'card',style:'padding:14px;margin-bottom:14px'});
         progCard.appendChild(el('div',{style:'font-size:12px;font-weight:600;color:#64748B;margin-bottom:8px'},'\uD83D\uDCC5 Programados para meses futuros (entran solos cuando se crea el mes)'));
         gastosProgPF.slice().sort(function(a,b){ return (a.anio-b.anio) || (a.mes-b.mes); }).forEach(function(x){
-          var fila = el('div',{style:'display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;background:#F6F9FC;margin-bottom:6px;font-size:13px'});
-          fila.appendChild(el('span',{style:'font-weight:600;color:#0C6FA3;min-width:70px'}, MESES_CORTOS[x.mes-1]+' '+x.anio));
-          fila.appendChild(el('span',{style:'flex:1;min-width:0'}, (x.concepto||'-')+(x.fecha?' \u00B7 '+fdate(x.fecha):'')));
-          fila.appendChild(el('b',{}, Number(x.prestamo_monto||0)>0 ? fmtMon(x.prestamo_monto,'USD')+' (\u2248 '+fmt(x.monto||0)+')' : fmt(x.monto||0)));
-          var bx = el('button',{class:'btn btnsm',style:'color:#E53E3E;border-color:#FECACA',title:'Quitar de lo programado'},'x');
-          bx.onclick = function(){ if (!confirm('¿Quitar "'+(x.concepto||'')+'" de '+MESES_CORTOS[x.mes-1]+' '+x.anio+'?')) return;
-            sbFetch('panel_pf_gastos_programados?id=eq.'+x.id,{method:'DELETE',prefer:'return=minimal'}).then(function(){ gastosProgPF = gastosProgPF.filter(function(z){ return z.id!==x.id; }); renderAll(); }).catch(function(e){ alert('No se pudo quitar: '+e.message); }); };
-          fila.appendChild(bx);
-          progCard.appendChild(fila);
+          progCard.appendChild(filaProgramadoPF(x));
         });
         content.appendChild(progCard);
       }
@@ -5656,6 +5689,11 @@ function vFinanzas() {
             bP.onclick = function(){ mMarcarPagadoPF(g, function(){ renderAll(); }); };
             f.appendChild(bP); card.appendChild(f);
           });
+        }
+        var progsP = gastosProgPF.filter(function(x){ return x.prestamo_id===p.id; }).sort(function(a,b){ return (a.anio-b.anio) || (a.mes-b.mes); });
+        if (progsP.length) {
+          card.appendChild(el('div',{style:'font-weight:600;font-size:12px;color:#0C6FA3;margin:12px 0 6px'},'\uD83D\uDCC5 Programados para meses que todavía no existen (entran solos al crear el mes)'));
+          progsP.forEach(function(x){ card.appendChild(filaProgramadoPF(x)); });
         }
         if (p.notas) card.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-top:4px;white-space:pre-wrap'}, p.notas));
         content.appendChild(card);
