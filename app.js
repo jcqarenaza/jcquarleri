@@ -5975,7 +5975,9 @@ function vFinanzas() {
             renderAll();
           });
         }; })(d.id);
-        tr.appendChild(el('td',{style:'white-space:nowrap'},[btnM,btnE,btnD]));
+        var btnC=el('button',{class:'btn btns btnsm',style:'margin-right:4px',title:'Registrar que te pagaron: baja la deuda y suma la plata a una cuenta'},'Cobrar');
+        (function(dd){ btnC.onclick=function(){ mCobrarDeudaPF(dd, function(){ renderAll(); }); }; })(d);
+        tr.appendChild(el('td',{style:'white-space:nowrap'},[btnC,btnM,btnE,btnD]));
         tb.appendChild(tr);
       });
       tbl.appendChild(tb); card.appendChild(tbl);
@@ -5984,6 +5986,44 @@ function vFinanzas() {
 
     function movimientosDeDeudaPF(d) {
       return deudasMovsPF.filter(function(m){ return m.deuda_id===d.id; }).sort(function(a,b){ return (a.fecha||'').localeCompare(b.fecha||''); });
+    }
+    // Cobro de una deuda: baja el saldo de la deuda y acredita la plata en la cuenta elegida
+    function mCobrarDeudaPF(d, cb) {
+      var saldo = Math.max(0, Number(d.monto)||0);
+      openM(makeModal('Cobrar \u2014 '+d.nombre, function(body) {
+        body.appendChild(el('div',{class:'ibox'}, 'Debe: $'+saldo.toLocaleString('es-AR')+(d.concepto?' \u00B7 '+d.concepto:'')));
+        mkRow2(body, mkFg('Monto cobrado ($)', mkInput('cdv-monto','number',saldo)), mkFg('Fecha', mkInput('cdv-fecha','date',new Date().toISOString().slice(0,10))));
+        if (cuentasPF.length) addFg(body, '\u00BFA qu\u00E9 cuenta entr\u00F3?', selCuentaPF('cdv-cuenta', cuentaDefaultIngresoPF(), 'ARS'));
+        addFg(body, 'Nota (opcional)', mkInput('cdv-nota','text','','Ej: transferencia Mercado Pago'));
+        body.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;line-height:1.5;margin-top:6px'},'La plata suma al saldo de la cuenta y baja la deuda. Queda como "Transferencia interna", as\u00ED no infla tus ingresos del mes.'));
+      }, function(foot) {
+        foot.appendChild(cancelBtn());
+        var ok = el('button',{class:'btn btnp'},'Registrar cobro');
+        ok.onclick = function() {
+          var monto = Number(gv('cdv-monto')||0); if (!(monto>0)) { alert('Ingres\u00E1 el monto cobrado'); return; }
+          if (monto > saldo + 0.005 && !confirm('Es m\u00E1s de lo que debe ($'+saldo.toLocaleString('es-AR')+'). \u00BFRegistrarlo igual? La deuda quedar\u00EDa en negativo.')) return;
+          var cuentaId = cuentasPF.length ? (gv('cdv-cuenta')||'') : '';
+          if (cuentasPF.length && !cuentaId) { alert('Eleg\u00ED en qu\u00E9 cuenta entr\u00F3 la plata'); return; }
+          var fecha = gv('cdv-fecha') || new Date().toISOString().slice(0,10);
+          var mesDe = mesesPF.find(function(x){ return x.year===Number(fecha.slice(0,4)) && x.month===Number(fecha.slice(5,7)); }) || getMesPF(mesSeleccionadoPF);
+          if (!mesDe) { alert('No hay un mes donde registrar el ingreso'); return; }
+          var nota = gv('cdv-nota').trim();
+          var nuevoSaldo = Math.round((Number(d.monto) - monto)*100)/100;
+          ok.disabled = true; ok.textContent = 'Guardando...';
+          var ingRow = {mes_id:mesDe.id, concepto:'Cobro deuda: '+d.nombre+(d.concepto?' ('+d.concepto+')':''), categoria:'Transferencia interna', monto:monto, fecha:fecha};
+          if (cuentaId) ingRow.cuenta_id = cuentaId;
+          dbIns('panel_pf_ingresos', ingRow).then(function(ri) {
+            if (ri && ri[0]) ingresosPF.push(ri[0]);
+            return dbIns('panel_pf_deudas_movimientos', {deuda_id:d.id, concepto:'Cobro'+(nota?': '+nota:''), monto:-monto, fecha:fecha});
+          }).then(function(rm) {
+            if (rm && rm[0]) deudasMovsPF.push(rm[0]);
+            var patch = {monto:nuevoSaldo}; if (nuevoSaldo <= 0.01) patch.estado = 'cobrado';
+            return dbUpd('panel_pf_deudas', d.id, patch).then(function(){ Object.assign(d, patch); });
+          }).then(function(){ closeM(); cb(); })
+            .catch(function(e){ ok.disabled=false; ok.textContent='Registrar cobro'; alert('Error: '+(e&&e.message||e)+'. Revis\u00E1 la deuda antes de reintentar: puede haberse registrado a medias.'); });
+        };
+        foot.appendChild(ok);
+      }));
     }
     function mMovimientosDeudaPF(d, cb) {
       function refrescar() { closeM(); mMovimientosDeudaPF(d, cb); }
