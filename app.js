@@ -3561,6 +3561,7 @@ function vFinanzas() {
     presupuestoPF:      sbFetch('panel_pf_presupuesto?select=*').catch(function(){ return []; }),
     prestamosPF:        sbFetch('panel_pf_prestamos?select=*&order=activo.desc,fecha.desc').catch(function(){ return []; }),
     prestamosPagosPF:   sbFetch('panel_pf_prestamos_pagos?select=*&order=fecha.asc').catch(function(){ return []; }),
+    gastosProgPF:       sbFetch('panel_pf_gastos_programados?select=*&order=anio.asc,mes.asc').catch(function(){ return []; }),
     autoPF:             sbFetch('panel_pf_auto_registros?select=*&order=kms.desc.nullslast,fecha.desc.nullslast').catch(function(){ return []; }),
     deudasMovsPF:       sbFetch('panel_pf_deudas_movimientos?select=*&order=fecha.asc').catch(function(){ return []; }),
     musicaPF:           sbFetch('panel_pf_musica?select=*&order=fecha.asc').catch(function(){ return []; }),
@@ -3582,6 +3583,7 @@ function vFinanzas() {
     var dolarData=R.dolarData, pagoGastos=R.pagoGastos, config=R.config||[];
     var gastosPers=R.gastosPers||[], pagoGastosPers=R.pagoGastosPers||[];
     var cuotasPF=R.cuotasPF||[];
+    var gastosProgPF=R.gastosProgPF||[];
     var mesesPF=R.mesesPF||[], gastosPF=R.gastosPF||[], ingresosPF=R.ingresosPF||[], juanPF=R.juanPF||[], daianaPF=R.daianaPF||[], deudasPF=R.deudasPF||[], presupuestoPF=R.presupuestoPF||[];
     var entregasPF=R.entregasPF||[];
     gastosPF.forEach(function(g){ g._entregas = entregasPF.filter(function(e){ return e.gasto_id===g.id; }); });
@@ -4368,6 +4370,13 @@ function vFinanzas() {
       return c.cuota_total ? c.nombre + ' (' + numeroCuotaPF(c,y,mo) + '/' + c.cuota_total + ')' : c.nombre;
     }
 
+    // Proximos 12 meses que todavia no existen: se pueden programar gastos que entran solos al crear el mes
+    function mesesFuturosPF() {
+      var ult = mesesPF[mesesPF.length-1], y = ult ? ult.year : hoy.getFullYear(), mo = ult ? ult.month : hoy.getMonth()+1, out = [];
+      for (var i=0; i<12; i++) { mo++; if (mo>12) { mo=1; y++; } out.push([y+'-'+mo, MESES[mo-1]+' '+y+' (todavía no existe: entra al crearlo)']); }
+      return out;
+    }
+
     function crearMesSiguientePF() {
       var ultimo = mesesPF[mesesPF.length-1];
       var y = ultimo ? ultimo.year : hoy.getFullYear(), m = ultimo ? ultimo.month : hoy.getMonth()+1;
@@ -4389,11 +4398,22 @@ function vFinanzas() {
             tipo: 'fijos', fecha: fecha, cuota_id: c.id, pagado: false
           });
         });
+        // Gastos programados para este mes (cargados antes de que el mes existiera): entran ahora
+        var progsMes = gastosProgPF.filter(function(x){ return Number(x.anio)===y && Number(x.mes)===m; });
+        var prestProg = {}; progsMes.forEach(function(x){ if (x.prestamo_id) prestProg[x.prestamo_id] = true; });
+        progsMes.forEach(function(x){
+          var gRowProg = {
+            mes_id: id, concepto: x.concepto, monto: Number(x.monto||0), categoria: x.categoria || 'Varios', tipo: x.tipo || 'varios',
+            fecha: x.fecha || fecha, prestamo_id: x.prestamo_id || null, cuota_id: null, pagado: false
+          };
+          if (Number(x.prestamo_monto||0) > 0) gRowProg.prestamo_monto = Number(x.prestamo_monto);
+          inserts.push(dbIns('panel_pf_gastos', gRowProg).then(function(){ return sbFetch('panel_pf_gastos_programados?id=eq.'+x.id, {method:'DELETE', prefer:'return=minimal'}); }));
+        });
         // Plantilla: copiar TODOS los gastos no-cuota del ultimo mes (fijos, tarjetas, varios), en cero,
         // para que el modulo completo (Tarjetas, Pedrito, Servicios, etc.) aparezca listo para editar o borrar.
         // Los "ajuste" puntuales (correcciones de un mes especifico) no se copian, no son recurrentes.
         if (ultimo) {
-          var noCuotaPrevios = gastosPF.filter(function(g){ return g.mes_id===ultimo.id && g.tipo!=='ajuste' && !g.cuota_id; });
+          var noCuotaPrevios = gastosPF.filter(function(g){ return g.mes_id===ultimo.id && g.tipo!=='ajuste' && !g.cuota_id && !(g.prestamo_id && prestProg[g.prestamo_id]); });
           noCuotaPrevios.forEach(function(g) {
             // Conservar el dia del gasto en el mes nuevo (limitado a 28 para meses cortos)
             var dia = 1;
@@ -5021,6 +5041,24 @@ function vFinanzas() {
       resCard.appendChild(rcCierre);
       content.appendChild(resCard);
 
+      // Gastos programados para meses que todavia no existen
+      if (gastosProgPF.length) {
+        var progCard = el('div',{class:'card',style:'padding:14px;margin-bottom:14px'});
+        progCard.appendChild(el('div',{style:'font-size:12px;font-weight:600;color:#64748B;margin-bottom:8px'},'\uD83D\uDCC5 Programados para meses futuros (entran solos cuando se crea el mes)'));
+        gastosProgPF.slice().sort(function(a,b){ return (a.anio-b.anio) || (a.mes-b.mes); }).forEach(function(x){
+          var fila = el('div',{style:'display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;background:#F6F9FC;margin-bottom:6px;font-size:13px'});
+          fila.appendChild(el('span',{style:'font-weight:600;color:#0C6FA3;min-width:70px'}, MESES_CORTOS[x.mes-1]+' '+x.anio));
+          fila.appendChild(el('span',{style:'flex:1;min-width:0'}, (x.concepto||'-')+(x.fecha?' \u00B7 '+fdate(x.fecha):'')));
+          fila.appendChild(el('b',{}, Number(x.prestamo_monto||0)>0 ? fmtMon(x.prestamo_monto,'USD')+' (\u2248 '+fmt(x.monto||0)+')' : fmt(x.monto||0)));
+          var bx = el('button',{class:'btn btnsm',style:'color:#E53E3E;border-color:#FECACA',title:'Quitar de lo programado'},'x');
+          bx.onclick = function(){ if (!confirm('¿Quitar "'+(x.concepto||'')+'" de '+MESES_CORTOS[x.mes-1]+' '+x.anio+'?')) return;
+            sbFetch('panel_pf_gastos_programados?id=eq.'+x.id,{method:'DELETE',prefer:'return=minimal'}).then(function(){ gastosProgPF = gastosProgPF.filter(function(z){ return z.id!==x.id; }); renderAll(); }).catch(function(e){ alert('No se pudo quitar: '+e.message); }); };
+          fila.appendChild(bx);
+          progCard.appendChild(fila);
+        });
+        content.appendChild(progCard);
+      }
+
       // Evolucion por modulo (ultimos 6 meses), con flecha de avance/retroceso vs mes anterior
       var idxMesEv = mesesPF.findIndex(function(mm){ return mm.id===m.id; });
       var ultimosMesesEv = mesesPF.slice(Math.max(0, idxMesEv-5), idxMesEv+1);
@@ -5433,6 +5471,7 @@ function vFinanzas() {
         mkRow2(body, mkFg('Pesos personal (ARS)', mkInput('ngpf-monto','number','0')), mkFg('Pesos negocio (ARS)', mkInput('ngpf-montoneg','number','')));
         mkRow2(body, mkFg('USD personal', mkInput('ngpf-montousd','number','')), mkFg('USD negocio', mkInput('ngpf-montousdneg','number','')));
         addFg(body, 'Fecha', mkInput('ngpf-fecha','date',m.year+'-'+String(m.month).padStart(2,'0')+'-01'));
+        addFg(body, 'Mes (si todavía no existe, queda programado y entra solo al crearlo)', mkSelect('ngpf-mes', mesesPF.map(function(mm){ return [mm.id, MESES[mm.month-1]+' '+mm.year]; }).concat(mesesFuturosPF()), m.id));
       }, function(foot) {
         foot.appendChild(cancelBtn());
         var ok = el('button', {class:'btn btnp'}, 'Guardar');
@@ -5441,7 +5480,17 @@ function vFinanzas() {
           var montoArs = Number(gv('ngpf-monto')||0), montoUsd = Number(gv('ngpf-montousd')||0);
           var montoArsNeg = Number(gv('ngpf-montoneg')||0), montoUsdNeg = Number(gv('ngpf-montousdneg')||0);
           if (!montoArs && !montoUsd && !montoArsNeg && !montoUsdNeg) { alert('Cargá al menos un monto en alguna de las 4 billeteras'); return; }
-          dbIns('panel_pf_gastos', {mes_id:m.id, concepto:conc, categoria:gv('ngpf-cat'), tipo:gv('ngpf-tipo'), monto:montoArs, monto_usd:montoUsd, monto_negocio:montoArsNeg, monto_usd_negocio:montoUsdNeg, fecha:gv('ngpf-fecha')||null, pagado:false})
+          var mesElegido = gv('ngpf-mes') || m.id;
+          if (!mesesPF.find(function(mm){ return mm.id===mesElegido; })) {
+            if (montoUsd || montoArsNeg || montoUsdNeg) { alert('Por ahora, en meses que no existen solo se pueden programar gastos en pesos personales.'); return; }
+            var pmg = mesElegido.split('-');
+            ok.disabled = true;
+            dbIns('panel_pf_gastos_programados', {anio:Number(pmg[0]), mes:Number(pmg[1]), concepto:conc, monto:montoArs, categoria:gv('ngpf-cat'), tipo:gv('ngpf-tipo'), fecha:gv('ngpf-fecha')||null})
+              .then(function(r){ if (r && r[0]) gastosProgPF.push(r[0]); closeM(); renderAll(); })
+              .catch(function(e){ ok.disabled=false; alert('Error: '+e.message+'\n\nSi dice que no existe la tabla panel_pf_gastos_programados, falta correr el SQL de gastos programados.'); });
+            return;
+          }
+          dbIns('panel_pf_gastos', {mes_id:mesElegido, concepto:conc, categoria:gv('ngpf-cat'), tipo:gv('ngpf-tipo'), monto:montoArs, monto_usd:montoUsd, monto_negocio:montoArsNeg, monto_usd_negocio:montoUsdNeg, fecha:gv('ngpf-fecha')||null, pagado:false})
             .then(function(r){ closeM(); cb((r&&r[0])||null); });
         };
         foot.appendChild(ok);
@@ -5676,7 +5725,7 @@ function vFinanzas() {
           pintarTot();
           body.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin:-4px 0 10px'},'El gasto del mes queda en pesos (USD x precio) y el préstamo descuenta los USD.'));
         }
-        addFg(body, 'Mes (para que cuente como gasto de ese mes)', mkSelect('pgp-mes', mesesPF.map(function(mm){ return [mm.id, MESES[mm.month-1]+' '+mm.year]; }), mesSeleccionadoPF));
+        addFg(body, 'Mes (para que cuente como gasto de ese mes)', mkSelect('pgp-mes', mesesPF.map(function(mm){ return [mm.id, MESES[mm.month-1]+' '+mm.year]; }).concat(mesesFuturosPF()), mesSeleccionadoPF));
         addFg(body, 'Notas', mkInput('pgp-notas','text',''));
         if (cuentasPF.length) addFg(body, '¿De qué cuenta sale? (solo si ya lo pagaste)', selCuentaPF('pgp-cuenta', esUSD ? (cuentaUsdPF() || cuentaDefaultIngresoPF()) : cuentaDefaultIngresoPF(), esUSD ? 'USD' : 'ARS'));
       }, function(foot) {
@@ -5687,6 +5736,19 @@ function vFinanzas() {
           var fecha = gv('pgp-fecha')||null, notas = gv('pgp-notas')||null;
           var prog = gv('pgp-est')==='programado';
           var mesId = gv('pgp-mes');
+          if (!mesesPF.find(function(mm){ return mm.id===mesId; })) {
+            if (!prog) { alert('Ese mes todavía no existe. Elegí "Programar" para dejarlo agendado: entra solo cuando se cree el mes.'); return; }
+            var tcP = esUSD ? Number(gv('pgp-tc')||0) : 0;
+            if (esUSD && !(tcP>0)) { alert('Ingresá el precio del dólar (estimado, lo podés corregir cuando se cree el mes)'); return; }
+            var ppm = mesId.split('-');
+            ok.disabled = true; ok.textContent = 'Guardando...';
+            var rowProg = {anio:Number(ppm[0]), mes:Number(ppm[1]), concepto:(esUSD ? p.nombre+' (USD '+monto+')' : p.nombre), monto:(esUSD ? Math.round(monto*tcP) : monto), categoria:'Créditos', tipo:'varios', fecha:fecha, prestamo_id:p.id, notas:notas};
+            if (esUSD) rowProg.prestamo_monto = monto;
+            dbIns('panel_pf_gastos_programados', rowProg)
+              .then(function(r){ if (r && r[0]) gastosProgPF.push(r[0]); closeM(); cb(null, null); })
+              .catch(function(e){ ok.disabled=false; ok.textContent='Guardar'; alert('Error: '+e.message+'\n\nSi dice que no existe la tabla panel_pf_gastos_programados, falta correr el SQL de gastos programados.'); });
+            return;
+          }
           var tc = esUSD ? Number(gv('pgp-tc')||0) : 0;
           if (esUSD && !(tc>0)) { alert('Ingresá el precio del dólar'); return; }
           var gastoBody = {mes_id:mesId, categoria:'Créditos', tipo:'varios', fecha:fecha, prestamo_id:p.id, pagado:!prog};
