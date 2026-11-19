@@ -4377,6 +4377,16 @@ function vFinanzas() {
       return out;
     }
 
+    // Encabezado plegable (por defecto cerrado) para las listas de pagos de cada prestamo
+    function prestAbiertoPF(k) { return !!(_finUIState.prestAb && _finUIState.prestAb[k]); }
+    function encPlegablePF(k, titulo, n, color) {
+      var ab = prestAbiertoPF(k);
+      var h = el('div',{style:'font-weight:600;font-size:12px;color:'+color+';margin:12px 0 6px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px'});
+      h.appendChild(el('span',{style:'font-size:10px'}, ab ? '\u25BC' : '\u25B6'));
+      h.appendChild(document.createTextNode(titulo+' ('+n+')'));
+      h.onclick = function(){ _finUIState.prestAb = _finUIState.prestAb || {}; _finUIState.prestAb[k] = !ab; renderAll(); };
+      return h;
+    }
     // Fila de un gasto programado (con Editar y Quitar). Se usa en Prestamos y en Gastos.
     function filaProgramadoPF(x) {
       var fila = el('div',{style:'display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;border-radius:12px;background:#F6F9FC;margin-bottom:6px;font-size:13px'});
@@ -5680,8 +5690,8 @@ function vFinanzas() {
         card.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-top:4px'}, saldo>0 ? 'Saldo: '+fmtMon(saldo,p.moneda) : 'Pagado en su totalidad'));
         var pend = gastosPF.filter(function(g){ return g.prestamo_id===p.id && !g.pagado; }).sort(function(x,y){ return String(x.fecha||'').localeCompare(String(y.fecha||'')); });
         if (pend.length) {
-          card.appendChild(el('div',{style:'font-weight:600;font-size:12px;color:#854F0B;margin:12px 0 4px'},'Pagos programados (pendientes)'));
-          pend.forEach(function(g) {
+          card.appendChild(encPlegablePF(p.id+'-pend', 'Pagos programados (pendientes)', pend.length, '#854F0B'));
+          pend.filter(function(){ return prestAbiertoPF(p.id+'-pend'); }).forEach(function(g) {
             var f = el('div',{style:'display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;padding:6px 0;border-top:1px solid #F1F5F9'});
             var usdG = p.moneda==='USD' && Number(g.prestamo_monto||0)>0;
             f.appendChild(el('span',{}, (g.fecha ? fdate(g.fecha) : 'sin fecha')+' · '+(usdG ? fmtMon(g.prestamo_monto,'USD')+(Number(g.monto)>0 ? ' (≈ '+fmt(g.monto)+')' : '') : fmt(g.monto))));
@@ -5692,8 +5702,8 @@ function vFinanzas() {
         }
         var progsP = gastosProgPF.filter(function(x){ return x.prestamo_id===p.id; }).sort(function(a,b){ return (a.anio-b.anio) || (a.mes-b.mes); });
         if (progsP.length) {
-          card.appendChild(el('div',{style:'font-weight:600;font-size:12px;color:#0C6FA3;margin:12px 0 6px'},'\uD83D\uDCC5 Programados para meses que todavía no existen (entran solos al crear el mes)'));
-          progsP.forEach(function(x){ card.appendChild(filaProgramadoPF(x)); });
+          card.appendChild(encPlegablePF(p.id+'-prog', '\uD83D\uDCC5 Programados para meses que todavía no existen (entran solos al crear el mes)', progsP.length, '#0C6FA3'));
+          progsP.filter(function(){ return prestAbiertoPF(p.id+'-prog'); }).forEach(function(x){ card.appendChild(filaProgramadoPF(x)); });
         }
         if (p.notas) card.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-top:4px;white-space:pre-wrap'}, p.notas));
         content.appendChild(card);
