@@ -3607,7 +3607,10 @@ function vFinanzas() {
     var deudasMovsPF=R.deudasMovsPF||[];
     var musicaPF=R.musicaPF||[];
     var juntadaParticipantes=R.juntadaParticipantes||[], juntadaPagos=R.juntadaPagos||[], juntadaGastos=R.juntadaGastos||[];
-    var mesActualPF = (mesesPF.find(function(m){ return m.status==='open'; }) || mesesPF[mesesPF.length-1] || {}).id || null;
+    // Al entrar siempre el mes vigente (el de hoy), aunque haya meses futuros creados o abiertos
+    var _hoyPF = new Date();
+    var mesActualPF = (mesesPF.find(function(m){ return Number(m.year)===_hoyPF.getFullYear() && Number(m.month)===_hoyPF.getMonth()+1; })
+      || mesesPF.find(function(m){ return m.status==='open'; }) || mesesPF[mesesPF.length-1] || {}).id || null;
 
     pagoGastosPers = pagoGastosPers.map(function(p) {
       var g = gastosPers.find(function(x){ return x.id === p.gasto_id; });
@@ -7634,7 +7637,10 @@ function vFinanzas() {
       var shP = el('div',{class:'sh',style:'display:flex;justify-content:space-between;align-items:center'});
       shP.appendChild(el('span',{class:'st'},'\uD83D\uDC76 Gastos Pedrito'));
       var btnPrint = el('button',{class:'btn btnp'},'\uD83D\uDDA8 Imprimir resumen');
-      shP.appendChild(btnPrint);
+      var btnAnio = el('button',{class:'btn btnp',style:'margin-right:8px'},'\uD83D\uDCC4 Resumen del a\u00F1o');
+      btnAnio.onclick = function(){ imprimirPedritoAnio(anioSel); };
+      var hdrBtnsP = el('span',{}); hdrBtnsP.appendChild(btnAnio); hdrBtnsP.appendChild(btnPrint);
+      shP.appendChild(hdrBtnsP);
       content.appendChild(shP);
 
       // Agrupar por año
@@ -7716,6 +7722,71 @@ function vFinanzas() {
 
       if (anios.length) renderMesesDelAnio(anioSel);
       else mesContent.appendChild(el('div',{class:'emp'},'Sin gastos registrados para Pedrito todavía.'));
+    }
+
+    function imprimirPedritoAnio(anio) {
+      var MN = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+      var $ = function(n){ return '$'+Math.round(Number(n)||0).toLocaleString('es-AR'); };
+      var hoy3 = new Date(), mesHoy = (Number(anio)===hoy3.getFullYear()) ? hoy3.getMonth()+1 : (Number(anio)<hoy3.getFullYear() ? 12 : 0);
+      var gAnio = gastosPF.filter(function(g){ return g.categoria==='Pedrito' && String(g.mes_id||'').indexOf(anio+'-')===0; });
+      var iAnio = ingresosPF.filter(function(i){ return (i.categoria==='Pedrito'||i.categoria==='Alimentos') && String(i.mes_id||'').indexOf(anio+'-')===0; });
+      var rubro = function(c){ c = String(c||'').toLowerCase();
+        if (/daiana/.test(c)) return 'Daiana (cuidado)';
+        if (/petit|colonia|prehora/.test(c)) return 'Instituto Petit, Prehora y Colonia';
+        if (/club|deport|futbol|f\u00FAtbol/.test(c)) return 'Club y deportes';
+        if (/sesion|sesi\u00F3n|informe|bianca|parental/.test(c)) return 'Terapia';
+        if (/ropa/.test(c)) return 'Ropa';
+        return 'Otros (desayunos, regalos, salidas)'; };
+      var filasMes = '', tG = 0, tI = 0, rub = {}, prevG = 0, detMes = '';
+      for (var m=1; m<=12; m++) {
+        var key = anio+'-'+m;
+        var gm = gAnio.filter(function(g){ return g.mes_id===key; });
+        var im = iAnio.filter(function(i){ return i.mes_id===key; });
+        if (!gm.length && !im.length) continue;
+        var g1 = gm.reduce(function(a,g){ return a+Number(g.monto||0); },0), i1 = im.reduce(function(a,i){ return a+Number(i.monto||0); },0);
+        var previsto = m > mesHoy;
+        if (previsto) { prevG += g1; }
+        else {
+          tG += g1; tI += i1; gm.forEach(function(g){ var r = rubro(g.concepto); rub[r] = (rub[r]||0) + Number(g.monto||0); });
+          detMes += '<div style="page-break-inside:avoid"><div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#E6F6FD;margin-top:12px"><b style="color:#0C6FA3;font-size:14px">'+MN[m]+'</b><span style="font-size:12px;color:#1a2e4a">Gastos <b>'+$(g1)+'</b> \u00B7 Aporte Emilse <b style="color:#3D8A32">'+$(i1)+'</b> \u00B7 A cargo Juan <b style="color:#0B9EDA">'+$(Math.max(0,g1-i1))+'</b></span></div><table><tbody>'+
+            gm.slice().sort(function(a,b){ return Number(b.monto)-Number(a.monto); }).map(function(g){ return '<tr><td style="padding:8px 16px;border-bottom:1px solid #f0f0f0;font-size:13px">'+(g.concepto||'-')+'</td><td style="padding:8px 16px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px;font-weight:600">'+$(g.monto)+'</td><td style="padding:8px 16px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:11px;color:'+(g.pagado?'#3D8A32':'#A32D2D')+'">'+(g.pagado?'Pagado':'Pendiente')+'</td></tr>'; }).join('')+
+            '</tbody></table></div>';
+        }
+        var est = previsto ? '<span style="font-size:10px;padding:2px 8px;border-radius:12px;background:#FAEEDA;color:#854F0B">previsto</span>' : '';
+        filasMes += '<tr style="'+(previsto?'color:#94a3b8;font-style:italic':'')+'"><td style="padding:10px 16px;border-bottom:1px solid #f0f0f0">'+MN[m]+' '+est+'</td>'+
+          '<td style="padding:10px 16px;border-bottom:1px solid #f0f0f0;text-align:right">'+$(g1)+'</td>'+
+          '<td style="padding:10px 16px;border-bottom:1px solid #f0f0f0;text-align:right;color:#3D8A32">'+(previsto&&!i1?'-':$(i1))+'</td>'+
+          '<td style="padding:10px 16px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:600;color:#0B9EDA">'+(previsto&&!i1?'-':$(Math.max(0,g1-i1)))+'</td></tr>';
+      }
+      var meses = Math.max(1, mesHoy);
+      var aCargo = Math.max(0, tG - tI);
+      var filasRub = Object.keys(rub).sort(function(a,b){ return rub[b]-rub[a]; }).map(function(r){
+        var pct = tG ? Math.round(rub[r]/tG*100) : 0;
+        return '<tr><td style="padding:10px 16px;border-bottom:1px solid #f0f0f0">'+r+'</td><td style="padding:10px 16px;border-bottom:1px solid #f0f0f0;text-align:right">'+$(rub[r])+'</td><td style="padding:10px 16px;border-bottom:1px solid #f0f0f0;text-align:right;color:#64748B">'+pct+'%</td></tr>';
+      }).join('');
+      var th = 'padding:10px 16px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;border-bottom:1px solid #f0f0f0;';
+      var html='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Gastos de Pedro \u2014 Resumen '+anio+'</title>'+
+        '<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:"Helvetica Neue",Arial,sans-serif;background:#fff;padding:40px;color:#1a2e4a}'+
+        '.container{max-width:720px;margin:0 auto;border:1px solid #E2E8F0;border-radius:16px;overflow:hidden}'+
+        '.header{background:linear-gradient(135deg,#1a2e4a 0%,#0B9EDA 100%);padding:32px 36px;color:#fff}.header h1{font-size:26px;font-weight:800;margin-bottom:4px}.header p{font-size:14px;opacity:.8}'+
+        '.kpis{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:2px solid #f0f0f0}.kpi{padding:18px 12px;text-align:center;border-right:1px solid #f0f0f0}.kpi:last-child{border-right:none}'+
+        '.kl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px}.kv{font-size:18px;font-weight:800}'+
+        '.st{padding:16px 16px 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8}table{width:100%;border-collapse:collapse;font-size:14px}'+
+        '.footer{padding:14px 36px;font-size:11px;color:#94a3b8;text-align:center;border-top:1px solid #f0f0f0}@media print{body{padding:0}.container{border:none;border-radius:0}}</style></head><body><div class="container">'+
+        '<div class="header"><h1>\uD83D\uDC76 Gastos de Pedro</h1><p>Resumen '+anio+(mesHoy&&mesHoy<12?' \u00B7 enero a '+MN[mesHoy].toLowerCase():'')+'</p></div>'+
+        '<div class="kpis">'+
+          '<div class="kpi"><div class="kl">Total gastos</div><div class="kv">'+$(tG)+'</div></div>'+
+          '<div class="kpi"><div class="kl">Aporte Emilse</div><div class="kv" style="color:#3D8A32">'+$(tI)+'</div></div>'+
+          '<div class="kpi"><div class="kl">A cargo Juan Cruz</div><div class="kv" style="color:#0B9EDA">'+$(aCargo)+'</div></div>'+
+          '<div class="kpi"><div class="kl">Promedio mensual</div><div class="kv">'+$(tG/meses)+'</div></div>'+
+        '</div>'+
+        '<div class="st">Mes por mes</div><table><thead><tr><th style="'+th+'text-align:left">Mes</th><th style="'+th+'text-align:right">Gastos</th><th style="'+th+'text-align:right">Aporte Emilse</th><th style="'+th+'text-align:right">A cargo Juan</th></tr></thead><tbody>'+filasMes+
+          '<tr style="background:#F8FAFC;font-weight:700"><td style="padding:12px 16px">Total</td><td style="padding:12px 16px;text-align:right">'+$(tG)+'</td><td style="padding:12px 16px;text-align:right;color:#3D8A32">'+$(tI)+'</td><td style="padding:12px 16px;text-align:right;color:#0B9EDA">'+$(aCargo)+'</td></tr></tbody></table>'+
+        '<div class="st">En qu\u00E9 se gast\u00F3</div><table><thead><tr><th style="'+th+'text-align:left">Rubro</th><th style="'+th+'text-align:right">Total</th><th style="'+th+'text-align:right">%</th></tr></thead><tbody>'+filasRub+'</tbody></table>'+
+        '<div class="st" style="margin-top:8px">Detalle mes por mes</div>'+detMes+
+        (prevG?'<div style="padding:14px 16px;font-size:12px;color:#854F0B;background:#FAEEDA;margin-top:12px">Los meses marcados como previstos ('+$(prevG)+' cargados hasta ahora) no est\u00E1n sumados en los totales.</div>':'')+
+        '<div class="footer">Generado por QP C&IA \u00B7 '+new Date().toLocaleDateString('es-AR')+'</div></div></body></html>';
+      var w=window.open('','_blank'); w.document.write(html); w.document.close(); setTimeout(function(){w.print();},500);
     }
 
     function imprimirPedrito(gastos, ingresos, total, totalIng, diferencia, mes, anio) {
