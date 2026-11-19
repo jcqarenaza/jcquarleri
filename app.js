@@ -4388,11 +4388,12 @@ function vFinanzas() {
       return h;
     }
     // Fila de un gasto programado (con Editar y Quitar). Se usa en Prestamos y en Gastos.
-    function filaProgramadoPF(x) {
+    function filaProgramadoPF(x, saldoTxt) {
       var fila = el('div',{style:'display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;border-radius:12px;background:#F6F9FC;margin-bottom:6px;font-size:13px'});
       fila.appendChild(el('span',{style:'font-weight:600;color:#0C6FA3;min-width:70px'}, MESES_CORTOS[x.mes-1]+' '+x.anio));
       fila.appendChild(el('span',{style:'flex:1;min-width:120px'}, (x.concepto||'-')+(x.fecha?' \u00B7 '+fdate(x.fecha):'')));
       fila.appendChild(el('b',{}, Number(x.prestamo_monto||0)>0 ? fmtMon(x.prestamo_monto,'USD')+' (\u2248 '+fmt(x.monto||0)+')' : fmt(x.monto||0)));
+      if (saldoTxt) fila.appendChild(el('span',{style:'font-size:11px;color:#64748B;white-space:nowrap'}, 'saldo: '+saldoTxt));
       var be = el('button',{class:'btn btnsm',title:'Editar monto, fecha o mes'},'Editar');
       be.onclick = function(){ mEditarProgramadoPF(x); };
       fila.appendChild(be);
@@ -5689,21 +5690,31 @@ function vFinanzas() {
         card.appendChild(bar);
         card.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-top:4px'}, saldo>0 ? 'Saldo: '+fmtMon(saldo,p.moneda) : 'Pagado en su totalidad'));
         var pend = gastosPF.filter(function(g){ return g.prestamo_id===p.id && !g.pagado; }).sort(function(x,y){ return String(x.fecha||'').localeCompare(String(y.fecha||'')); });
+        // Saldo que queda despues de cada pago futuro (pendientes + programados, en orden de fecha)
+        var progsP = gastosProgPF.filter(function(x){ return x.prestamo_id===p.id; }).sort(function(a,b){ return (a.anio-b.anio) || (a.mes-b.mes); });
+        var saldoLuego = {};
+        (function(){
+          var fut = [];
+          pend.forEach(function(g){ fut.push({id:'g'+g.id, k:String(g.fecha||'9999-12-31'), m:(p.moneda==='USD' && Number(g.prestamo_monto||0)>0) ? Number(g.prestamo_monto) : Number(g.monto||0)}); });
+          progsP.forEach(function(x){ fut.push({id:'p'+x.id, k:String(x.fecha || (x.anio+'-'+String(x.mes).padStart(2,'0')+'-01')), m:(p.moneda==='USD' && Number(x.prestamo_monto||0)>0) ? Number(x.prestamo_monto) : Number(x.monto||0)}); });
+          fut.sort(function(a,b){ return a.k.localeCompare(b.k); });
+          var acc = saldo;
+          fut.forEach(function(f){ acc -= f.m; saldoLuego[f.id] = fmtMon(Math.max(0, Math.round(acc*100)/100), p.moneda); });
+        })();
         if (pend.length) {
           card.appendChild(encPlegablePF(p.id+'-pend', 'Pagos programados (pendientes)', pend.length, '#854F0B'));
           pend.filter(function(){ return prestAbiertoPF(p.id+'-pend'); }).forEach(function(g) {
             var f = el('div',{style:'display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;padding:6px 0;border-top:1px solid #F1F5F9'});
             var usdG = p.moneda==='USD' && Number(g.prestamo_monto||0)>0;
-            f.appendChild(el('span',{}, (g.fecha ? fdate(g.fecha) : 'sin fecha')+' · '+(usdG ? fmtMon(g.prestamo_monto,'USD')+(Number(g.monto)>0 ? ' (≈ '+fmt(g.monto)+')' : '') : fmt(g.monto))));
+            f.appendChild(el('span',{}, (g.fecha ? fdate(g.fecha) : 'sin fecha')+' · '+(usdG ? fmtMon(g.prestamo_monto,'USD')+(Number(g.monto)>0 ? ' (≈ '+fmt(g.monto)+')' : '') : fmt(g.monto))+' · saldo: '+(saldoLuego['g'+g.id]||'-')));
             var bP = el('button',{class:'btn btnp btnsm'},'Marcar pagado');
             bP.onclick = function(){ mMarcarPagadoPF(g, function(){ renderAll(); }); };
             f.appendChild(bP); card.appendChild(f);
           });
         }
-        var progsP = gastosProgPF.filter(function(x){ return x.prestamo_id===p.id; }).sort(function(a,b){ return (a.anio-b.anio) || (a.mes-b.mes); });
         if (progsP.length) {
           card.appendChild(encPlegablePF(p.id+'-prog', '\uD83D\uDCC5 Programados para meses que todavía no existen (entran solos al crear el mes)', progsP.length, '#0C6FA3'));
-          progsP.filter(function(){ return prestAbiertoPF(p.id+'-prog'); }).forEach(function(x){ card.appendChild(filaProgramadoPF(x)); });
+          progsP.filter(function(){ return prestAbiertoPF(p.id+'-prog'); }).forEach(function(x){ card.appendChild(filaProgramadoPF(x, saldoLuego['p'+x.id])); });
         }
         if (p.notas) card.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-top:4px;white-space:pre-wrap'}, p.notas));
         content.appendChild(card);
