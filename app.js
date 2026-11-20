@@ -5743,14 +5743,26 @@ function vFinanzas() {
         addFg(body, 'Nombre', mkInput('npr-nom','text','','Ej: Prestamo Gustavo Rejas'));
         mkRow2(body, mkFg('Monto total', mkInput('npr-monto','number','0')), mkFg('Moneda', mkSelect('npr-mon',[['ARS','Pesos (ARS)'],['USD','Dolares (USD)']],'ARS')));
         mkRow2(body, mkFg('Fecha', mkInput('npr-fecha','date',new Date().toISOString().slice(0,10))), el('div',{}));
+        addFg(body, '¿A qué cuenta se acreditó? (opcional)', selCuentaPF('npr-cta','',null));
         addFg(body, 'Notas', mkInput('npr-notas','text',''));
       }, function(foot) {
         foot.appendChild(cancelBtn());
         var ok = el('button', {class:'btn btnp'}, 'Guardar');
         ok.onclick = function() {
           var nom = gv('npr-nom').trim(); if (!nom) { alert('Nombre obligatorio'); return; }
-          dbIns('panel_pf_prestamos', {nombre:nom, monto_total:Number(gv('npr-monto')||0), moneda:gv('npr-mon'), fecha:gv('npr-fecha')||null, notas:gv('npr-notas')||null, activo:true})
-            .then(function(r){ closeM(); cb((r&&r[0])||null); });
+          var montoP = Number(gv('npr-monto')||0), monP = gv('npr-mon'), ctaId = gv('npr-cta')||'';
+          var ctaObj = ctaId ? cuentasPF.filter(function(c){ return c.id===ctaId; })[0] : null;
+          if (ctaObj && ((monP==='USD') !== (ctaObj.moneda==='USD'))) { alert('La cuenta elegida no es de la misma moneda que el préstamo'); return; }
+          if (ctaObj && !(montoP>0)) { alert('Ingresá el monto para acreditarlo'); return; }
+          ok.disabled = true;
+          dbIns('panel_pf_prestamos', {nombre:nom, monto_total:montoP, moneda:monP, fecha:gv('npr-fecha')||null, notas:gv('npr-notas')||null, activo:true})
+            .then(function(r){
+              var pr = (r&&r[0])||null;
+              if (!ctaObj) { closeM(); cb(pr); return; }
+              var hoy = new Date().toISOString().slice(0,10), f = gv('npr-fecha')||hoy; if (f>hoy) f = hoy;
+              return dbIns('panel_pf_movimientos', {fecha:f, cuenta_origen:null, cuenta_destino:ctaId, monto_origen:montoP, monto_destino:montoP, tc:null, notas:'Préstamo recibido: '+nom})
+                .then(function(m){ if (m&&m[0]) movimientosPF.push(m[0]); closeM(); cb(pr); });
+            }).catch(function(e){ ok.disabled=false; alert('Error: '+e.message); });
         };
         foot.appendChild(ok);
       }));
@@ -6802,7 +6814,7 @@ function vFinanzas() {
           var co = cuentasPF.find(function(x){ return x.id===mv.cuenta_origen; }) || {nombre:(mv.cuenta_origen ? '?' : 'Cobro de deuda'),moneda:'ARS'}, cd = cuentasPF.find(function(x){ return x.id===mv.cuenta_destino; }) || {nombre:'?',moneda:'ARS'};
           function mm(n,c){ return c.moneda==='USD' ? 'USD '+n : fmt(Math.round(Number(n))); }
           var f = el('div',{style:'display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:4px 0;border-bottom:1px solid #F1F5F9'});
-          f.appendChild(el('span',{}, fdate(mv.fecha)+' · '+(mv.cuenta_origen ? etiqCtaPF(co) : '\uD83D\uDCB5 Cobro de deuda')+' → '+etiqCtaPF(cd)+' · '+mm(mv.monto_origen,co)+(co.moneda!==cd.moneda ? ' → '+mm(mv.monto_destino,cd)+(mv.tc?' (dólar a '+fmt(Number(mv.tc))+')':'') : '')+(mv.notas?' · '+mv.notas:'')));
+          f.appendChild(el('span',{}, fdate(mv.fecha)+' · '+(mv.cuenta_origen ? etiqCtaPF(co) : (/^Pr[eé]stamo/.test(mv.notas||'') ? '\uD83C\uDFE6 Pr\u00E9stamo recibido' : '\uD83D\uDCB5 Cobro de deuda'))+' → '+etiqCtaPF(cd)+' · '+mm(mv.monto_origen,co)+(co.moneda!==cd.moneda ? ' → '+mm(mv.monto_destino,cd)+(mv.tc?' (dólar a '+fmt(Number(mv.tc))+')':'') : '')+(mv.notas?' · '+mv.notas:'')));
           var bd = el('button',{class:'btn btnsm',style:'background:#FCEBEB;border-color:#FCEBEB;color:#A32D2D'},'×');
           bd.onclick = function(){ if (!confirm('Eliminar este movimiento?')) return; sbFetch('panel_pf_movimientos?id=eq.'+mv.id,{method:'DELETE',prefer:'return=minimal'}).then(function(){ movimientosPF.splice(movimientosPF.indexOf(mv),1); renderAll(); }); };
           f.appendChild(bd); box.appendChild(f);
