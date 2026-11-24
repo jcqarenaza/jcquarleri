@@ -6185,6 +6185,71 @@ function vFinanzas() {
       }));
     }
 
+    // ---- Contexto fijo editable del asesor (panel_config, clave 'pf_asesor_contexto') ----
+    var CONTEXTO_ASESOR_DEF_PF = [
+      '- Las fechas de vencimiento cargadas en el panel son reales y no se pueden correr.',
+      '- Susana: USD 400 por mes (enero y agosto USD 600) hasta 2031, se compran con pesos al tipo de cambio del JSON y no se puede reducir. Ya estan cargados como pagos programados en cada mes.',
+      '- Las tarjetas NO tienen consumo nuevo: son saldos viejos arrastrados. Lo prioritario es cubrir minimos y no sumar intereses. El calendario ("saldo_sin_tarjetas") las excluye a proposito y las tarjetas vienen aparte.',
+      '- "Dinero Extra MP" es un adelanto mensual que Juan repite: la cuota del mes es el repago del adelanto anterior. Su costo real es el interes, no la cuota entera.',
+      '- Prestamo del hermano (Facundo): lo paga a su ritmo, es flexible. El saldo ya viene calculado, no lo recalcules.',
+      '- Gastos de Pedrito (hijo) son esenciales: no propongas recortarlos, salvo extras claramente opcionales como futbol o club si el calendario lo exige.',
+      '- La distri: el "DS pendiente" (sueldo bruto menos sueldo depositado y transferencias ya recibidas) llega A MAS TARDAR el dia tope indicado ("dia_tope_llegada_ds"); el calendario lo pone ese dia como peor caso, pero puede entrar antes. Cuando entra plata de la distri, Juan la carga como "Transferencia interna": eso baja el DS pendiente y suma a la caja, no es un ingreso extra. Nunca lo cuentes dos veces.',
+      '- Los cobros marcados como vencidos son plata de Juan que todavia no cobro: son la palanca mas rapida, pero no estan en el calendario porque su fecha es incierta.',
+      '- Los prestamos recibidos (ej: "Mercado Pago") son deuda: la plata acreditada ya esta en los saldos de las cuentas pero hay que devolverla en la fecha del prestamo. No es ingreso ni margen.',
+      '- La colonia de Pedrito se paga con la tarjeta de un amigo y Juan se la devuelve a ese amigo en 4 cuotas sin interes, los dias 2, desde enero.'
+    ].join('\n');
+    function contextoAsesorPF() {
+      var r = (config||[]).find(function(c){ return c.clave==='pf_asesor_contexto'; });
+      return (r && r.valor && String(r.valor).trim()) ? String(r.valor) : CONTEXTO_ASESOR_DEF_PF;
+    }
+    function guardarContextoAsesorPF(txt) {
+      var r = (config||[]).find(function(c){ return c.clave==='pf_asesor_contexto'; });
+      if (r) r.valor = txt; else if (Array.isArray(config)) config.push({clave:'pf_asesor_contexto', valor:txt});
+      return sbFetch('panel_config?on_conflict=clave', {method:'POST', body:{clave:'pf_asesor_contexto', valor:txt}, prefer:'resolution=merge-duplicates,return=minimal'});
+    }
+    // Proximos 3 meses: gastos ya cargados, programados y prestamos con fecha de pago (no entran al calendario de caja)
+    function proyeccionAsesorPF(m) {
+      var idx = Number(m.year)*12 + (Number(m.month)-1), out = [];
+      for (var i=1; i<=3; i++) {
+        var x = idx + i, y = Math.floor(x/12), mo = (x%12)+1, id = y+'-'+mo, mesStr = y+'-'+String(mo).padStart(2,'0'), det = [];
+        gastosPF.filter(function(g){ return g.mes_id===id && !g.pagado; }).forEach(function(g){
+          var v = saldoPF(g) + saldoUSDPF(g)*tcUSD; if (v > 0) det.push({concepto:g.concepto, fecha:g.fecha||null, monto_ars:Math.round(v), usd:(Number(g.prestamo_monto||0)>0 ? Number(g.prestamo_monto) : null)});
+        });
+        gastosProgPF.filter(function(p){ return Number(p.anio)===y && Number(p.mes)===mo; }).forEach(function(p){
+          det.push({concepto:p.concepto, fecha:p.fecha||null, monto_ars:Math.round(Number(p.monto||0)), usd:(Number(p.prestamo_monto||0)>0 ? Number(p.prestamo_monto) : null)});
+        });
+        prestamosPF.filter(function(p){ return p.activo && p.fecha && p.fecha.slice(0,7)===mesStr && !/x\s*mes/i.test(p.notas||''); }).forEach(function(p){
+          var tienePagos = pagosDePrestamoPF(p).length > 0 || gastosPF.some(function(g){ return g.prestamo_id===p.id; }) || gastosProgPF.some(function(g){ return g.prestamo_id===p.id; });
+          if (tienePagos) return;
+          var sal = Math.max(0, Number(p.monto_total) - pagadoPrestamoPF(p)); if (sal <= 0) return;
+          det.push({concepto:'Prestamo '+p.nombre+' (pago previsto, sin pagos cargados)', fecha:p.fecha.slice(0,10), monto_ars:Math.round(p.moneda==='USD' ? sal*tcUSD : sal), usd:(p.moneda==='USD' ? sal : null)});
+        });
+        det.sort(function(a,b){ return String(a.fecha||'9').localeCompare(String(b.fecha||'9')); });
+        out.push({mes:mesStr, total_a_pagar:det.reduce(function(a,d){ return a+d.monto_ars; },0), detalle:det.slice(0,25)});
+      }
+      return out;
+    }
+    // Ultimos 3 meses cerrados/anteriores: ingresos, gastos por categoria y Pedrito
+    function historialAsesorPF(m) {
+      var idx = Number(m.year)*12 + (Number(m.month)-1);
+      return mesesPF.filter(function(x){ return Number(x.year)*12+(Number(x.month)-1) < idx; })
+        .sort(function(a,b){ return (Number(b.year)*12+Number(b.month)) - (Number(a.year)*12+Number(a.month)); }).slice(0,3).map(function(x){
+          var cat = {}, tot = 0, ped = 0;
+          gastosPF.filter(function(g){ return g.mes_id===x.id && g.tipo!=='ajuste'; }).forEach(function(g){ var v = Number(g.monto||0); tot += v; cat[g.categoria||'Otros'] = (cat[g.categoria||'Otros']||0) + v; if (g.categoria==='Pedrito') ped += v; });
+          var ing = 0, tr = 0;
+          ingresosPF.filter(function(i){ return i.mes_id===x.id; }).forEach(function(i){ if (i.categoria==='Transferencia interna') tr += Number(i.monto||0); else ing += Number(i.monto||0); });
+          var top = Object.keys(cat).sort(function(a,b){ return cat[b]-cat[a]; }).slice(0,8).map(function(k){ return {categoria:k, monto:Math.round(cat[k])}; });
+          return {mes:x.year+'-'+String(x.month).padStart(2,'0'), ingresos_cargados:Math.round(ing), transferencias_internas:Math.round(tr), gastos_total:Math.round(tot), gastos_pedrito:Math.round(ped), gastos_por_categoria:top};
+        });
+    }
+    function prestamosRecibidosAsesorPF() {
+      var lim = new Date(); lim.setDate(lim.getDate()-45); var limS = lim.toISOString().slice(0,10);
+      return movimientosPF.filter(function(mv){ return !mv.cuenta_origen && /^Pr[eé]stamo recibido/.test(mv.notas||'') && (mv.fecha||'') >= limS; }).map(function(mv){
+        var c = cuentasPF.find(function(x){ return x.id===mv.cuenta_destino; });
+        return {fecha:mv.fecha, monto:Number(mv.monto_destino), cuenta:c?c.nombre:'?', detalle:mv.notas};
+      });
+    }
+
     // ---- ASESOR IA (Claude via Edge Function asesor-pf) ----
     // Arma el resumen del mes: pendientes con fecha, calendario de caja, tarjetas, cobros y deudas
     function datosAsesorPF(m, efectivo, diaDS) {
@@ -6265,6 +6330,10 @@ function vFinanzas() {
         calendario_caja: calendario,
         por_cobrar_negocio: porCobrar,
         deudas_a_cobrar: deudasPF.filter(function(d){ return d.estado==='pendiente'; }).map(function(d){ return {nombre:d.nombre, concepto:d.concepto, monto:Number(d.monto)}; }),
+        contexto_fijo: contextoAsesorPF(),
+        proyeccion_proximos_meses: proyeccionAsesorPF(m),
+        historial_ultimos_meses: historialAsesorPF(m),
+        prestamos_recibidos_recientes: prestamosRecibidosAsesorPF(),
         prestamos: prestamosPF.filter(function(p){ return p.activo && !(cuentasPF.length && /descubierto/i.test(p.nombre||'')); }).map(function(p){ return {nombre:p.nombre, moneda:p.moneda, saldo:Math.max(0, Number(p.monto_total)-pagadoPrestamoPF(p)), notas:p.notas||null}; })
       };
     }
@@ -7226,6 +7295,18 @@ function vFinanzas() {
       box.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin-bottom:4px'},'Pregunta (opcional)'));
       var txt = el('textarea',{rows:'2',placeholder:'Ej: ¿qué pago primero? / ¿y si la distri llega el 6?',style:iSt+'width:100%;resize:vertical;margin-bottom:10px;font-family:inherit'});
       box.appendChild(txt);
+      var detCtx = el('details',{style:'margin-bottom:12px'});
+      detCtx.appendChild(el('summary',{style:'font-size:12px;color:#0C6FA3;cursor:pointer;font-weight:600'},'Contexto fijo del asesor (editable)'));
+      detCtx.appendChild(el('div',{style:'font-size:11px;color:#64748B;margin:6px 0'},'Lo que el asesor tiene que dar por cierto siempre (reglas, compromisos, cosas que no se pueden mover). Editalo cuando cambie algo, sin tocar código.'));
+      var txtCtx = el('textarea',{rows:'10',style:iSt+'width:100%;resize:vertical;font-family:inherit;line-height:1.4'}); txtCtx.value = contextoAsesorPF(); detCtx.appendChild(txtCtx);
+      var rowCtx = el('div',{style:'display:flex;gap:8px;margin-top:6px;flex-wrap:wrap'});
+      var bCtxG = el('button',{class:'btn btnsm'},'Guardar y consultar');
+      bCtxG.onclick = function(){ var v = txtCtx.value.trim(); bCtxG.disabled = true;
+        guardarContextoAsesorPF(v || CONTEXTO_ASESOR_DEF_PF).then(function(){ bCtxG.disabled = false; ejecutar(true); }).catch(function(e){ bCtxG.disabled = false; alert('No se pudo guardar: '+e.message); }); };
+      var bCtxR = el('button',{class:'btn btnsm'},'Restaurar texto original');
+      bCtxR.onclick = function(){ txtCtx.value = CONTEXTO_ASESOR_DEF_PF; };
+      rowCtx.appendChild(bCtxG); rowCtx.appendChild(bCtxR); detCtx.appendChild(rowCtx);
+      box.appendChild(detCtx);
       var btn = el('button',{class:'btn btnp'},'Actualizar y consultar');
       box.appendChild(btn);
       var out = el('div',{style:'margin-top:14px'});
