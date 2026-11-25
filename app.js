@@ -7962,11 +7962,11 @@ function vFinanzas() {
          {label:'A cargo Juan Cruz',val:fmt(aCargoJuan),color:'#0B9EDA',bg:'#F0F9FF',border:'#BAE6FD'},
         ].forEach(function(k){ var box=el('div',{style:'background:'+k.bg+';border:.5px solid '+k.border+';border-radius:10px;padding:14px 16px'}); box.appendChild(el('div',{style:'font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px'},k.label)); box.appendChild(el('div',{style:'font-size:20px;font-weight:700;color:'+k.color},k.val)); kpiRow.appendChild(box); });
         mesContent.appendChild(kpiRow);
-        // Informativo: diferencia entre lo que puso cada uno (a favor de quien puso mas)
+        // Informativo: lo que hay que compensar para que cada uno haya puesto la mitad del total
         if (totalMes > 0) {
-          var aporteJuan = Math.round(totalMes - totalIngPrev), dif = Math.round(aporteJuan - totalIngPrev), difAbs = Math.abs(dif);
-          var txtDif = difAbs < 1 ? 'Aportes parejos: cada uno puso '+fmt(aporteJuan)+'.'
-            : 'Diferencia a favor de '+(dif>0 ? 'Juan Cruz' : 'Emilse')+': '+fmt(difAbs)+' · Emilse puso '+fmt(totalIngPrev)+' y Juan '+fmt(aporteJuan)+'.';
+          var aporteJuan = Math.round(totalMes - totalIngPrev), mitad = Math.round(totalMes/2), deuda = aporteJuan - mitad, deudaAbs = Math.abs(deuda);
+          var txtDif = deudaAbs < 1 ? 'Aportes parejos: cada uno puso '+fmt(mitad)+'.'
+            : (deuda>0 ? 'Le falta poner a Emilse ' : 'Le falta poner a Juan Cruz ')+fmt(deudaAbs)+' para quedar parejos · cada uno tendría que haber puesto '+fmt(mitad)+' (Emilse puso '+fmt(totalIngPrev)+' y Juan '+fmt(aporteJuan)+').';
           kpiRow.parentNode.insertBefore(el('div',{style:'font-size:12px;color:#64748B;margin:-4px 2px 14px;line-height:1.5'}, txtDif), kpiRow.nextSibling);
         }
 
