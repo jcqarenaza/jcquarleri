@@ -7962,11 +7962,11 @@ function vFinanzas() {
          {label:'A cargo Juan Cruz',val:fmt(aCargoJuan),color:'#0B9EDA',bg:'#F0F9FF',border:'#BAE6FD'},
         ].forEach(function(k){ var box=el('div',{style:'background:'+k.bg+';border:.5px solid '+k.border+';border-radius:10px;padding:14px 16px'}); box.appendChild(el('div',{style:'font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px'},k.label)); box.appendChild(el('div',{style:'font-size:20px;font-weight:700;color:'+k.color},k.val)); kpiRow.appendChild(box); });
         mesContent.appendChild(kpiRow);
-        // Informativo: reparto 50/50 del total del mes vs lo que aporto Emilse
+        // Informativo: diferencia entre lo que puso cada uno (a favor de quien puso mas)
         if (totalMes > 0) {
-          var mitad = totalMes/2, dif = Math.round(totalIngPrev - mitad), difAbs = Math.abs(dif);
-          var txtDif = difAbs < 1 ? 'Aportes parejos: cada uno pone '+fmt(Math.round(mitad))+' (50/50).'
-            : 'Diferencia a favor de '+(dif<0 ? 'Juan Cruz' : 'Emilse')+': '+fmt(difAbs)+' · cada uno pondría '+fmt(Math.round(mitad))+' (50/50), '+'Emilse puso '+fmt(totalIngPrev)+' y Juan '+fmt(Math.round(totalMes-totalIngPrev))+'.';
+          var aporteJuan = Math.round(totalMes - totalIngPrev), dif = Math.round(aporteJuan - totalIngPrev), difAbs = Math.abs(dif);
+          var txtDif = difAbs < 1 ? 'Aportes parejos: cada uno puso '+fmt(aporteJuan)+'.'
+            : 'Diferencia a favor de '+(dif>0 ? 'Juan Cruz' : 'Emilse')+': '+fmt(difAbs)+' · Emilse puso '+fmt(totalIngPrev)+' y Juan '+fmt(aporteJuan)+'.';
           kpiRow.parentNode.insertBefore(el('div',{style:'font-size:12px;color:#64748B;margin:-4px 2px 14px;line-height:1.5'}, txtDif), kpiRow.nextSibling);
         }
 
