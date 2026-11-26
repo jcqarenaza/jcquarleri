@@ -5744,6 +5744,7 @@ function vFinanzas() {
         mkRow2(body, mkFg('Monto total', mkInput('npr-monto','number','0')), mkFg('Moneda', mkSelect('npr-mon',[['ARS','Pesos (ARS)'],['USD','Dolares (USD)']],'ARS')));
         mkRow2(body, mkFg('Fecha', mkInput('npr-fecha','date',new Date().toISOString().slice(0,10))), el('div',{}));
         addFg(body, '¿A qué cuenta se acreditó? (opcional)', selCuentaPF('npr-cta','',null));
+        addFg(body, 'Monto que recibiste (solo si es distinto del total, ej: adelanto con intereses)', mkInput('npr-rec','number','','Vacío = igual al monto total'));
         addFg(body, 'Notas', mkInput('npr-notas','text',''));
       }, function(foot) {
         foot.appendChild(cancelBtn());
@@ -5753,14 +5754,15 @@ function vFinanzas() {
           var montoP = Number(gv('npr-monto')||0), monP = gv('npr-mon'), ctaId = gv('npr-cta')||'';
           var ctaObj = ctaId ? cuentasPF.filter(function(c){ return c.id===ctaId; })[0] : null;
           if (ctaObj && ((monP==='USD') !== (ctaObj.moneda==='USD'))) { alert('La cuenta elegida no es de la misma moneda que el préstamo'); return; }
-          if (ctaObj && !(montoP>0)) { alert('Ingresá el monto para acreditarlo'); return; }
+          var montoRec = Number(gv('npr-rec')||0) > 0 ? Number(gv('npr-rec')) : montoP;
+          if (ctaObj && !(montoRec>0)) { alert('Ingresá el monto para acreditarlo'); return; }
           ok.disabled = true;
           dbIns('panel_pf_prestamos', {nombre:nom, monto_total:montoP, moneda:monP, fecha:gv('npr-fecha')||null, notas:gv('npr-notas')||null, activo:true})
             .then(function(r){
               var pr = (r&&r[0])||null;
               if (!ctaObj) { closeM(); cb(pr); return; }
               var hoy = new Date().toISOString().slice(0,10), f = gv('npr-fecha')||hoy; if (f>hoy) f = hoy;
-              return dbIns('panel_pf_movimientos', {fecha:f, cuenta_origen:null, cuenta_destino:ctaId, monto_origen:montoP, monto_destino:montoP, tc:null, notas:'Préstamo recibido: '+nom})
+              return dbIns('panel_pf_movimientos', {fecha:f, cuenta_origen:null, cuenta_destino:ctaId, monto_origen:montoRec, monto_destino:montoRec, tc:null, notas:'Préstamo recibido: '+nom})
                 .then(function(m){ if (m&&m[0]) movimientosPF.push(m[0]); closeM(); cb(pr); });
             }).catch(function(e){ ok.disabled=false; alert('Error: '+e.message); });
         };
