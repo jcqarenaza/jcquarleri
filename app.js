@@ -7628,77 +7628,112 @@ function vFinanzas() {
       var wk = {casa_pp: (liqJ.casa_pp!=null ? liqJ.casa_pp : 65000), solos: (liqJ.solos||[]).slice(), casa_g: Array.isArray(liqJ.casa_g) ? liqJ.casa_g.slice() : null};
       var gast = juntadaGastos.filter(function(g){ return g.tipo!=='interes_mp'; });
       if (!wk.casa_g) wk.casa_g = gast.filter(function(g){ return esGastoCasaJ(g, {}); }).map(function(g){ return g.id; });
-      var resBox = el('div',{});
       var textoCopiar = '';
+      function sf(n) { n = Math.round(n); return (n<0 ? '−' : '') + fmt(Math.abs(n)); }
+      var CARD = 'background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:12px 14px;';
+      function kpi(label, valor, sub, color) {
+        var c = el('div',{style:CARD+'flex:1;min-width:140px'});
+        c.appendChild(el('div',{style:'font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px'}, label));
+        c.appendChild(el('div',{style:'font-size:20px;font-weight:700;color:'+(color||'#1a2e4a')}, valor));
+        if (sub) c.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-top:2px'}, sub));
+        return c;
+      }
+      var wrap = el('div',{});
+      // Fila de arriba: valor de la casa (editable) + resumen en vivo
+      var top = el('div',{style:'display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px'});
+      var cCasa = el('div',{style:CARD+'flex:1;min-width:140px'});
+      cCasa.appendChild(el('div',{style:'font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px'},'Casa por persona'));
+      var inpCasa = el('input',{type:'number',id:'liq-casa',style:'width:100%;border:none;border-bottom:1.5px solid #CBD5E1;font-size:20px;font-weight:700;color:#0B9EDA;padding:0 0 2px;background:#fff;outline:none;box-sizing:border-box'});
+      inpCasa.value = String(wk.casa_pp);
+      cCasa.appendChild(inpCasa);
+      top.appendChild(cCasa);
+      var dyn = el('div',{style:'display:contents'}); top.appendChild(dyn);
+      wrap.appendChild(top);
+      var resBox = el('div',{}); wrap.appendChild(resBox);
+
       function pintar() {
-        resBox.innerHTML = '';
+        dyn.innerHTML = ''; resBox.innerHTML = '';
         var r = calcLiquidacionJ(wk);
-        resBox.appendChild(el('div',{style:'font-size:12px;color:#64748B;margin:8px 0;line-height:1.6'},
-          'Casa: '+fmt(wk.casa_pp)+' por persona ('+r.nAct+' activos = '+fmt(wk.casa_pp*r.nAct)+', gastos de la casa cargados: '+fmt(r.totCasa)+') · Gastos comunes: '+fmt(r.totCom)+' entre '+r.nCom+' = '+fmt(Math.round(r.cuotaCom))+' c/u'));
-        var tw = el('div',{style:'overflow-x:auto;margin-bottom:10px'});
-        var tb = el('table',{class:'tbl',style:'font-size:12px'});
-        tb.appendChild(elH('thead',{},'<tr><th>Persona</th><th style="text-align:right">Puso</th><th style="text-align:right">Casa</th><th style="text-align:right">Comunes</th><th style="text-align:right">Saldo</th></tr>'));
+        dyn.appendChild(kpi('Gastos comunes', fmt(r.totCom), r.nCom+' personas · '+fmt(Math.round(r.cuotaCom))+' c/u', '#1a2e4a'));
+        dyn.appendChild(kpi('Participantes', String(r.nAct), (r.nAct-r.nCom)+' por su cuenta', '#1a2e4a'));
+
+        // Transferencias
+        var hT = el('div',{style:'display:flex;align-items:center;justify-content:space-between;margin:4px 0 8px'});
+        hT.appendChild(el('div',{style:'font-size:13px;font-weight:700;color:#1a2e4a'},'Quién transfiere a quién'));
+        var bc = el('button',{class:'btn btnsm'},'Copiar lista');
+        bc.onclick = function(){ try { navigator.clipboard.writeText(textoCopiar || 'Sin transferencias'); bc.textContent = 'Copiado'; setTimeout(function(){ bc.textContent = 'Copiar lista'; }, 1500); } catch(e) { alert(textoCopiar || 'Sin transferencias'); } };
+        hT.appendChild(bc); resBox.appendChild(hT);
+        var lineas = [];
+        if (!r.trans.length) resBox.appendChild(el('div',{style:'font-size:12px;color:#64748B;padding:8px 2px'},'No hay transferencias para hacer entre personas.'));
+        r.trans.forEach(function(t){
+          lineas.push(t.de.nombre+' le transfiere '+fmt(t.monto)+' a '+t.a.nombre);
+          var row = el('div',{style:'display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:14px;background:#F6F9FC;margin-bottom:5px;font-size:13px;flex-wrap:wrap'});
+          row.appendChild(el('span',{style:'font-weight:600;color:#A32D2D'}, t.de.nombre));
+          row.appendChild(el('span',{style:'color:#94a3b8'}, '→'));
+          row.appendChild(el('span',{style:'font-weight:600;color:#3D8A32;flex:1'}, t.a.nombre));
+          row.appendChild(el('b',{style:'color:#1a2e4a'}, fmt(t.monto)));
+          resBox.appendChild(row);
+        });
+        if (r.restoRecibir > 1) resBox.appendChild(el('div',{style:'font-size:12px;color:#854F0B;margin-top:6px;line-height:1.5'},'Quedan '+fmt(Math.round(r.restoRecibir))+' a favor de '+r.restoAcreedores.map(function(x){ return x.p.nombre+' ('+fmt(x.m)+')'; }).join(', ')+': salen de la caja común.'));
+        if (r.restoDeben > 1) resBox.appendChild(el('div',{style:'font-size:12px;color:#A32D2D;margin-top:6px;line-height:1.5'},'Quedan '+fmt(Math.round(r.restoDeben))+' por poner a la caja: '+r.restoDeudores.map(function(x){ return x.p.nombre+' ('+fmt(x.m)+')'; }).join(', ')+'.'));
+        if (r.plataNoVan > 0) resBox.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-top:6px'},'Lo que pusieron los que no van ('+fmt(Math.round(r.plataNoVan))+') no se devuelve: ya se usó para reservar la casa.'));
+        textoCopiar = lineas.join('\n');
+
+        // Saldo por persona
+        resBox.appendChild(el('div',{style:'font-size:13px;font-weight:700;color:#1a2e4a;margin:18px 0 8px'},'Saldo por persona'));
+        var tw = el('div',{style:'border:1px solid #E2E8F0;border-radius:16px;overflow:hidden;background:#fff'});
+        var tb = el('table',{class:'tbl',style:'font-size:12px;margin:0'});
+        tb.appendChild(elH('thead',{},'<tr><th>Persona</th><th style="text-align:right">Puso</th><th style="text-align:right">Le toca</th><th style="text-align:right">Saldo</th></tr>'));
         var tbd = el('tbody');
         r.filas.forEach(function(f){
           var tr = el('tr',{});
-          tr.appendChild(el('td',{}, f.p.nombre));
+          tr.appendChild(el('td',{style:'font-weight:500;color:#1a2e4a'}, f.p.nombre + (wk.solos.indexOf(f.p.id)>=0 ? ' · solo casa' : '')));
           tr.appendChild(el('td',{style:'text-align:right'}, fmt(Math.round(f.aporte))));
-          tr.appendChild(el('td',{style:'text-align:right'}, fmt(Math.round(f.casa))));
-          tr.appendChild(el('td',{style:'text-align:right'}, fmt(Math.round(f.comunes))));
-          tr.appendChild(el('td',{style:'text-align:right;font-weight:700;color:'+(f.saldo<-0.5?'#A32D2D':(f.saldo>0.5?'#3D8A32':'#64748B'))}, (f.saldo>0.5?'+':'')+fmt(Math.round(f.saldo))));
-          tbd.appendChild(tr);
+          tr.appendChild(el('td',{style:'text-align:right;color:#64748B'}, fmt(Math.round(f.casa+f.comunes))));
+          var td = el('td',{style:'text-align:right'});
+          var neg = f.saldo < -0.5, pos = f.saldo > 0.5;
+          td.appendChild(el('span',{style:'display:inline-block;padding:2px 10px;border-radius:12px;font-weight:700;background:'+(neg?'#FEF2F2':(pos?'#EDF7EA':'#F1F5F9'))+';color:'+(neg?'#A32D2D':(pos?'#3D8A32':'#64748B'))}, neg ? 'Debe '+fmt(Math.round(-f.saldo)) : (pos ? 'A favor '+fmt(Math.round(f.saldo)) : 'Parejo')));
+          tr.appendChild(td); tbd.appendChild(tr);
         });
         tb.appendChild(tbd); tw.appendChild(tb); resBox.appendChild(tw);
-        if (r.plataNoVan > 0) resBox.appendChild(el('div',{style:'font-size:12px;color:#64748B;margin-bottom:8px'},'Lo que pusieron los que no van ('+fmt(Math.round(r.plataNoVan))+') no se devuelve: ya se us\u00f3 para reservar la casa.'));
-        resBox.appendChild(el('div',{style:'font-size:13px;font-weight:700;color:#1a2e4a;margin:6px 0'},'Transferencias'));
-        var lineas = [];
-        if (!r.trans.length) resBox.appendChild(el('div',{style:'font-size:12px;color:#64748B'},'No hay transferencias para hacer entre personas.'));
-        r.trans.forEach(function(t){
-          lineas.push(t.de.nombre+' le transfiere '+fmt(t.monto)+' a '+t.a.nombre);
-          resBox.appendChild(el('div',{style:'font-size:13px;padding:6px 10px;border-radius:10px;background:#F6F9FC;margin-bottom:4px'}, t.de.nombre+' → '+t.a.nombre+': '+fmt(t.monto)));
-        });
-        if (r.restoRecibir > 1) {
-          resBox.appendChild(el('div',{style:'font-size:12px;color:#854F0B;margin-top:8px;line-height:1.5'},'Después de esas transferencias quedan '+fmt(Math.round(r.restoRecibir))+' a favor de: '+r.restoAcreedores.map(function(x){ return x.p.nombre+' ('+fmt(x.m)+')'; }).join(', ')+'. Salen de la caja común (hay más plata aportada que gastada).'));
-        }
-        if (r.restoDeben > 1) {
-          resBox.appendChild(el('div',{style:'font-size:12px;color:#A32D2D;margin-top:8px;line-height:1.5'},'Después de esas transferencias quedan '+fmt(Math.round(r.restoDeben))+' por poner a la caja: '+r.restoDeudores.map(function(x){ return x.p.nombre+' ('+fmt(x.m)+')'; }).join(', ')+'.'));
-        }
-        textoCopiar = lineas.join('\n');
+        resBox.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-top:8px;line-height:1.5'},'Le toca = casa ('+fmt(wk.casa_pp)+') + su parte de los gastos comunes. Se actualiza solo al cargar nuevos gastos o aportes.'));
       }
-      openM(makeModal('Liquidación de la juntada', function(body) {
-        var inpCasa = mkInput('liq-casa','number',String(wk.casa_pp));
-        addFg(body, 'Valor de la casa por persona ($)', inpCasa);
-        inpCasa.oninput = function(){ wk.casa_pp = Number(inpCasa.value)||0; pintar(); };
-        body.appendChild(el('div',{style:'font-size:12px;font-weight:600;color:#64748B;margin:10px 0 4px'},'Gastos que son de la casa (no se reparten como comunes)'));
-        gast.forEach(function(g){
-          var lb = el('label',{style:'display:flex;align-items:center;gap:8px;font-size:13px;padding:3px 0;cursor:pointer'});
-          var cb = el('input',{type:'checkbox'}); cb.checked = wk.casa_g.indexOf(g.id) >= 0;
-          cb.onchange = function(){ var k = wk.casa_g.indexOf(g.id); if (cb.checked && k<0) wk.casa_g.push(g.id); if (!cb.checked && k>=0) wk.casa_g.splice(k,1); pintar(); };
-          lb.appendChild(cb); lb.appendChild(document.createTextNode(g.descripcion+' · '+fmt(g.importe)));
-          body.appendChild(lb);
-        });
-        body.appendChild(el('div',{style:'font-size:12px;font-weight:600;color:#64748B;margin:10px 0 4px'},'Van por su cuenta (solo pagan la casa, no los gastos comunes)'));
-        var gr = el('div',{style:'display:flex;flex-wrap:wrap;gap:4px 14px'});
-        juntadaParticipantes.filter(function(p){ return p.activo; }).forEach(function(p){
-          var lb = el('label',{style:'display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer'});
-          var cb = el('input',{type:'checkbox'}); cb.checked = wk.solos.indexOf(p.id) >= 0;
-          cb.onchange = function(){ var k = wk.solos.indexOf(p.id); if (cb.checked && k<0) wk.solos.push(p.id); if (!cb.checked && k>=0) wk.solos.splice(k,1); pintar(); };
-          lb.appendChild(cb); lb.appendChild(document.createTextNode(p.nombre));
-          gr.appendChild(lb);
-        });
-        body.appendChild(gr);
-        body.appendChild(resBox);
-        pintar();
-      }, function(foot) {
+      inpCasa.oninput = function(){ wk.casa_pp = Number(inpCasa.value)||0; pintar(); };
+
+      // Configuracion (plegada)
+      var det = el('details',{style:'margin-top:18px;border:1px solid #E2E8F0;border-radius:16px;padding:10px 14px;background:#fff'});
+      det.appendChild(el('summary',{style:'font-size:13px;font-weight:600;color:#0C6FA3;cursor:pointer'},'⚙ Configurar: gastos de la casa y quiénes van por su cuenta'));
+      det.appendChild(el('div',{style:'font-size:12px;font-weight:600;color:#64748B;margin:12px 0 6px'},'Gastos que son de la casa (no se reparten como comunes)'));
+      gast.forEach(function(g){
+        var lb = el('label',{style:'display:flex;align-items:center;gap:8px;font-size:13px;padding:3px 0;cursor:pointer'});
+        var cb = el('input',{type:'checkbox'}); cb.checked = wk.casa_g.indexOf(g.id) >= 0;
+        cb.onchange = function(){ var k = wk.casa_g.indexOf(g.id); if (cb.checked && k<0) wk.casa_g.push(g.id); if (!cb.checked && k>=0) wk.casa_g.splice(k,1); pintar(); };
+        lb.appendChild(cb); lb.appendChild(document.createTextNode(g.descripcion+' · '+fmt(g.importe)));
+        det.appendChild(lb);
+      });
+      det.appendChild(el('div',{style:'font-size:12px;font-weight:600;color:#64748B;margin:14px 0 6px'},'Van por su cuenta (solo pagan la casa, no los gastos comunes)'));
+      var gr = el('div',{style:'display:flex;flex-wrap:wrap;gap:6px'});
+      juntadaParticipantes.filter(function(p){ return p.activo; }).forEach(function(p){
+        var lb = el('label',{style:'display:inline-flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;padding:4px 10px;border-radius:14px;border:1px solid #E2E8F0'});
+        var cb = el('input',{type:'checkbox'});
+        function estilo(){ lb.style.background = cb.checked ? '#E6F6FD' : '#fff'; lb.style.borderColor = cb.checked ? '#0B9EDA' : '#E2E8F0'; }
+        cb.checked = wk.solos.indexOf(p.id) >= 0; estilo();
+        cb.onchange = function(){ var k = wk.solos.indexOf(p.id); if (cb.checked && k<0) wk.solos.push(p.id); if (!cb.checked && k>=0) wk.solos.splice(k,1); estilo(); pintar(); };
+        lb.appendChild(cb); lb.appendChild(document.createTextNode(p.nombre));
+        gr.appendChild(lb);
+      });
+      det.appendChild(gr);
+      wrap.appendChild(det);
+
+      var mod = makeModal('⚖ Liquidación de la juntada', function(body) { body.appendChild(wrap); pintar(); }, function(foot) {
         foot.appendChild(cancelBtn());
-        var bc = el('button',{class:'btn'},'Copiar transferencias');
-        bc.onclick = function(){ try { navigator.clipboard.writeText(textoCopiar || 'Sin transferencias'); bc.textContent = 'Copiado'; setTimeout(function(){ bc.textContent = 'Copiar transferencias'; }, 1500); } catch(e) { alert(textoCopiar || 'Sin transferencias'); } };
-        foot.appendChild(bc);
         var ok = el('button',{class:'btn btnp'},'Guardar configuración');
         ok.onclick = function(){ ok.disabled = true; liqJ = {casa_pp:wk.casa_pp, solos:wk.solos.slice(), casa_g:wk.casa_g.slice()};
           guardarLiqJ().then(function(){ closeM(); }).catch(function(e){ ok.disabled = false; alert('No se pudo guardar: '+e.message); }); };
         foot.appendChild(ok);
-      }));
+      });
+      if (window.innerWidth > 700) { mod.style.width = 'min(820px,96vw)'; }
+      openM(mod);
     }
 
     // ---- JUNTADA ----
