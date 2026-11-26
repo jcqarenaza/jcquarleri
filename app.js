@@ -7608,6 +7608,11 @@ function vFinanzas() {
         var casa = p.activo ? casaPP : 0, com = (p.activo && solos.indexOf(p.id) < 0) ? cuotaCom : 0, ap = aport[p.id]||0;
         return {p:p, aporte:ap, casa:casa, comunes:com, saldo:ap-casa-com};
       }).sort(function(a,b){ return a.saldo - b.saldo; });
+      // La plata que sobra (o falta) en la caja se reparte parejo entre los que van, para que todo cierre en cero
+      var sumSaldo = filas.reduce(function(a,f){ return a + f.saldo; }, 0);
+      var ajuste = filas.length ? sumSaldo/filas.length : 0;
+      filas.forEach(function(f){ f.ajuste = ajuste; f.saldo = f.saldo - ajuste; });
+      filas.sort(function(a,b){ return a.saldo - b.saldo; });
       var deud = filas.filter(function(f){ return f.saldo < -0.5; }).map(function(f){ return {p:f.p, m:-f.saldo}; }).sort(function(a,b){ return b.m-a.m; });
       var acre = filas.filter(function(f){ return f.saldo > 0.5; }).map(function(f){ return {p:f.p, m:f.saldo}; }).sort(function(a,b){ return b.m-a.m; });
       var trans = [], i = 0, j = 0;
@@ -7621,7 +7626,7 @@ function vFinanzas() {
       var restoDeben = deud.slice(i).reduce(function(a,d){ return a + d.m; }, 0);
       var restoRecibir = acre.slice(j).reduce(function(a,d){ return a + d.m; }, 0);
       var plataNoVan = juntadaParticipantes.filter(function(p){ return !p.activo; }).reduce(function(a,p){ return a + (aport[p.id]||0); }, 0);
-      return {plataNoVan:plataNoVan, filas:filas, trans:trans, totCasa:totCasa, totCom:totCom, cuotaCom:cuotaCom, nCom:conCom.length, nAct:activos.length, restoDeben:restoDeben, restoRecibir:restoRecibir,
+      return {ajuste:ajuste, plataNoVan:plataNoVan, filas:filas, trans:trans, totCasa:totCasa, totCom:totCom, cuotaCom:cuotaCom, nCom:conCom.length, nAct:activos.length, restoDeben:restoDeben, restoRecibir:restoRecibir,
         restoDeudores:deud.slice(i).map(function(d){ return {p:d.p, m:Math.round(d.m)}; }), restoAcreedores:acre.slice(j).map(function(d){ return {p:d.p, m:Math.round(d.m)}; })};
     }
     function mLiquidacionJuntada() {
@@ -7674,9 +7679,8 @@ function vFinanzas() {
           row.appendChild(el('b',{style:'color:#1a2e4a'}, fmt(t.monto)));
           resBox.appendChild(row);
         });
-        if (r.restoRecibir > 1) resBox.appendChild(el('div',{style:'font-size:12px;color:#854F0B;margin-top:6px;line-height:1.5'},'Quedan '+fmt(Math.round(r.restoRecibir))+' a favor de '+r.restoAcreedores.map(function(x){ return x.p.nombre+' ('+fmt(x.m)+')'; }).join(', ')+': salen de la caja común.'));
-        if (r.restoDeben > 1) resBox.appendChild(el('div',{style:'font-size:12px;color:#A32D2D;margin-top:6px;line-height:1.5'},'Quedan '+fmt(Math.round(r.restoDeben))+' por poner a la caja: '+r.restoDeudores.map(function(x){ return x.p.nombre+' ('+fmt(x.m)+')'; }).join(', ')+'.'));
-        if (r.plataNoVan > 0) resBox.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-top:6px'},'Lo que pusieron los que no van ('+fmt(Math.round(r.plataNoVan))+') no se devuelve: ya se usó para reservar la casa.'));
+        if (Math.abs(r.ajuste) >= 1) resBox.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-top:8px;line-height:1.5'}, (r.ajuste>0 ? 'En la caja hay '+fmt(Math.round(r.ajuste*r.nAct))+' m\u00e1s de lo que cuestan la casa y los gastos cargados' : 'A la caja le faltan '+fmt(Math.round(-r.ajuste*r.nAct))+' para cubrir la casa y los gastos cargados')+'. Se reparte parejo entre los '+r.nAct+' que van ('+(r.ajuste>0?'a cada uno le baja ':'a cada uno le sube ')+fmt(Math.round(Math.abs(r.ajuste)))+'), as\u00ed todo cierra en cero.'));
+        if (r.plataNoVan > 0) resBox.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-top:4px'},'Lo que pusieron los que no van ('+fmt(Math.round(r.plataNoVan))+') no se devuelve: ya se us\u00f3 para reservar la casa, y est\u00e1 sumado en la caja.'));
         textoCopiar = lineas.join('\n');
 
         // Saldo por persona
@@ -7689,14 +7693,14 @@ function vFinanzas() {
           var tr = el('tr',{});
           tr.appendChild(el('td',{style:'font-weight:500;color:#1a2e4a'}, f.p.nombre + (wk.solos.indexOf(f.p.id)>=0 ? ' · solo casa' : '')));
           tr.appendChild(el('td',{style:'text-align:right'}, fmt(Math.round(f.aporte))));
-          tr.appendChild(el('td',{style:'text-align:right;color:#64748B'}, fmt(Math.round(f.casa+f.comunes))));
+          tr.appendChild(el('td',{style:'text-align:right;color:#64748B'}, fmt(Math.round(f.casa+f.comunes-f.ajuste))));
           var td = el('td',{style:'text-align:right'});
           var neg = f.saldo < -0.5, pos = f.saldo > 0.5;
           td.appendChild(el('span',{style:'display:inline-block;padding:2px 10px;border-radius:12px;font-weight:700;background:'+(neg?'#FEF2F2':(pos?'#EDF7EA':'#F1F5F9'))+';color:'+(neg?'#A32D2D':(pos?'#3D8A32':'#64748B'))}, neg ? 'Debe '+fmt(Math.round(-f.saldo)) : (pos ? 'A favor '+fmt(Math.round(f.saldo)) : 'Parejo')));
           tr.appendChild(td); tbd.appendChild(tr);
         });
         tb.appendChild(tbd); tw.appendChild(tb); resBox.appendChild(tw);
-        resBox.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-top:8px;line-height:1.5'},'Le toca = casa ('+fmt(wk.casa_pp)+') + su parte de los gastos comunes. Se actualiza solo al cargar nuevos gastos o aportes.'));
+        resBox.appendChild(el('div',{style:'font-size:11px;color:#94a3b8;margin-top:8px;line-height:1.5'},'Le toca = casa ('+fmt(wk.casa_pp)+') + su parte de los gastos comunes, ajustado por lo que sobra o falta en la caja. Se actualiza solo al cargar nuevos gastos o aportes.'));
       }
       inpCasa.oninput = function(){ wk.casa_pp = Number(inpCasa.value)||0; pintar(); };
 
