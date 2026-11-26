@@ -7588,6 +7588,119 @@ function vFinanzas() {
 
     renderAll();
 
+    // ---- LIQUIDACION DE JUNTADA (quien le transfiere a quien) ----
+    var liqJ = (function(){ var r = (config||[]).find(function(c){ return c.clave==='juntada_liq'; }); if (!r) return {}; try { return JSON.parse(r.valor) || {}; } catch(e) { return {}; } })();
+    function guardarLiqJ() {
+      return sbFetch('panel_config?on_conflict=clave', {method:'POST', body:{clave:'juntada_liq', valor:JSON.stringify(liqJ)}, prefer:'resolution=merge-duplicates,return=minimal'});
+    }
+    function esGastoCasaJ(g, cfg) { var c = cfg.casa_g; if (Array.isArray(c)) return c.indexOf(g.id) >= 0; return /casa|aloja/i.test(g.descripcion||''); }
+    // cfg: {casa_pp, solos:[ids de activos que no comparten gastos comunes], casa_g:[ids de gastos que son de la casa]}
+    function calcLiquidacionJ(cfg) {
+      var casaPP = Number(cfg.casa_pp)||0, solos = cfg.solos||[];
+      var aport = {}; juntadaPagos.forEach(function(p){ aport[p.participante_id] = (aport[p.participante_id]||0) + Number(p.importe||0); });
+      var gast = juntadaGastos.filter(function(g){ return g.tipo!=='interes_mp'; });
+      var totCasa = 0, totCom = 0;
+      gast.forEach(function(g){ if (esGastoCasaJ(g, cfg)) totCasa += Number(g.importe||0); else totCom += Number(g.importe||0); });
+      var activos = juntadaParticipantes.filter(function(p){ return p.activo; });
+      var conCom = activos.filter(function(p){ return solos.indexOf(p.id) < 0; });
+      var cuotaCom = conCom.length ? totCom/conCom.length : 0;
+      var filas = juntadaParticipantes.filter(function(p){ return p.activo; }).map(function(p){
+        var casa = p.activo ? casaPP : 0, com = (p.activo && solos.indexOf(p.id) < 0) ? cuotaCom : 0, ap = aport[p.id]||0;
+        return {p:p, aporte:ap, casa:casa, comunes:com, saldo:ap-casa-com};
+      }).sort(function(a,b){ return a.saldo - b.saldo; });
+      var deud = filas.filter(function(f){ return f.saldo < -0.5; }).map(function(f){ return {p:f.p, m:-f.saldo}; }).sort(function(a,b){ return b.m-a.m; });
+      var acre = filas.filter(function(f){ return f.saldo > 0.5; }).map(function(f){ return {p:f.p, m:f.saldo}; }).sort(function(a,b){ return b.m-a.m; });
+      var trans = [], i = 0, j = 0;
+      while (i < deud.length && j < acre.length) {
+        var m = Math.min(deud[i].m, acre[j].m);
+        trans.push({de:deud[i].p, a:acre[j].p, monto:Math.round(m)});
+        deud[i].m -= m; acre[j].m -= m;
+        if (deud[i].m < 0.5) i++;
+        if (acre[j].m < 0.5) j++;
+      }
+      var restoDeben = deud.slice(i).reduce(function(a,d){ return a + d.m; }, 0);
+      var restoRecibir = acre.slice(j).reduce(function(a,d){ return a + d.m; }, 0);
+      var plataNoVan = juntadaParticipantes.filter(function(p){ return !p.activo; }).reduce(function(a,p){ return a + (aport[p.id]||0); }, 0);
+      return {plataNoVan:plataNoVan, filas:filas, trans:trans, totCasa:totCasa, totCom:totCom, cuotaCom:cuotaCom, nCom:conCom.length, nAct:activos.length, restoDeben:restoDeben, restoRecibir:restoRecibir,
+        restoDeudores:deud.slice(i).map(function(d){ return {p:d.p, m:Math.round(d.m)}; }), restoAcreedores:acre.slice(j).map(function(d){ return {p:d.p, m:Math.round(d.m)}; })};
+    }
+    function mLiquidacionJuntada() {
+      var wk = {casa_pp: (liqJ.casa_pp!=null ? liqJ.casa_pp : 65000), solos: (liqJ.solos||[]).slice(), casa_g: Array.isArray(liqJ.casa_g) ? liqJ.casa_g.slice() : null};
+      var gast = juntadaGastos.filter(function(g){ return g.tipo!=='interes_mp'; });
+      if (!wk.casa_g) wk.casa_g = gast.filter(function(g){ return esGastoCasaJ(g, {}); }).map(function(g){ return g.id; });
+      var resBox = el('div',{});
+      var textoCopiar = '';
+      function pintar() {
+        resBox.innerHTML = '';
+        var r = calcLiquidacionJ(wk);
+        resBox.appendChild(el('div',{style:'font-size:12px;color:#64748B;margin:8px 0;line-height:1.6'},
+          'Casa: '+fmt(wk.casa_pp)+' por persona ('+r.nAct+' activos = '+fmt(wk.casa_pp*r.nAct)+', gastos de la casa cargados: '+fmt(r.totCasa)+') · Gastos comunes: '+fmt(r.totCom)+' entre '+r.nCom+' = '+fmt(Math.round(r.cuotaCom))+' c/u'));
+        var tw = el('div',{style:'overflow-x:auto;margin-bottom:10px'});
+        var tb = el('table',{class:'tbl',style:'font-size:12px'});
+        tb.appendChild(elH('thead',{},'<tr><th>Persona</th><th style="text-align:right">Puso</th><th style="text-align:right">Casa</th><th style="text-align:right">Comunes</th><th style="text-align:right">Saldo</th></tr>'));
+        var tbd = el('tbody');
+        r.filas.forEach(function(f){
+          var tr = el('tr',{});
+          tr.appendChild(el('td',{}, f.p.nombre));
+          tr.appendChild(el('td',{style:'text-align:right'}, fmt(Math.round(f.aporte))));
+          tr.appendChild(el('td',{style:'text-align:right'}, fmt(Math.round(f.casa))));
+          tr.appendChild(el('td',{style:'text-align:right'}, fmt(Math.round(f.comunes))));
+          tr.appendChild(el('td',{style:'text-align:right;font-weight:700;color:'+(f.saldo<-0.5?'#A32D2D':(f.saldo>0.5?'#3D8A32':'#64748B'))}, (f.saldo>0.5?'+':'')+fmt(Math.round(f.saldo))));
+          tbd.appendChild(tr);
+        });
+        tb.appendChild(tbd); tw.appendChild(tb); resBox.appendChild(tw);
+        if (r.plataNoVan > 0) resBox.appendChild(el('div',{style:'font-size:12px;color:#64748B;margin-bottom:8px'},'Lo que pusieron los que no van ('+fmt(Math.round(r.plataNoVan))+') no se devuelve: ya se us\u00f3 para reservar la casa.'));
+        resBox.appendChild(el('div',{style:'font-size:13px;font-weight:700;color:#1a2e4a;margin:6px 0'},'Transferencias'));
+        var lineas = [];
+        if (!r.trans.length) resBox.appendChild(el('div',{style:'font-size:12px;color:#64748B'},'No hay transferencias para hacer entre personas.'));
+        r.trans.forEach(function(t){
+          lineas.push(t.de.nombre+' le transfiere '+fmt(t.monto)+' a '+t.a.nombre);
+          resBox.appendChild(el('div',{style:'font-size:13px;padding:6px 10px;border-radius:10px;background:#F6F9FC;margin-bottom:4px'}, t.de.nombre+' → '+t.a.nombre+': '+fmt(t.monto)));
+        });
+        if (r.restoRecibir > 1) {
+          resBox.appendChild(el('div',{style:'font-size:12px;color:#854F0B;margin-top:8px;line-height:1.5'},'Después de esas transferencias quedan '+fmt(Math.round(r.restoRecibir))+' a favor de: '+r.restoAcreedores.map(function(x){ return x.p.nombre+' ('+fmt(x.m)+')'; }).join(', ')+'. Salen de la caja común (hay más plata aportada que gastada).'));
+        }
+        if (r.restoDeben > 1) {
+          resBox.appendChild(el('div',{style:'font-size:12px;color:#A32D2D;margin-top:8px;line-height:1.5'},'Después de esas transferencias quedan '+fmt(Math.round(r.restoDeben))+' por poner a la caja: '+r.restoDeudores.map(function(x){ return x.p.nombre+' ('+fmt(x.m)+')'; }).join(', ')+'.'));
+        }
+        textoCopiar = lineas.join('\n');
+      }
+      openM(makeModal('Liquidación de la juntada', function(body) {
+        var inpCasa = mkInput('liq-casa','number',String(wk.casa_pp));
+        addFg(body, 'Valor de la casa por persona ($)', inpCasa);
+        inpCasa.oninput = function(){ wk.casa_pp = Number(inpCasa.value)||0; pintar(); };
+        body.appendChild(el('div',{style:'font-size:12px;font-weight:600;color:#64748B;margin:10px 0 4px'},'Gastos que son de la casa (no se reparten como comunes)'));
+        gast.forEach(function(g){
+          var lb = el('label',{style:'display:flex;align-items:center;gap:8px;font-size:13px;padding:3px 0;cursor:pointer'});
+          var cb = el('input',{type:'checkbox'}); cb.checked = wk.casa_g.indexOf(g.id) >= 0;
+          cb.onchange = function(){ var k = wk.casa_g.indexOf(g.id); if (cb.checked && k<0) wk.casa_g.push(g.id); if (!cb.checked && k>=0) wk.casa_g.splice(k,1); pintar(); };
+          lb.appendChild(cb); lb.appendChild(document.createTextNode(g.descripcion+' · '+fmt(g.importe)));
+          body.appendChild(lb);
+        });
+        body.appendChild(el('div',{style:'font-size:12px;font-weight:600;color:#64748B;margin:10px 0 4px'},'Van por su cuenta (solo pagan la casa, no los gastos comunes)'));
+        var gr = el('div',{style:'display:flex;flex-wrap:wrap;gap:4px 14px'});
+        juntadaParticipantes.filter(function(p){ return p.activo; }).forEach(function(p){
+          var lb = el('label',{style:'display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer'});
+          var cb = el('input',{type:'checkbox'}); cb.checked = wk.solos.indexOf(p.id) >= 0;
+          cb.onchange = function(){ var k = wk.solos.indexOf(p.id); if (cb.checked && k<0) wk.solos.push(p.id); if (!cb.checked && k>=0) wk.solos.splice(k,1); pintar(); };
+          lb.appendChild(cb); lb.appendChild(document.createTextNode(p.nombre));
+          gr.appendChild(lb);
+        });
+        body.appendChild(gr);
+        body.appendChild(resBox);
+        pintar();
+      }, function(foot) {
+        foot.appendChild(cancelBtn());
+        var bc = el('button',{class:'btn'},'Copiar transferencias');
+        bc.onclick = function(){ try { navigator.clipboard.writeText(textoCopiar || 'Sin transferencias'); bc.textContent = 'Copiado'; setTimeout(function(){ bc.textContent = 'Copiar transferencias'; }, 1500); } catch(e) { alert(textoCopiar || 'Sin transferencias'); } };
+        foot.appendChild(bc);
+        var ok = el('button',{class:'btn btnp'},'Guardar configuración');
+        ok.onclick = function(){ ok.disabled = true; liqJ = {casa_pp:wk.casa_pp, solos:wk.solos.slice(), casa_g:wk.casa_g.slice()};
+          guardarLiqJ().then(function(){ closeM(); }).catch(function(e){ ok.disabled = false; alert('No se pudo guardar: '+e.message); }); };
+        foot.appendChild(ok);
+      }));
+    }
+
     // ---- JUNTADA ----
     var _juntadaCollapsed = {};
     function checkCollapsed(id){ return _juntadaCollapsed[id] !== false; }
@@ -7601,7 +7714,9 @@ function vFinanzas() {
         btnNP.onclick = mNuevoParticipante2;
         var btnPrJ = el('button',{class:'btn btnsm',style:'margin-right:6px'},'\uD83D\uDDA8 Imprimir');
         btnPrJ.onclick = mImprimirJuntada;
-        var hdrBtnsJ = el('span',{}); hdrBtnsJ.appendChild(btnPrJ); hdrBtnsJ.appendChild(btnNP);
+        var btnLiqJ = el('button',{class:'btn btnsm',style:'margin-right:6px'},'\u2696 Liquidar');
+        btnLiqJ.onclick = mLiquidacionJuntada;
+        var hdrBtnsJ = el('span',{}); hdrBtnsJ.appendChild(btnLiqJ); hdrBtnsJ.appendChild(btnPrJ); hdrBtnsJ.appendChild(btnNP);
         sh2.appendChild(hdrBtnsJ);
         sec.appendChild(sh2);
         var totalAportado2 = juntadaPagos.reduce(function(s,p){ return s+Number(p.importe); },0);
