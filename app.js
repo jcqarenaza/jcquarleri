@@ -6819,7 +6819,9 @@ function vFinanzas() {
       var acc = el('div',{style:'display:flex;gap:8px;flex-wrap:wrap'});
       var bMov = el('button',{class:'btn btnp btnsm'},'↔ Mover plata / comprar USD');
       var bNew = el('button',{class:'btn btnsm'},'+ Nueva cuenta');
-      acc.appendChild(bMov); acc.appendChild(bNew); top.appendChild(acc); box.appendChild(top);
+      var bRec = el('button',{class:'btn btnsm',title:'Suma plata a una cuenta sin cargarla como ingreso'},'+ Plata recibida');
+      bRec.onclick = function(){ mPlataRecibidaPF(); };
+      acc.appendChild(bMov); acc.appendChild(bRec); acc.appendChild(bNew); top.appendChild(acc); box.appendChild(top);
       if (!cuentasPF.length) {
         box.appendChild(el('div',{style:'font-size:13px;color:#64748B;line-height:1.5'},'Todavía no hay cuentas. Corré el SQL de cuentas en Supabase y recargá.'));
         content.appendChild(box); return;
@@ -6885,7 +6887,7 @@ function vFinanzas() {
           var co = cuentasPF.find(function(x){ return x.id===mv.cuenta_origen; }) || {nombre:(mv.cuenta_origen ? '?' : 'Cobro de deuda'),moneda:'ARS'}, cd = cuentasPF.find(function(x){ return x.id===mv.cuenta_destino; }) || {nombre:'?',moneda:'ARS'};
           function mm(n,c){ return c.moneda==='USD' ? 'USD '+n : fmt(Math.round(Number(n))); }
           var f = el('div',{style:'display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:4px 0;border-bottom:1px solid #F1F5F9'});
-          f.appendChild(el('span',{}, fdate(mv.fecha)+' · '+(mv.cuenta_origen ? etiqCtaPF(co) : (/^Pr[eé]stamo/.test(mv.notas||'') ? '\uD83C\uDFE6 Pr\u00E9stamo recibido' : '\uD83D\uDCB5 Cobro de deuda'))+' → '+etiqCtaPF(cd)+' · '+mm(mv.monto_origen,co)+(co.moneda!==cd.moneda ? ' → '+mm(mv.monto_destino,cd)+(mv.tc?' (dólar a '+fmt(Number(mv.tc))+')':'') : '')+(mv.notas?' · '+mv.notas:'')));
+          f.appendChild(el('span',{}, fdate(mv.fecha)+' · '+(mv.cuenta_origen ? etiqCtaPF(co) : (/^Pr[eé]stamo/.test(mv.notas||'') ? '\uD83C\uDFE6 Pr\u00E9stamo recibido' : (/^Plata recibida/.test(mv.notas||'') ? '\uD83D\uDCB0 Plata recibida' : '\uD83D\uDCB5 Cobro de deuda')))+' → '+etiqCtaPF(cd)+' · '+mm(mv.monto_origen,co)+(co.moneda!==cd.moneda ? ' → '+mm(mv.monto_destino,cd)+(mv.tc?' (dólar a '+fmt(Number(mv.tc))+')':'') : '')+(mv.notas?' · '+mv.notas:'')));
           var bd = el('button',{class:'btn btnsm',style:'background:#FCEBEB;border-color:#FCEBEB;color:#A32D2D'},'×');
           bd.onclick = function(){ if (!confirm('Eliminar este movimiento?')) return; sbFetch('panel_pf_movimientos?id=eq.'+mv.id,{method:'DELETE',prefer:'return=minimal'}).then(function(){ movimientosPF.splice(movimientosPF.indexOf(mv),1); renderAll(); }); };
           f.appendChild(bd); box.appendChild(f);
@@ -6894,6 +6896,30 @@ function vFinanzas() {
       bNew.onclick = function(){ mNuevaCuentaPF(); };
       bMov.onclick = function(){ mMoverPlataPF(); };
       content.appendChild(box);
+    }
+    // Plata que entra a una cuenta sin ser ingreso ni transferencia interna (adelantos, devoluciones, etc.)
+    function mPlataRecibidaPF() {
+      openM(makeModal('+ Plata recibida', function(body) {
+        body.appendChild(el('div',{class:'ibox'},'Suma al saldo de la cuenta. No se carga como ingreso ni como transferencia interna: solo mueve el saldo.'));
+        addFg(body, 'Concepto', mkInput('prc-conc','text','','Ej: Adelanto Amex'));
+        mkRow2(body, mkFg('Monto (en la moneda de la cuenta)', mkInput('prc-monto','number','','0')), mkFg('Fecha', mkInput('prc-fecha','date',new Date().toISOString().slice(0,10))));
+        addFg(body, '¿A qué cuenta entró?', selCuentaPF('prc-cuenta', cuentaDefaultIngresoPF(), null));
+        setTimeout(function(){ var c = document.getElementById('prc-conc'); if (c) c.focus(); }, 50);
+      }, function(foot) {
+        foot.appendChild(cancelBtn());
+        var ok = el('button',{class:'btn btnp'},'Registrar');
+        ok.onclick = function() {
+          var conc = gv('prc-conc').trim(); if (!conc) { alert('Poné un concepto'); return; }
+          var monto = Number(gv('prc-monto')||0); if (!(monto>0)) { alert('Ingresá el monto'); return; }
+          var cuentaId = gv('prc-cuenta')||''; if (!cuentaId) { alert('Elegí en qué cuenta entró la plata'); return; }
+          var fecha = gv('prc-fecha') || new Date().toISOString().slice(0,10);
+          ok.disabled = true; ok.textContent = 'Guardando...';
+          dbIns('panel_pf_movimientos', {fecha:fecha, cuenta_origen:null, cuenta_destino:cuentaId, monto_origen:monto, monto_destino:monto, tc:null, notas:'Plata recibida: '+conc})
+            .then(function(r){ if (r && r[0]) movimientosPF.push(r[0]); closeM(); renderAll(); })
+            .catch(function(e){ ok.disabled=false; ok.textContent='Registrar'; alert('Error: '+e.message); });
+        };
+        foot.appendChild(ok);
+      }));
     }
     function mNuevaCuentaPF() {
       var insts = []; cuentasPF.forEach(function(c){ var k = instCtaPF(c); if (c.tipo!=='tarjeta' && insts.indexOf(k)<0) insts.push(k); });
